@@ -40,8 +40,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "bin": {
-    "opencode-openai-codex-multi-auth": "./scripts/install-opencode-codex-auth.js",
-    "opencode-openai-codex-auth": "./scripts/install-opencode-codex-auth.js"
+    "opencode-openai-codex-multi-auth": "scripts/install-opencode-codex-auth.js",
+    "opencode-openai-codex-auth": "scripts/install-opencode-codex-auth.js"
   },
   "files": [
     "dist/",
