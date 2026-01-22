@@ -18,7 +18,8 @@ const PLUGIN_ALIASES = [PLUGIN_SPEC, UPSTREAM_PACKAGE, LEGACY_GITHUB_SPEC];
 const args = new Set(process.argv.slice(2));
 
 if (args.has("--help") || args.has("-h")) {
-	console.log(`Usage: ${UPSTREAM_PACKAGE} [--modern|--legacy] [--uninstall] [--all] [--dry-run] [--no-cache-clear]\n\n` +
+	console.log(
+		`Usage: ${PLUGIN_SPEC} [--modern|--legacy] [--uninstall] [--all] [--dry-run] [--no-cache-clear]\n\n` +
 		"Default behavior:\n" +
 		"  - Installs/updates global config at ~/.config/opencode/opencode.jsonc (falls back to .json)\n" +
 		"  - Uses modern config (variants) by default\n" +
