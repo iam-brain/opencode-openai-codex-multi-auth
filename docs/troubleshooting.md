@@ -90,6 +90,52 @@ lsof -i :1455
 
 ---
 
+## Multi-Account Issues
+
+### "All account(s) are rate-limited"
+
+**Symptoms:**
+- Requests fail with HTTP 429
+- Error mentions all accounts being rate-limited
+
+**What this means:**
+- The plugin tried every configured account and they are all currently in cooldown / rate-limit windows.
+
+**Solutions:**
+
+**1. Wait for the shortest reset window:**
+- The plugin tracks rate-limit reset times per account in `~/.opencode/openai-codex-accounts.json`
+
+**2. Add another account:**
+```bash
+opencode auth login
+```
+
+**3. Check your selection strategy:**
+- Default is `sticky` (best caching)
+- If you want maximum throughput with many accounts, set `accountSelectionStrategy: "round-robin"` in `~/.opencode/openai-codex-auth-config.json`
+
+**4. For parallel agents, keep PID offset enabled:**
+- `pidOffsetEnabled: true` helps parallel OpenCode sessions start on different accounts
+
+### Reset Accounts
+
+If tokens were revoked or you want to start over:
+
+```bash
+rm ~/.opencode/openai-codex-accounts.json
+opencode auth login
+```
+
+### Inspect / Switch Accounts
+
+In the OpenCode TUI, you can run:
+
+- `openai-accounts`
+- `openai-accounts-switch` (pass a 1-based index)
+
+See [Multi-Account](multi-account.md) for details.
+
 ## Model Issues
 
 ### "Model not found"

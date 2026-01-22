@@ -24,6 +24,14 @@ export type ModelFamily =
 	| "gpt-5.2"
 	| "gpt-5.1";
 
+export const MODEL_FAMILIES: ModelFamily[] = [
+	"gpt-5.2-codex",
+	"codex-max",
+	"codex",
+	"gpt-5.2",
+	"gpt-5.1",
+];
+
 /**
  * Prompt file mapping for each model family
  * Based on codex-rs/core/src/model_family.rs logic

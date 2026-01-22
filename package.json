@@ -6,10 +6,10 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "license": "MIT",
-  "author": "Numman Ali",
+  "author": "iam-brain",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/numman-ali/opencode-openai-codex-auth.git"
+    "url": "git+https://github.com/iam-brain/opencode-openai-codex-multi-auth.git"
   },
   "keywords": [
     "opencode",
@@ -17,15 +17,16 @@
     "codex",
     "chatgpt",
     "oauth",
+    "multi",
     "gpt-5",
     "plugin",
     "auth",
     "chatgpt-plus",
     "chatgpt-pro"
   ],
-  "homepage": "https://github.com/numman-ali/opencode-openai-codex-auth#readme",
+  "homepage": "https://github.com/iam-brain/opencode-openai-codex-multi-auth#readme",
   "bugs": {
-    "url": "https://github.com/numman-ali/opencode-openai-codex-auth/issues"
+    "url": "https://github.com/iam-brain/opencode-openai-codex-multi-auth/issues"
   },
   "scripts": {
     "build": "tsc && cp lib/oauth-success.html dist/lib/",

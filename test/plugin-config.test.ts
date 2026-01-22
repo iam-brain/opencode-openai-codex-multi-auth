@@ -34,12 +34,24 @@ describe('Plugin Configuration', () => {
 	});
 
 	describe('loadPluginConfig', () => {
+		const expectedDefault = {
+			codexMode: true,
+			accountSelectionStrategy: 'sticky',
+			pidOffsetEnabled: true,
+			quietMode: false,
+			retryAllAccountsRateLimited: false,
+			retryAllAccountsMaxWaitMs: 30_000,
+			retryAllAccountsMaxRetries: 1,
+			tokenRefreshSkewMs: 60_000,
+			rateLimitToastDebounceMs: 60_000,
+		};
+
 		it('should return default config when file does not exist', () => {
 			mockExistsSync.mockReturnValue(false);
 
 			const config = loadPluginConfig();
 
-			expect(config).toEqual({ codexMode: true });
+			expect(config).toEqual(expectedDefault);
 			expect(mockExistsSync).toHaveBeenCalledWith(
 				path.join(os.homedir(), '.opencode', 'openai-codex-auth-config.json')
 			);
@@ -51,7 +63,7 @@ describe('Plugin Configuration', () => {
 
 			const config = loadPluginConfig();
 
-			expect(config).toEqual({ codexMode: false });
+			expect(config).toEqual({ ...expectedDefault, codexMode: false });
 		});
 
 		it('should merge user config with defaults', () => {
@@ -60,7 +72,7 @@ describe('Plugin Configuration', () => {
 
 			const config = loadPluginConfig();
 
-			expect(config).toEqual({ codexMode: true });
+			expect(config).toEqual(expectedDefault);
 		});
 
 		it('should handle invalid JSON gracefully', () => {
@@ -70,7 +82,7 @@ describe('Plugin Configuration', () => {
 			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 			const config = loadPluginConfig();
 
-			expect(config).toEqual({ codexMode: true });
+			expect(config).toEqual(expectedDefault);
 			expect(consoleSpy).toHaveBeenCalled();
 			consoleSpy.mockRestore();
 		});
@@ -84,7 +96,7 @@ describe('Plugin Configuration', () => {
 			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 			const config = loadPluginConfig();
 
-			expect(config).toEqual({ codexMode: true });
+			expect(config).toEqual(expectedDefault);
 			expect(consoleSpy).toHaveBeenCalled();
 			consoleSpy.mockRestore();
 		});

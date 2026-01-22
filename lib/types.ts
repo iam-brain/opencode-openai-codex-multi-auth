@@ -9,6 +9,87 @@ export interface PluginConfig {
 	 * @default true
 	 */
 	codexMode?: boolean;
+
+	/**
+	 * Account selection strategy when multiple accounts are configured.
+	 * - sticky: keep the same account until rate-limited (best for caching)
+	 * - round-robin: rotate accounts on every request (best for throughput)
+	 * @default "sticky"
+	 */
+	accountSelectionStrategy?: AccountSelectionStrategy;
+
+	/**
+	 * Enable PID-based account offset for parallel agents.
+	 * When enabled, each process chooses a different starting account but remains sticky.
+	 *
+	 * Note: This is only meaningful when 2+ accounts exist.
+	 * @default true
+	 */
+	pidOffsetEnabled?: boolean;
+
+	/**
+	 * Suppress most toast notifications.
+	 * @default false
+	 */
+	quietMode?: boolean;
+
+	/**
+	 * Milliseconds before token expiry to proactively refresh.
+	 * @default 60000
+	 */
+	tokenRefreshSkewMs?: number;
+
+	/**
+	 * Debounce interval for account-related toasts.
+	 * @default 60000
+	 */
+	rateLimitToastDebounceMs?: number;
+
+	/**
+	 * When all accounts are rate-limited, optionally wait and retry.
+	 * @default false
+	 */
+	retryAllAccountsRateLimited?: boolean;
+
+	/**
+	 * Maximum time to wait when all accounts are rate-limited.
+	 * Set to 0 to disable wait limit.
+	 * @default 30000
+	 */
+	retryAllAccountsMaxWaitMs?: number;
+
+	/**
+	 * Maximum number of "all accounts rate-limited" waits.
+	 * @default 1
+	 */
+	retryAllAccountsMaxRetries?: number;
+}
+
+export type AccountSelectionStrategy = "sticky" | "round-robin";
+
+export type OAuthAuthDetails = Extract<Auth, { type: "oauth" }>;
+
+export type CooldownReason = "auth-failure";
+
+export type RateLimitStateV3 = Record<string, number | undefined>;
+
+export interface AccountRecordV3 {
+	refreshToken: string;
+	accountId?: string;
+	email?: string;
+	addedAt: number;
+	lastUsed: number;
+	lastSwitchReason?: "rate-limit" | "initial" | "rotation";
+	rateLimitResetTimes?: RateLimitStateV3;
+	coolingDownUntil?: number;
+	cooldownReason?: CooldownReason;
+}
+
+export interface AccountStorageV3 {
+	version: 3;
+	accounts: AccountRecordV3[];
+	activeIndex: number;
+	activeIndexByFamily?: Partial<Record<string, number>>;
 }
 
 /**

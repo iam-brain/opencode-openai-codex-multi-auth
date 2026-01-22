@@ -389,12 +389,61 @@ CODEX_MODE=0 opencode run "task"  # Temporarily disable
 CODEX_MODE=1 opencode run "task"  # Temporarily enable
 ```
 
+### Multi-Account Settings
+
+Multi-account settings live in the same plugin config file:
+
+- `~/.opencode/openai-codex-auth-config.json`
+
+Add `$schema` for editor autocompletion:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/main/assets/openai-codex-auth-config.schema.json",
+  "codexMode": true,
+  "accountSelectionStrategy": "sticky",
+  "pidOffsetEnabled": true,
+  "quietMode": false
+}
+```
+
+Account pool storage:
+
+- `~/.opencode/openai-codex-accounts.json`
+
+For a detailed guide, see [docs/multi-account.md](multi-account.md).
+
+#### Strategy Guide
+
+| Your Setup | Recommended Setting | Why |
+|------------|---------------------|-----|
+| 1 account | `accountSelectionStrategy: "sticky"` | No rotation needed; best caching |
+| 2-4 accounts | `sticky` + `pidOffsetEnabled: true` | Sticky preserves caching, PID offset spreads parallel agents |
+| 5+ accounts / max throughput | `accountSelectionStrategy: "round-robin"` | Maximum distribution (less caching) |
+
+#### Environment Variable Overrides
+
+All options can be overridden with env vars:
+
+```bash
+CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=round-robin
+CODEX_AUTH_PID_OFFSET_ENABLED=1
+CODEX_AUTH_QUIET=1
+CODEX_AUTH_TOKEN_REFRESH_SKEW_MS=60000
+CODEX_AUTH_RATE_LIMIT_TOAST_DEBOUNCE_MS=60000
+CODEX_AUTH_RETRY_ALL_RATE_LIMITED=1
+CODEX_AUTH_RETRY_ALL_MAX_WAIT_MS=30000
+CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
+```
+
 ### Prompt caching
 
 - When OpenCode provides a `prompt_cache_key` (its session identifier), the plugin forwards it directly to Codex.
 - The same value is sent via headers (`conversation_id`, `session_id`) and request body, reducing latency and token usage.
 - The plugin does not synthesize a fallback key; hosts that omit `prompt_cache_key` will see uncached behaviour until they provide one.
 - No configuration needed—cache headers are injected during request transformation.
+
+**Important:** Prompt caching is very likely scoped per account. If you enable `round-robin`, you should expect fewer cache hits.
 
 ### Usage limit messaging
 

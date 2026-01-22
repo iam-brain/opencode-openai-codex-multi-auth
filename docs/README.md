@@ -4,9 +4,10 @@ Welcome to the OpenCode OpenAI Codex Auth Plugin documentation!
 
 ## For Users
 
-- **[Getting Started](../README.md)** - Installation, configuration, and quick start
-- **[Configuration Guide](../README.md#configuration)** - Complete config reference
-- **[Troubleshooting](../README.md#troubleshooting)** - Common issues and debugging
+- **[Getting Started](getting-started.md)** - Installation, configuration, and quick start
+- **[Configuration Guide](configuration.md)** - Provider and plugin configuration reference
+- **[Multi-Account](multi-account.md)** - Multiple accounts, rotation behavior, and account tools
+- **[Troubleshooting](troubleshooting.md)** - Common issues and debugging
 - **[Changelog](../CHANGELOG.md)** - Version history and release notes
 
 ## For Developers
@@ -32,4 +33,4 @@ This plugin bridges two different systems with careful engineering:
 
 ---
 
-**Quick Links**: [GitHub](https://github.com/your-username/opencode-codex-plugin) • [npm](https://www.npmjs.com/package/opencode-openai-codex-auth) • [Issues](https://github.com/your-username/opencode-codex-plugin/issues)
+**Quick Links**: [GitHub](https://github.com/iam-brain/opencode-openai-codex-multi-auth) • [npm](https://www.npmjs.com/package/opencode-openai-codex-auth)

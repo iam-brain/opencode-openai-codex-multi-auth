@@ -23,6 +23,7 @@ Users are responsible for compliance with [OpenAI's Terms of Use](https://openai
 ### For Users
 - [Getting Started](getting-started.md) - Complete installation and setup guide
 - [Configuration Guide](configuration.md) - Advanced config options and patterns
+- [Multi-Account](multi-account.md) - Multiple accounts, rotation behavior, and account tools
 - [Troubleshooting](troubleshooting.md) - Debug techniques and common issues
 - [Privacy & Data Handling](privacy.md) - How your data is handled and protected
 - [Release Notes](https://github.com/numman-ali/opencode-openai-codex-auth/releases) - Version history and updates
@@ -88,6 +89,7 @@ opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=me
 ✅ **Variant system support** - Works with OpenCode v1.0.210+ model variants and legacy presets
 ✅ **Per-Model Configuration** - Different reasoning effort, including `xhigh` for GPT 5.2, GPT 5.2 Codex, and Codex Max
 ✅ **Multi-Turn Conversations** - Full conversation history with stateless backend
+✅ **Multi-Account Support** - Sticky-by-default rotation + PID offset for parallel agents
 ✅ **Verified Configuration** - Use `config/opencode-modern.json` (v1.0.210+) or `config/opencode-legacy.json` (older)
 ✅ **Comprehensive Testing** - 200+ unit tests + integration tests
 

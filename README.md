@@ -62,10 +62,14 @@ Minimal configs are not supported for GPT‑5.x; use the full configs above.
 - Variant system support (v1.0.210+) + legacy presets
 - Multimodal input enabled for all models
 - Usage‑aware errors + automatic token refresh
+- Multi-account support with sticky selection + PID offset (great for parallel agents)
+- Optional round-robin account rotation (maximum throughput)
+- OpenCode TUI toasts + `openai-accounts` / `openai-accounts-switch` tools
 ---
 ## 📚 Docs
 - Getting Started: `docs/getting-started.md`
 - Configuration: `docs/configuration.md`
+- Multi-Account: `docs/multi-account.md`
 - Troubleshooting: `docs/troubleshooting.md`
 - Architecture: `docs/development/ARCHITECTURE.md`
 ---

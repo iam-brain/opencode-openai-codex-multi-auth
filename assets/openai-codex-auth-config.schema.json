@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/main/assets/openai-codex-auth-config.schema.json",
+  "title": "OpenCode OpenAI Codex Auth Plugin Config",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for editor autocompletion"
+    },
+    "codexMode": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable CODEX_MODE (Codex/OpenCode bridge prompt)."
+    },
+    "accountSelectionStrategy": {
+      "type": "string",
+      "enum": ["sticky", "round-robin"],
+      "default": "sticky",
+      "description": "How to select accounts when 2+ accounts are configured."
+    },
+    "pidOffsetEnabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Offset starting account by process PID (helps parallel agents spread across accounts)."
+    },
+    "quietMode": {
+      "type": "boolean",
+      "default": false,
+      "description": "Suppress most toast notifications."
+    },
+    "tokenRefreshSkewMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 60000,
+      "description": "Milliseconds before token expiry to refresh proactively."
+    },
+    "rateLimitToastDebounceMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 60000,
+      "description": "Debounce interval for account-related toasts."
+    },
+    "retryAllAccountsRateLimited": {
+      "type": "boolean",
+      "default": false,
+      "description": "When all accounts are rate limited, wait and retry automatically."
+    },
+    "retryAllAccountsMaxWaitMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 30000,
+      "description": "Maximum wait time (ms) when all accounts are rate limited. 0 = no limit."
+    },
+    "retryAllAccountsMaxRetries": {
+      "type": "number",
+      "minimum": 0,
+      "default": 1,
+      "description": "Maximum number of all-accounts wait cycles."
+    }
+  }
+}

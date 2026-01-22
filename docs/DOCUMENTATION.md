@@ -11,6 +11,9 @@ This document explains the organization of documentation in this repository.
 ├── docs/
 │   ├── index.md                   # GitHub Pages home
 │   ├── README.md                  # Documentation portal
+│   ├── configuration.md           # User configuration reference
+│   ├── multi-account.md           # Multi-account setup and rotation
+│   ├── troubleshooting.md         # Common issues and fixes
 │   ├── _config.yml                # GitHub Pages config
 │   └── development/               # Developer documentation
 │       ├── ARCHITECTURE.md        # Technical design
