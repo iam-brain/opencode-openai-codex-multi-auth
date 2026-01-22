@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { parse } from 'jsonc-parser';
 
 const SCRIPT_PATH = resolve(process.cwd(), 'scripts', 'install-opencode-codex-auth.js');
-const EXPECTED_PLUGIN = 'github:iam-brain/opencode-openai-codex-multi-auth';
+const EXPECTED_PLUGIN = 'opencode-openai-codex-multi-auth';
 
 const runInstaller = (args: string[], homeDir: string) => {
 	execFileSync(process.execPath, [SCRIPT_PATH, ...args], {

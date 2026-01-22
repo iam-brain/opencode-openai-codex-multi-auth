@@ -44,13 +44,13 @@ Explore the engineering depth behind this plugin:
 One-command install/update (global config):
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth
+npx -y opencode-openai-codex-multi-auth@latest
 ```
 
 Legacy OpenCode (v1.0.209 and below):
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --legacy
+npx -y opencode-openai-codex-multi-auth@latest --legacy
 ```
 
 Then run OpenCode and authenticate:
@@ -71,7 +71,7 @@ If the browser callback fails (SSH/WSL/remote), choose **"ChatGPT Plus/Pro (Manu
 Re-run the installer to update:
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth
+npx -y opencode-openai-codex-multi-auth@latest
 ```
 
 ### Quick Test

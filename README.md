@@ -6,6 +6,7 @@ Fork maintained by [iam-brain](https://github.com/iam-brain).
 Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://github.com/numman-ali/opencode-openai-codex-auth)
 
 [![CI](https://github.com/iam-brain/opencode-openai-codex-multi-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/iam-brain/opencode-openai-codex-multi-auth/actions)
+[![npm version](https://img.shields.io/npm/v/opencode-openai-codex-multi-auth.svg)](https://www.npmjs.com/package/opencode-openai-codex-multi-auth)
 
 **One install. Every Codex model. Multi-account aware.**
 [Install](#-quick-start) · [Models](#-models) · [Configuration](#-configuration) · [Docs](#-docs)
@@ -25,7 +26,7 @@ OpenCode should feel effortless. This plugin keeps the setup minimal while givin
 ---
 ## 🚀 Quick Start
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth
+npx -y opencode-openai-codex-multi-auth@latest
 ```
 Then:
 ```bash
@@ -34,16 +35,16 @@ opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=me
 ```
 Legacy OpenCode (v1.0.209 and below):
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --legacy
+npx -y opencode-openai-codex-multi-auth@latest --legacy
 opencode run "write hello world to test.txt" --model=openai/gpt-5.2-medium
 ```
 Uninstall:
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --uninstall
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --uninstall --all
+npx -y opencode-openai-codex-multi-auth@latest --uninstall
+npx -y opencode-openai-codex-multi-auth@latest --uninstall --all
 ```
 
-Note: this fork installs the plugin via a GitHub spec (`github:iam-brain/opencode-openai-codex-multi-auth`) so OpenCode pulls this fork, not the upstream npm package.
+Note: if you previously installed the GitHub-spec version (`github:iam-brain/opencode-openai-codex-multi-auth`), re-running the installer will migrate you to the npm package.
 ---
 ## 📦 Models
 - **gpt-5.2** (none/low/medium/high/xhigh)

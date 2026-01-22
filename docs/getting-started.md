@@ -25,7 +25,7 @@ For production applications, use the [OpenAI Platform API](https://platform.open
 Works on **Windows, macOS, and Linux**:
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth
+npx -y opencode-openai-codex-multi-auth@latest
 ```
 
 This writes the **global** config at `~/.config/opencode/opencode.jsonc` (falls back to `.json` if needed), backs it up, and clears the OpenCode plugin cache so the latest version installs.
@@ -33,7 +33,7 @@ This writes the **global** config at `~/.config/opencode/opencode.jsonc` (falls 
 Need legacy config (OpenCode v1.0.209 and below)?
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --legacy
+npx -y opencode-openai-codex-multi-auth@latest --legacy
 ```
 
 ---
@@ -61,7 +61,7 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:iam-brain/opencode-openai-codex-multi-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "options": {
@@ -289,7 +289,7 @@ Prompt caching is enabled out of the box: when OpenCode sends its session identi
 // ❌ DO NOT USE THIS
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:iam-brain/opencode-openai-codex-multi-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "model": "openai/gpt-5-codex"
 }
 ```
@@ -348,20 +348,20 @@ OpenCode checks multiple config files in order:
 OpenCode caches plugins. To install the latest version, just re-run the installer:
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth
+npx -y opencode-openai-codex-multi-auth@latest
 ```
 
 Legacy OpenCode (v1.0.209 and below):
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --legacy
+npx -y opencode-openai-codex-multi-auth@latest --legacy
 ```
 
 ## Uninstall
 
 ```bash
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --uninstall
-npx -y github:iam-brain/opencode-openai-codex-multi-auth --uninstall --all
+npx -y opencode-openai-codex-multi-auth@latest --uninstall
+npx -y opencode-openai-codex-multi-auth@latest --uninstall --all
 ```
 
 **When to update:**

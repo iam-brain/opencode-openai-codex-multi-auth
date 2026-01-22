@@ -9,10 +9,12 @@ import { parse, modify, applyEdits, printParseErrorCode } from "jsonc-parser";
 
 // This repository is a fork. Install the plugin from GitHub to ensure
 // OpenCode uses this fork instead of the upstream npm package.
-const PLUGIN_SPEC = "github:iam-brain/opencode-openai-codex-multi-auth";
-// Keep track of the upstream npm package name so we can cleanly migrate.
+// The npm package name for this fork.
+const PLUGIN_SPEC = "opencode-openai-codex-multi-auth";
+// Keep track of older identifiers so we can migrate cleanly.
 const UPSTREAM_PACKAGE = "opencode-openai-codex-auth";
-const PLUGIN_ALIASES = [PLUGIN_SPEC, UPSTREAM_PACKAGE];
+const LEGACY_GITHUB_SPEC = "github:iam-brain/opencode-openai-codex-multi-auth";
+const PLUGIN_ALIASES = [PLUGIN_SPEC, UPSTREAM_PACKAGE, LEGACY_GITHUB_SPEC];
 const args = new Set(process.argv.slice(2));
 
 if (args.has("--help") || args.has("-h")) {
@@ -54,6 +56,7 @@ const configPathJsonc = join(configDir, "opencode.jsonc");
 const cacheDir = join(homedir(), ".cache", "opencode");
 const cacheNodeModules = join(cacheDir, "node_modules", PLUGIN_SPEC);
 const cacheNodeModulesUpstream = join(cacheDir, "node_modules", UPSTREAM_PACKAGE);
+const cacheNodeModulesLegacyGitHub = join(cacheDir, "node_modules", LEGACY_GITHUB_SPEC);
 const cacheBunLock = join(cacheDir, "bun.lock");
 const cachePackageJson = join(cacheDir, "package.json");
 const opencodeAuthPath = join(homedir(), ".opencode", "auth", "openai.json");
@@ -252,10 +255,12 @@ async function clearCache() {
 	if (dryRun) {
 		log(`[dry-run] Would remove ${cacheNodeModules}`);
 		log(`[dry-run] Would remove ${cacheNodeModulesUpstream}`);
+		log(`[dry-run] Would remove ${cacheNodeModulesLegacyGitHub}`);
 		log(`[dry-run] Would remove ${cacheBunLock}`);
 	} else {
 		await rm(cacheNodeModules, { recursive: true, force: true });
 		await rm(cacheNodeModulesUpstream, { recursive: true, force: true });
+		await rm(cacheNodeModulesLegacyGitHub, { recursive: true, force: true });
 		await rm(cacheBunLock, { force: true });
 	}
 
