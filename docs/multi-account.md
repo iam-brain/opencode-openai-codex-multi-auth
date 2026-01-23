@@ -18,14 +18,14 @@ When accounts already exist, you'll be prompted:
 (a)dd new account(s) or (f)resh start? [a/f]:
 ```
 
-## Account Selection (How Rotation Works)
+## Load Balancing Behavior
 
-This plugin intentionally defaults to **sticky** selection to preserve Codex/ChatGPT-side prompt caching.
+- **Sticky by default**: The plugin stays on the same account until rate-limited (best for caching).
+- **Per-model-family limits**: Rate limits are tracked per Codex model family.
+- **Smart retry threshold**: Short rate limits (<= 5s) are retried on the same account.
+- **Hybrid strategy (optional)**: Health score + token bucket + LRU bias for better overall distribution.
 
-- `sticky` (default): Stay on the same account until it is rate-limited, then switch.
-- `round-robin` (opt-in): Rotate accounts on every request (maximum throughput, less caching).
-
-### Parallel Agents (PID Offset)
+## Parallel Sessions (PID Offset)
 
 When you run multiple OpenCode sessions (or parallel agents) at once, they can otherwise all start on Account 1.
 To avoid that, the plugin supports PID-based offset.
@@ -37,6 +37,14 @@ When enabled and you have 2+ accounts, each process will pick a different **star
 - ...
 
 Each process still behaves "sticky" after choosing its initial account.
+
+Enable it in `~/.opencode/openai-codex-auth-config.json`:
+
+```json
+{
+  "pidOffsetEnabled": true
+}
+```
 
 ## Toast Notifications
 
@@ -92,7 +100,43 @@ Example accounts file:
 `version` is the **accounts file format version**. The plugin currently reads/writes version `3`.
 It's not related to the npm package version; it exists so the file format can evolve safely over time.
 
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `email` | Best-effort email extracted from the OAuth JWT (may be missing) |
+| `accountId` | ChatGPT account ID extracted from the OAuth JWT (may be missing) |
+| `refreshToken` | OAuth refresh token (auto-managed) |
+| `addedAt` | Timestamp when the account was first stored |
+| `lastUsed` | Timestamp when the account was last selected |
+| `activeIndex` | Active account index (used by the account switch tool) |
+| `activeIndexByFamily` | Per-model-family active index |
+| `rateLimitResetTimes` | Optional per-family/model rate limit reset times |
+| `coolingDownUntil` | Optional cooldown timestamp for failing accounts |
+
 Security note: this file contains OAuth refresh tokens. Treat it like a password file.
+
+## Account Selection Strategies
+
+Configure in `~/.opencode/openai-codex-auth-config.json`:
+
+```json
+{
+  "accountSelectionStrategy": "sticky"
+}
+```
+
+| Strategy | Behavior | Best For |
+|----------|----------|----------|
+| `sticky` | Same account until rate-limited | Prompt cache preservation |
+| `round-robin` | Rotate to next account on every request | Maximum throughput |
+| `hybrid` | Deterministic selection using health score + token bucket + LRU bias | Best overall distribution |
+
+### Set Strategy via Environment Variable
+
+```bash
+CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=hybrid
+```
 
 ## Resetting Accounts
 

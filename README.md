@@ -66,6 +66,7 @@ Minimal configs are not supported for GPT‑5.x; use the full configs above.
 - Multimodal input enabled for all models
 - Usage‑aware errors + automatic token refresh
 - Multi-account support with sticky selection + PID offset (great for parallel agents)
+- Hybrid account selection strategy (health score + token bucket + LRU bias)
 - Optional round-robin account rotation (maximum throughput)
 - OpenCode TUI toasts + `openai-accounts` / `openai-accounts-switch` tools
 ---

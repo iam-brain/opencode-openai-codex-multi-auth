@@ -16,7 +16,7 @@
     },
     "accountSelectionStrategy": {
       "type": "string",
-      "enum": ["sticky", "round-robin"],
+      "enum": ["sticky", "round-robin", "hybrid"],
       "default": "sticky",
       "description": "How to select accounts when 2+ accounts are configured."
     },

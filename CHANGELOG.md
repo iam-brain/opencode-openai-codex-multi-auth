@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.4.2] - 2026-01-23
+
+**Multi-account strategy release**: hybrid selection and expanded docs.
+
+### Added
+- **Hybrid selection strategy**: `accountSelectionStrategy: "hybrid"` (health score + token bucket + LRU bias).
+
+### Documentation
+- **Multi-account docs**: Expanded to include strategy descriptions and manual configuration examples (antigravity-inspired).
+
 ## [4.4.1] - 2026-01-22
 
 **Fork maintenance release**: publish-ready metadata + installer alignment.

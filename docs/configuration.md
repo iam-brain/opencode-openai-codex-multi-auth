@@ -419,6 +419,7 @@ For a detailed guide, see [docs/multi-account.md](multi-account.md).
 |------------|---------------------|-----|
 | 1 account | `accountSelectionStrategy: "sticky"` | No rotation needed; best caching |
 | 2-4 accounts | `sticky` + `pidOffsetEnabled: true` | Sticky preserves caching, PID offset spreads parallel agents |
+| 5+ accounts / best overall | `accountSelectionStrategy: "hybrid"` | Health score + token bucket + LRU bias |
 | 5+ accounts / max throughput | `accountSelectionStrategy: "round-robin"` | Maximum distribution (less caching) |
 
 #### Environment Variable Overrides
@@ -427,6 +428,7 @@ All options can be overridden with env vars:
 
 ```bash
 CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=round-robin
+CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=hybrid
 CODEX_AUTH_PID_OFFSET_ENABLED=1
 CODEX_AUTH_QUIET=1
 CODEX_AUTH_TOKEN_REFRESH_SKEW_MS=60000

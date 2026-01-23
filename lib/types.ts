@@ -65,7 +65,7 @@ export interface PluginConfig {
 	retryAllAccountsMaxRetries?: number;
 }
 
-export type AccountSelectionStrategy = "sticky" | "round-robin";
+export type AccountSelectionStrategy = "sticky" | "round-robin" | "hybrid";
 
 export type OAuthAuthDetails = Extract<Auth, { type: "oauth" }>;
 

@@ -11,6 +11,7 @@ import type {
 } from "./types.js";
 import { loadAccounts, saveAccounts } from "./storage.js";
 import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
+import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
 
 export type BaseQuotaKey = ModelFamily;
 export type QuotaKey = BaseQuotaKey | `${BaseQuotaKey}:${string}`;
@@ -302,6 +303,36 @@ export class AccountManager {
 		strategy: AccountSelectionStrategy = "sticky",
 		pidOffsetEnabled: boolean = false,
 	): ManagedAccount | null {
+		// antigravity-style: PID offset is primarily for sticky/round-robin.
+		if (pidOffsetEnabled && strategy !== "hybrid") this.applyPidOffsetOnce(family);
+
+		if (strategy === "hybrid") {
+			const healthTracker = getHealthTracker();
+			const tokenTracker = getTokenTracker();
+
+			const accountsWithMetrics = this.accounts.map((acc) => {
+				clearExpiredRateLimits(acc);
+				return {
+					index: acc.index,
+					lastUsed: acc.lastUsed,
+					healthScore: healthTracker.getScore(acc.index),
+					isRateLimited: isRateLimitedForFamily(acc, family, model),
+					isCoolingDown: this.isAccountCoolingDown(acc),
+				};
+			});
+
+			const selectedIndex = selectHybridAccount(accountsWithMetrics, tokenTracker);
+			if (selectedIndex !== null) {
+				const selected = this.accounts[selectedIndex];
+				if (selected) {
+					selected.lastUsed = nowMs();
+					this.currentAccountIndexByFamily[family] = selected.index;
+					return selected;
+				}
+			}
+			// Fall through to sticky selection if hybrid has no eligible candidates.
+		}
+
 		if (pidOffsetEnabled) this.applyPidOffsetOnce(family);
 
 		if (strategy === "round-robin") {

@@ -100,9 +100,10 @@ export function getCodexMode(pluginConfig: PluginConfig): boolean {
 
 export function getAccountSelectionStrategy(pluginConfig: PluginConfig):
 	| "sticky"
-	| "round-robin" {
+	| "round-robin"
+	| "hybrid" {
 	const env = process.env.CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY;
-	if (env === "sticky" || env === "round-robin") return env;
+	if (env === "sticky" || env === "round-robin" || env === "hybrid") return env;
 	return pluginConfig.accountSelectionStrategy ?? "sticky";
 }
 

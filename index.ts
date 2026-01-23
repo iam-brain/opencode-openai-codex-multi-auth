@@ -77,6 +77,7 @@ import { promptAddAnotherAccount, promptLoginMode } from "./lib/cli.js";
 import { getStoragePath, loadAccounts, saveAccounts } from "./lib/storage.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
 import type { OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
+import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
@@ -399,8 +400,29 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									promptCacheKey: transformation?.body?.prompt_cache_key,
 								});
 
+								let tokenConsumed = false;
+								if (accountSelectionStrategy === "hybrid") {
+									tokenConsumed = getTokenTracker().consume(account.index);
+									if (!tokenConsumed) {
+										// Token bucket says "rest this account"; try another.
+										continue;
+									}
+								}
+
 								while (true) {
-									const res = await fetch(url, { ...requestInit, headers });
+									let res: Response;
+									try {
+										res = await fetch(url, { ...requestInit, headers });
+									} catch (err) {
+										if (tokenConsumed) {
+											getTokenTracker().refund(account.index);
+											tokenConsumed = false;
+										}
+										if (accountSelectionStrategy === "hybrid") {
+											getHealthTracker().recordFailure(account.index);
+										}
+										throw err;
+									}
 
 									logRequest(LOG_STAGES.RESPONSE, {
 										status: res.status,
@@ -412,15 +434,28 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									});
 
 									if (res.ok) {
+										if (accountSelectionStrategy === "hybrid") {
+											getHealthTracker().recordSuccess(account.index);
+										}
 										return await handleSuccessResponse(res, isStreaming);
 									}
 
 									const handled = await handleErrorResponse(res);
 									if (handled.status !== HTTP_STATUS.TOO_MANY_REQUESTS) {
+										if (accountSelectionStrategy === "hybrid") {
+											getHealthTracker().recordFailure(account.index);
+										}
 										return handled;
 									}
 
 									const retryAfterMs = parseRetryAfterMs(handled.headers) ?? 60_000;
+									if (tokenConsumed) {
+										getTokenTracker().refund(account.index);
+										tokenConsumed = false;
+									}
+									if (accountSelectionStrategy === "hybrid") {
+										getHealthTracker().recordRateLimit(account.index);
+									}
 									if (retryAfterMs <= RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS) {
 										await showToast(
 											`Rate limited. Retrying in ${formatWaitTime(retryAfterMs)}...`,
