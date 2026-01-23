@@ -44,7 +44,6 @@ npx -y opencode-openai-codex-multi-auth@latest --uninstall
 npx -y opencode-openai-codex-multi-auth@latest --uninstall --all
 ```
 
-Note: if you previously installed the GitHub-spec version (`github:iam-brain/opencode-openai-codex-multi-auth`), re-running the installer will migrate you to the npm package.
 ---
 ## 📦 Models
 - **gpt-5.2** (none/low/medium/high/xhigh)
