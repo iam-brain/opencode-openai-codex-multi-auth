@@ -78,6 +78,14 @@ function isPluginPackageSpec(entry) {
 	return typeof entry === "string" && entry.startsWith(`${PLUGIN_PACKAGE}@`);
 }
 
+function matchesPluginAlias(entry, alias) {
+	if (entry === alias) return true;
+	if (entry.startsWith(`${alias}@`)) return true;
+	// GitHub specs can include a ref suffix: github:owner/repo#ref
+	if (entry.startsWith(`${alias}#`)) return true;
+	return false;
+}
+
 function resolveDesiredPluginEntry(list) {
 	const entries = Array.isArray(list) ? list.filter(Boolean) : [];
 	const existingPinned = entries.find(isPluginPackageSpec);
@@ -90,8 +98,7 @@ function normalizePluginList(list) {
 	const filtered = entries.filter((entry) => {
 		if (typeof entry !== "string") return true;
 		return !PLUGIN_ALIASES.some(
-			(alias) =>
-				entry === alias || entry.startsWith(`${alias}@`) || entry.includes(alias),
+			(alias) => matchesPluginAlias(entry, alias),
 		);
 	});
 	return [...filtered, desiredPluginEntry];
@@ -102,8 +109,7 @@ function removePluginEntries(list) {
 	return entries.filter((entry) => {
 		if (typeof entry !== "string") return true;
 		return !PLUGIN_ALIASES.some(
-			(alias) =>
-				entry === alias || entry.startsWith(`${alias}@`) || entry.includes(alias),
+			(alias) => matchesPluginAlias(entry, alias),
 		);
 	});
 }

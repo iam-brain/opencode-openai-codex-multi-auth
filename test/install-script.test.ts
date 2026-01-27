@@ -120,6 +120,21 @@ describe('Install script', () => {
 		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
 	});
 
+	it('does not remove plugins that merely contain alias substrings', () => {
+		const homeDir = makeHome();
+		const configPath = writeConfig(
+			homeDir,
+			'opencode.jsonc',
+			`{ "plugin": ["opencode-openai-codex-multi-auth-helper@1.0.0", "opencode-openai-codex-auth@4.2.0"] }`,
+		);
+
+		runInstaller(['--no-cache-clear'], homeDir);
+
+		const { data } = readJsoncFile(configPath);
+		expect(data.plugin).toContain('opencode-openai-codex-multi-auth-helper@1.0.0');
+		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
+	});
+
 	it('uninstall removes plugin models but keeps custom config', () => {
 		const homeDir = makeHome();
 		const configPath = writeConfig(
