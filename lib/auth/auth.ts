@@ -80,6 +80,7 @@ export async function exchangeAuthorizationCode(
 		access_token?: string;
 		refresh_token?: string;
 		expires_in?: number;
+		id_token?: string;
 	};
 	if (
 		!json?.access_token ||
@@ -94,6 +95,7 @@ export async function exchangeAuthorizationCode(
 		access: json.access_token,
 		refresh: json.refresh_token,
 		expires: Date.now() + json.expires_in * 1000,
+		idToken: typeof json.id_token === "string" && json.id_token.trim() ? json.id_token : undefined,
 	};
 }
 
@@ -145,6 +147,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 			access_token?: string;
 			refresh_token?: string;
 			expires_in?: number;
+			id_token?: string;
 		};
 		if (
 			!json?.access_token ||
@@ -163,6 +166,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 			access: json.access_token,
 			refresh: json.refresh_token,
 			expires: Date.now() + json.expires_in * 1000,
+			idToken: typeof json.id_token === "string" && json.id_token.trim() ? json.id_token : undefined,
 		};
 	} catch (error) {
 		const err = error as Error;

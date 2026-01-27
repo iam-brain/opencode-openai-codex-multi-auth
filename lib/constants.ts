@@ -71,7 +71,7 @@ export const PLATFORM_OPENERS = {
 
 /** OAuth authorization labels */
 export const AUTH_LABELS = {
-	OAUTH: "ChatGPT Plus/Pro (Codex Subscription)",
+	OAUTH: "ChatGPT Pro/Plus (Codex Multi Auth)",
 	OAUTH_MANUAL: "ChatGPT Plus/Pro (Manual URL Paste)",
 	API_KEY: "Manually enter API Key",
 	INSTRUCTIONS:

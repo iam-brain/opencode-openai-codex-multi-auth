@@ -38,25 +38,123 @@ function getLegacyStoragePath(): string {
 }
 
 function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
-	if (!parsed || typeof parsed !== "object") return null;
-	const storage = parsed as Partial<AccountStorageV3>;
-	if (storage.version !== 3) return null;
-	if (!Array.isArray(storage.accounts)) return null;
+	const now = Date.now();
+
+	const normalizeAccountRecord = (candidate: unknown): AccountRecord | null => {
+		if (!candidate || typeof candidate !== "object") return null;
+		const record = candidate as Record<string, unknown>;
+
+		const refreshTokenRaw =
+			typeof record.refreshToken === "string"
+				? record.refreshToken
+				: typeof record.refresh_token === "string"
+					? record.refresh_token
+					: typeof record.refresh === "string"
+						? record.refresh
+						: undefined;
+		const refreshToken = typeof refreshTokenRaw === "string" ? refreshTokenRaw.trim() : "";
+		if (!refreshToken) return null;
+
+		const accountIdRaw =
+			typeof record.accountId === "string"
+				? record.accountId
+				: typeof record.account_id === "string"
+					? record.account_id
+					: undefined;
+		const accountId = typeof accountIdRaw === "string" && accountIdRaw.trim() ? accountIdRaw : undefined;
+
+		const emailRaw = typeof record.email === "string" ? record.email : undefined;
+		const email = typeof emailRaw === "string" && emailRaw.trim() ? emailRaw : undefined;
+
+		const planRaw =
+			typeof record.plan === "string"
+				? record.plan
+				: typeof record.chatgpt_plan_type === "string"
+					? record.chatgpt_plan_type
+					: undefined;
+		const plan = typeof planRaw === "string" && planRaw.trim() ? planRaw : undefined;
+
+		const addedAt =
+			typeof record.addedAt === "number" && Number.isFinite(record.addedAt)
+				? record.addedAt
+				: now;
+		const lastUsed =
+			typeof record.lastUsed === "number" && Number.isFinite(record.lastUsed)
+				? record.lastUsed
+				: now;
+
+		const lastSwitchReason =
+			typeof record.lastSwitchReason === "string" ? record.lastSwitchReason : undefined;
+
+		const rateLimitResetTimes =
+			record.rateLimitResetTimes && typeof record.rateLimitResetTimes === "object"
+				? (record.rateLimitResetTimes as RateLimitState)
+				: undefined;
+		const coolingDownUntil =
+			typeof record.coolingDownUntil === "number" && Number.isFinite(record.coolingDownUntil)
+				? record.coolingDownUntil
+				: undefined;
+		const cooldownReasonRaw =
+			typeof record.cooldownReason === "string" ? record.cooldownReason : undefined;
+		const cooldownReason = cooldownReasonRaw === "auth-failure" ? "auth-failure" : undefined;
+
+		return {
+			refreshToken,
+			accountId,
+			email,
+			plan,
+			addedAt: Math.max(0, Math.floor(addedAt)),
+			lastUsed: Math.max(0, Math.floor(lastUsed)),
+			lastSwitchReason:
+				lastSwitchReason === "rate-limit" ||
+				lastSwitchReason === "initial" ||
+				lastSwitchReason === "rotation"
+					? lastSwitchReason
+					: undefined,
+			rateLimitResetTimes,
+			coolingDownUntil,
+			cooldownReason,
+		};
+	};
+
+	let accountsSource: unknown;
+	let activeIndexSource: unknown = 0;
+	let activeIndexByFamilySource: unknown = undefined;
+
+	if (Array.isArray(parsed)) {
+		accountsSource = parsed;
+	} else if (parsed && typeof parsed === "object") {
+		const storage = parsed as Record<string, unknown>;
+		accountsSource = storage.accounts;
+		activeIndexSource = storage.activeIndex;
+		activeIndexByFamilySource = storage.activeIndexByFamily;
+	} else {
+		return null;
+	}
+
+	if (!Array.isArray(accountsSource)) return null;
+	const accounts = accountsSource
+		.map(normalizeAccountRecord)
+		.filter((a): a is AccountRecord => a !== null);
+	if (accounts.length === 0) return null;
 
 	const activeIndex =
-		typeof storage.activeIndex === "number" && Number.isFinite(storage.activeIndex)
-			? Math.max(0, Math.floor(storage.activeIndex))
+		typeof activeIndexSource === "number" && Number.isFinite(activeIndexSource)
+			? Math.max(0, Math.floor(activeIndexSource))
 			: 0;
 	const clampedActiveIndex =
-		storage.accounts.length > 0
-			? Math.min(activeIndex, storage.accounts.length - 1)
-			: 0;
+		accounts.length > 0 ? Math.min(activeIndex, accounts.length - 1) : 0;
+
+	const activeIndexByFamily =
+		activeIndexByFamilySource && typeof activeIndexByFamilySource === "object"
+			? (activeIndexByFamilySource as AccountStorageV3["activeIndexByFamily"])
+			: {};
 
 	return {
 		version: 3,
-		accounts: storage.accounts as AccountStorageV3["accounts"],
+		accounts,
 		activeIndex: clampedActiveIndex,
-		activeIndexByFamily: storage.activeIndexByFamily ?? {},
+		activeIndexByFamily,
 	};
 }
 
@@ -114,6 +212,10 @@ function mergeAccounts(
 		}
 		if (!updated.email && candidate.email) {
 			updated.email = candidate.email;
+			didUpdate = true;
+		}
+		if (!updated.plan && candidate.plan) {
+			updated.plan = candidate.plan;
 			didUpdate = true;
 		}
 

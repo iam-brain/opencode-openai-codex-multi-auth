@@ -60,11 +60,37 @@ export function sanitizeEmail(email: string | undefined): string | undefined {
 	return trimmed.toLowerCase();
 }
 
+const PLAN_TYPE_LABELS: Record<string, string> = {
+	free: "Free",
+	plus: "Plus",
+	pro: "Pro",
+	team: "Team",
+	business: "Business",
+	enterprise: "Enterprise",
+	edu: "Edu",
+};
+
+function normalizePlanType(planType: unknown): string | undefined {
+	if (typeof planType !== "string") return undefined;
+	const trimmed = planType.trim();
+	if (!trimmed) return undefined;
+	const mapped = PLAN_TYPE_LABELS[trimmed.toLowerCase()];
+	return mapped ?? trimmed;
+}
+
+export function extractAccountPlan(token?: string): string | undefined {
+	if (!token) return undefined;
+	const decoded = decodeJWT(token);
+	const nested = decoded?.[JWT_CLAIM_PATH] as Record<string, unknown> | undefined;
+	return normalizePlanType(nested?.chatgpt_plan_type);
+}
+
 export function formatAccountLabel(
-	account: { email?: string; accountId?: string } | undefined,
+	account: { email?: string; plan?: string; accountId?: string } | undefined,
 	index: number,
 ): string {
 	const email = account?.email?.trim();
+	const plan = account?.plan?.trim();
 	const accountId = account?.accountId?.trim();
 	const idSuffix = accountId
 		? accountId.length > 6
@@ -72,9 +98,9 @@ export function formatAccountLabel(
 			: accountId
 		: null;
 
-	if (email && idSuffix) return `Account ${index + 1} (${email}, id:${idSuffix})`;
-	if (email) return `Account ${index + 1} (${email})`;
-	if (idSuffix) return `Account ${index + 1} (${idSuffix})`;
+	if (email && plan) return `${email} (${plan})`;
+	if (email) return email;
+	if (idSuffix) return `id:${idSuffix}`;
 	return `Account ${index + 1}`;
 }
 
@@ -90,6 +116,7 @@ export interface ManagedAccount {
 	index: number;
 	accountId?: string;
 	email?: string;
+	plan?: string;
 	refreshToken: string;
 	access?: string;
 	expires?: number;
@@ -159,6 +186,7 @@ export class AccountManager {
 	constructor(authFallback?: OAuthAuthDetails, stored?: AccountStorageV3 | null) {
 		const fallbackAccountId = extractAccountId(authFallback?.access);
 		const fallbackEmail = sanitizeEmail(extractAccountEmail(authFallback?.access));
+		const fallbackPlan = extractAccountPlan(authFallback?.access);
 
 		if (stored && stored.accounts.length > 0) {
 			const baseNow = nowMs();
@@ -174,6 +202,7 @@ export class AccountManager {
 						index,
 						accountId: matchesFallback ? fallbackAccountId ?? record.accountId : record.accountId,
 						email: matchesFallback ? fallbackEmail ?? record.email : sanitizeEmail(record.email),
+						plan: matchesFallback ? fallbackPlan ?? record.plan : record.plan,
 						refreshToken: matchesFallback && authFallback ? authFallback.refresh : record.refreshToken,
 						access: matchesFallback && authFallback ? authFallback.access : undefined,
 						expires: matchesFallback && authFallback ? authFallback.expires : undefined,
@@ -201,6 +230,7 @@ export class AccountManager {
 					index: this.accounts.length,
 					accountId: fallbackAccountId,
 					email: fallbackEmail,
+					plan: fallbackPlan,
 					refreshToken: authFallback.refresh,
 					access: authFallback.access,
 					expires: authFallback.expires,
@@ -231,6 +261,7 @@ export class AccountManager {
 					index: 0,
 					accountId: fallbackAccountId,
 					email: fallbackEmail,
+					plan: fallbackPlan,
 					refreshToken: authFallback.refresh,
 					access: authFallback.access,
 					expires: authFallback.expires,
@@ -428,6 +459,7 @@ export class AccountManager {
 		account.expires = auth.expires;
 		account.accountId = extractAccountId(auth.access) ?? account.accountId;
 		account.email = sanitizeEmail(extractAccountEmail(auth.access)) ?? account.email;
+		account.plan = extractAccountPlan(auth.access) ?? account.plan;
 	}
 
 	toAuthDetails(account: ManagedAccount): OAuthAuthDetails {
@@ -446,8 +478,10 @@ export class AccountManager {
 			try {
 				const refreshed = await refreshAccessToken(account.refreshToken);
 				if (refreshed.type !== "success") continue;
-				account.accountId = extractAccountId(refreshed.access) ?? account.accountId;
-				account.email = sanitizeEmail(extractAccountEmail(refreshed.access)) ?? account.email;
+				const tokenForClaims = refreshed.idToken ?? refreshed.access;
+				account.accountId = extractAccountId(tokenForClaims) ?? account.accountId;
+				account.email = sanitizeEmail(extractAccountEmail(tokenForClaims)) ?? account.email;
+				account.plan = extractAccountPlan(tokenForClaims) ?? account.plan;
 				account.refreshToken = refreshed.refresh;
 			} catch {
 				// ignore
@@ -497,6 +531,7 @@ export class AccountManager {
 				refreshToken: a.refreshToken,
 				accountId: a.accountId,
 				email: a.email,
+				plan: a.plan,
 				addedAt: a.addedAt,
 				lastUsed: a.lastUsed,
 				lastSwitchReason: a.lastSwitchReason,

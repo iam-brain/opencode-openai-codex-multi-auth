@@ -1,10 +1,12 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { withTerminalModeRestored } from "./terminal.js";
+import { formatAccountLabel } from "./accounts.js";
 
 export interface ExistingAccountLabel {
 	index: number;
 	email?: string;
+	plan?: string;
 	accountId?: string;
 }
 
@@ -14,20 +16,25 @@ export async function promptLoginMode(
 	return await withTerminalModeRestored(async () => {
 		const rl = createInterface({ input: stdin, output: stdout });
 		try {
-			const lines: string[] = [];
-			lines.push("\nExisting accounts:\n");
+			console.log(`\n${existing.length} account(s) saved:`);
 			for (const account of existing) {
-				const label =
-					account.email ??
-					(account.accountId ? `id:${account.accountId}` : "(unknown)");
-				lines.push(`  ${account.index + 1}. ${label}`);
+				const label = formatAccountLabel(
+					{ email: account.email, plan: account.plan, accountId: account.accountId },
+					account.index,
+				);
+				console.log(`  ${account.index + 1}. ${label}`);
 			}
-			lines.push("");
-			lines.push("(a)dd new account(s) or (f)resh start? [a/f]: ");
+			console.log("");
 
-			const answer = (await rl.question(lines.join("\n"))).trim().toLowerCase();
-			if (answer.startsWith("f")) return "fresh";
-			return "add";
+			while (true) {
+				const answer = (await rl
+					.question("(a)dd new account(s) or (f)resh start? [a/f]: "))
+					.trim()
+					.toLowerCase();
+				if (answer === "a" || answer === "add") return "add";
+				if (answer === "f" || answer === "fresh") return "fresh";
+				console.log("Please enter 'a' to add accounts or 'f' to start fresh.");
+			}
 		} finally {
 			rl.close();
 		}

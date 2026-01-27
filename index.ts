@@ -68,6 +68,7 @@ import {
 	AccountManager,
 	extractAccountEmail,
 	extractAccountId,
+	extractAccountPlan,
 	formatAccountLabel,
 	formatWaitTime,
 	isOAuthAuth,
@@ -172,10 +173,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		const stored = await loadAccounts();
 		const accounts = stored?.accounts ? [...stored.accounts] : [];
 		const accountId = extractAccountId(token.access);
-		const email = sanitizeEmail(extractAccountEmail(token.access));
+		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
+		const plan = extractAccountPlan(token.idToken ?? token.access);
 
 		debugAuth(
-			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, existing accounts: ${accounts.length}`,
+			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, plan: ${plan}, existing accounts: ${accounts.length}`,
 		);
 
 		const matchIndex =
@@ -199,6 +201,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				refreshToken: token.refresh,
 				accountId,
 				email,
+				plan,
 				addedAt: now,
 				lastUsed: now,
 			});
@@ -209,6 +212,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				existing.refreshToken = token.refresh;
 				existing.accountId = accountId ?? existing.accountId;
 				existing.email = email ?? existing.email;
+				existing.plan = plan ?? existing.plan;
 				existing.lastUsed = now;
 			}
 		}
@@ -602,11 +606,27 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 							const authenticated: TokenOk[] = [];
 							let startFresh = true;
-							const existingStorage = await loadAccounts();
+							let existingStorage = await loadAccounts();
 							if (existingStorage && existingStorage.accounts.length > 0) {
-								const existingLabels = existingStorage.accounts.map((a, index) => ({
+								const needsHydration = existingStorage.accounts.some(
+									(a) => !a.email,
+								);
+								if (needsHydration) {
+									try {
+										console.log("\nRefreshing saved accounts to fill missing emails...\n");
+										const manager = new AccountManager(undefined, existingStorage);
+										await manager.hydrateMissingEmails();
+										await manager.saveToDisk();
+										existingStorage = await loadAccounts();
+									} catch {
+										// Best-effort; ignore.
+									}
+								}
+
+								const existingLabels = (existingStorage?.accounts ?? []).map((a, index) => ({
 									index,
 									email: a.email,
+									plan: a.plan,
 									accountId: a.accountId,
 								}));
 								const mode = await promptLoginMode(existingLabels);
@@ -637,13 +657,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									break;
 								}
 
-								authenticated.push(result);
-								await persistAccount(result);
-								await showToast(
-									`Account ${authenticated.length} authenticated`,
-									"success",
-									quietMode,
-								);
+							authenticated.push(result);
+							await persistAccount(result);
+							const email = sanitizeEmail(extractAccountEmail(result.idToken ?? result.access));
+							const plan = extractAccountPlan(result.idToken ?? result.access);
+							const label = formatAccountLabel(
+								{ email, plan, accountId: extractAccountId(result.access) },
+								authenticated.length - 1,
+							);
+							await showToast(`Authenticated: ${label}`, "success", quietMode);
 
 								const currentStorage = await loadAccounts();
 								const count = currentStorage?.accounts.length ?? authenticated.length;
@@ -713,16 +735,23 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									pkce.verifier,
 									REDIRECT_URI,
 								);
-								if (tokens?.type === "success") {
-									await persistAccount(tokens);
-									const email = sanitizeEmail(extractAccountEmail(tokens.access));
-									const newTotal = existingCount + 1;
-									const toastMessage =
-										existingCount > 0
-											? `Added account${email ? ` (${email})` : ""} - ${newTotal} total`
-											: `Authenticated${email ? ` (${email})` : ""}`;
-									await showToast(toastMessage, "success", quietMode);
-								}
+									if (tokens?.type === "success") {
+										await persistAccount(tokens);
+										const email = sanitizeEmail(
+											extractAccountEmail(tokens.idToken ?? tokens.access),
+										);
+										const plan = extractAccountPlan(tokens.idToken ?? tokens.access);
+										const label = formatAccountLabel(
+											{ email, plan, accountId: extractAccountId(tokens.access) },
+											0,
+										);
+										const newTotal = existingCount + 1;
+										const toastMessage =
+											existingCount > 0
+												? `Added account: ${label} - ${newTotal} total`
+												: `Authenticated: ${label}`;
+										await showToast(toastMessage, "success", quietMode);
+									}
 								return tokens?.type === "success"
 									? tokens
 									: { type: "failed" as const };
@@ -745,16 +774,23 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								pkce.verifier,
 								REDIRECT_URI,
 							);
-							if (tokens?.type === "success") {
-								await persistAccount(tokens);
-								const email = sanitizeEmail(extractAccountEmail(tokens.access));
-								const newTotal = existingCount + 1;
-								const toastMessage =
-									existingCount > 0
-										? `Added account${email ? ` (${email})` : ""} - ${newTotal} total`
-										: `Authenticated${email ? ` (${email})` : ""}`;
-								await showToast(toastMessage, "success", quietMode);
-							}
+									if (tokens?.type === "success") {
+										await persistAccount(tokens);
+										const email = sanitizeEmail(
+											extractAccountEmail(tokens.idToken ?? tokens.access),
+										);
+										const plan = extractAccountPlan(tokens.idToken ?? tokens.access);
+										const label = formatAccountLabel(
+											{ email, plan, accountId: extractAccountId(tokens.access) },
+											0,
+										);
+										const newTotal = existingCount + 1;
+										const toastMessage =
+											existingCount > 0
+												? `Added account: ${label} - ${newTotal} total`
+												: `Authenticated: ${label}`;
+										await showToast(toastMessage, "success", quietMode);
+									}
 							return tokens?.type === "success"
 								? tokens
 								: { type: "failed" as const };

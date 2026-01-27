@@ -306,7 +306,9 @@ opencode auth login
 ```
 
 1. Select **"OpenAI"**
-2. Choose **"ChatGPT Plus/Pro (Codex Subscription)"**
+2. Choose **"ChatGPT Pro/Plus (Codex Multi Auth)"**
+
+   If you see other OpenAI auth options, they are OpenCode's built-in methods. This plugin's flow is the one labeled **"(Codex Multi Auth)"**.
 3. Browser opens automatically for OAuth flow
 4. Log in with your ChatGPT account
 5. Done! Token saved to `~/.opencode/auth/openai.json`

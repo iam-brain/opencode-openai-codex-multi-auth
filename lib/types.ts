@@ -77,6 +77,7 @@ export interface AccountRecordV3 {
 	refreshToken: string;
 	accountId?: string;
 	email?: string;
+	plan?: string;
 	addedAt: number;
 	lastUsed: number;
 	lastSwitchReason?: "rate-limit" | "initial" | "rotation";
@@ -159,6 +160,7 @@ export interface TokenSuccess {
 	access: string;
 	refresh: string;
 	expires: number;
+	idToken?: string;
 }
 
 /**
