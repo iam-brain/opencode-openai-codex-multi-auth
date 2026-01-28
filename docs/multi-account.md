@@ -100,6 +100,9 @@ Example accounts file:
 `version` is the **accounts file format version**. The plugin currently reads/writes version `3`.
 It's not related to the npm package version; it exists so the file format can evolve safely over time.
 
+Accounts are matched by `accountId` + `plan` (email is display-only). This allows the same ChatGPT
+account to store multiple plans without overwriting each other.
+
 ### Fields
 
 | Field | Description |
@@ -139,6 +142,14 @@ CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=hybrid
 ```
 
 ## Resetting Accounts
+
+If you upgraded from a version that matched accounts by accountId only, multiple
+plans on the same account could have been overwritten. To rebuild clean storage:
+
+```bash
+rm ~/.config/opencode/openai-codex-accounts.json
+opencode auth login
+```
 
 If tokens are revoked or you want to start over:
 

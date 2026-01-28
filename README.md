@@ -44,6 +44,15 @@ npx -y opencode-openai-codex-multi-auth@latest --uninstall
 npx -y opencode-openai-codex-multi-auth@latest --uninstall --all
 ```
 
+## ⚠️ Migration Note (Multi-Plan Accounts)
+If you used multiple plans under the same ChatGPT accountId on older versions, the
+previous matching logic could overwrite entries. To regenerate a clean layout:
+
+```bash
+rm ~/.config/opencode/openai-codex-accounts.json
+opencode auth login
+```
+
 ---
 ## 📦 Models
 - **gpt-5.2** (none/low/medium/high/xhigh)

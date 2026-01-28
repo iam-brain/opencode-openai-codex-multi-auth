@@ -92,6 +92,20 @@ lsof -i :1455
 
 ## Multi-Account Issues
 
+### Multiple plans overwritten
+
+**Symptoms:**
+- Accounts with the same accountId but different plans collapse into one entry
+
+**Cause:**
+- Older versions matched on accountId only
+
+**Fix:**
+```bash
+rm ~/.config/opencode/openai-codex-accounts.json
+opencode auth login
+```
+
 ### "All account(s) are rate-limited"
 
 **Symptoms:**

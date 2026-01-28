@@ -77,6 +77,7 @@ import {
 import { promptAddAnotherAccount, promptLoginMode, promptOAuthCallbackValue } from "./lib/cli.js";
 import { withTerminalModeRestored } from "./lib/terminal.js";
 import { getStoragePath, loadAccounts, saveAccounts } from "./lib/storage.js";
+import { findAccountMatchIndex } from "./lib/account-matching.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
@@ -180,20 +181,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, plan: ${plan}, existing accounts: ${accounts.length}`,
 		);
 
-		const matchIndex =
-			(accountId ? accounts.findIndex((a) => a.accountId === accountId) : -1) ?? -1;
-		const matchIndexByEmail = email ? accounts.findIndex((a) => a.email === email) : -1;
-		const matchIndexByToken = accounts.findIndex((a) => a.refreshToken === token.refresh);
-		const existingIndex =
-			matchIndex >= 0
-				? matchIndex
-				: matchIndexByEmail >= 0
-					? matchIndexByEmail
-					: matchIndexByToken;
+		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan });
 
-		debugAuth(
-			`[PersistAccount] Match indices - byId: ${matchIndex}, byEmail: ${matchIndexByEmail}, byToken: ${matchIndexByToken}, final: ${existingIndex}`,
-		);
+		debugAuth(`[PersistAccount] Match index: ${existingIndex}`);
 
 		if (existingIndex === -1) {
 			debugAuth("[PersistAccount] Adding new account");

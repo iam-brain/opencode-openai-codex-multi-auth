@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { AccountStorageV3 } from "./types.js";
+import { findAccountMatchIndex } from "./account-matching.js";
 
 type AccountRecord = AccountStorageV3["accounts"][number];
 
@@ -168,21 +169,6 @@ function areRateLimitStatesEqual(left: RateLimitState, right: RateLimitState): b
 	return true;
 }
 
-function findAccountMatchIndex(accounts: AccountRecord[], candidate: AccountRecord): number {
-	if (candidate.accountId) {
-		const matchIndex = accounts.findIndex((account) => account.accountId === candidate.accountId);
-		if (matchIndex >= 0) return matchIndex;
-	}
-	if (candidate.email) {
-		const matchIndex = accounts.findIndex((account) => account.email === candidate.email);
-		if (matchIndex >= 0) return matchIndex;
-	}
-	if (candidate.refreshToken) {
-		return accounts.findIndex((account) => account.refreshToken === candidate.refreshToken);
-	}
-	return -1;
-}
-
 function mergeAccounts(
 	existing: AccountRecord[],
 	incoming: AccountRecord[],
@@ -191,7 +177,10 @@ function mergeAccounts(
 	let changed = false;
 
 	for (const candidate of incoming) {
-		const matchIndex = findAccountMatchIndex(merged, candidate);
+		const matchIndex = findAccountMatchIndex(merged, {
+			accountId: candidate.accountId,
+			plan: candidate.plan,
+		});
 		if (matchIndex < 0) {
 			merged.push({ ...candidate });
 			changed = true;

@@ -1,6 +1,6 @@
 {
   "name": "opencode-openai-codex-multi-auth",
-  "version": "4.5.1",
+  "version": "4.5.2",
   "description": "OpenAI ChatGPT (Codex backend) OAuth auth plugin for opencode - use your ChatGPT Plus/Pro subscription instead of API credits",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -32,7 +32,7 @@
     "url": "https://github.com/iam-brain/opencode-openai-codex-multi-auth/issues"
   },
   "scripts": {
-    "build": "tsc && cp lib/oauth-success.html dist/lib/",
+    "build": "tsc && node scripts/build-oauth-success.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
