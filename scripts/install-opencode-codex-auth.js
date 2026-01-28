@@ -62,13 +62,16 @@ const cacheNodeModulesUpstream = join(cacheDir, "node_modules", UPSTREAM_PACKAGE
 const cacheNodeModulesLegacyGitHub = join(cacheDir, "node_modules", LEGACY_GITHUB_SPEC);
 const cacheBunLock = join(cacheDir, "bun.lock");
 const cachePackageJson = join(cacheDir, "package.json");
-const opencodeAuthPath = join(homedir(), ".opencode", "auth", "openai.json");
+const opencodeAuthPath = join(configDir, "auth", "openai.json");
+const legacyOpencodeAuthPath = join(homedir(), ".opencode", "auth", "openai.json");
 const pluginConfigPath = join(configDir, "openai-codex-auth-config.json");
 const legacyPluginConfigPath = join(homedir(), ".opencode", "openai-codex-auth-config.json");
 const legacyAccountsPath = join(homedir(), ".opencode", "openai-codex-accounts.json");
 const accountsPath = join(configDir, "openai-codex-accounts.json");
-const pluginLogDir = join(homedir(), ".opencode", "logs", "codex-plugin");
-const opencodeCacheDir = join(homedir(), ".opencode", "cache");
+const pluginLogDir = join(configDir, "logs", "codex-plugin");
+const legacyPluginLogDir = join(homedir(), ".opencode", "logs", "codex-plugin");
+const opencodeCacheDir = join(configDir, "cache");
+const legacyOpencodeCacheDir = join(homedir(), ".opencode", "cache");
 
 function log(message) {
 	console.log(message);
@@ -289,18 +292,22 @@ async function clearCache() {
 async function clearPluginArtifacts() {
 	if (dryRun) {
 		log(`[dry-run] Would remove ${opencodeAuthPath}`);
+		log(`[dry-run] Would remove ${legacyOpencodeAuthPath}`);
 		log(`[dry-run] Would remove ${pluginConfigPath}`);
 		log(`[dry-run] Would remove ${legacyPluginConfigPath}`);
 		log(`[dry-run] Would remove ${accountsPath}`);
 		log(`[dry-run] Would remove ${legacyAccountsPath}`);
 		log(`[dry-run] Would remove ${pluginLogDir}`);
+		log(`[dry-run] Would remove ${legacyPluginLogDir}`);
 	} else {
 		await rm(opencodeAuthPath, { force: true });
+		await rm(legacyOpencodeAuthPath, { force: true });
 		await rm(pluginConfigPath, { force: true });
 		await rm(legacyPluginConfigPath, { force: true });
 		await rm(accountsPath, { force: true });
 		await rm(legacyAccountsPath, { force: true });
 		await rm(pluginLogDir, { recursive: true, force: true });
+		await rm(legacyPluginLogDir, { recursive: true, force: true });
 	}
 
 	const cacheFiles = [
@@ -319,11 +326,13 @@ async function clearPluginArtifacts() {
 	];
 
 	for (const file of cacheFiles) {
-		const target = join(opencodeCacheDir, file);
-		if (dryRun) {
-			log(`[dry-run] Would remove ${target}`);
-		} else {
-			await rm(target, { force: true });
+		for (const cacheRoot of [opencodeCacheDir, legacyOpencodeCacheDir]) {
+			const target = join(cacheRoot, file);
+			if (dryRun) {
+				log(`[dry-run] Would remove ${target}`);
+			} else {
+				await rm(target, { force: true });
+			}
 		}
 	}
 }

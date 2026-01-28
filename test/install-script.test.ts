@@ -181,22 +181,31 @@ describe('Install script', () => {
 		mkdirSync(join(opencodeDir, 'logs', 'codex-plugin'), { recursive: true });
 		mkdirSync(join(opencodeDir, 'cache'), { recursive: true });
 		mkdirSync(configDir, { recursive: true });
+		mkdirSync(join(configDir, 'auth'), { recursive: true });
+		mkdirSync(join(configDir, 'logs', 'codex-plugin'), { recursive: true });
+		mkdirSync(join(configDir, 'cache'), { recursive: true });
 		writeFileSync(join(opencodeDir, 'auth', 'openai.json'), '{}');
+		writeFileSync(join(configDir, 'auth', 'openai.json'), '{}');
 		writeFileSync(join(opencodeDir, 'openai-codex-auth-config.json'), '{}');
 		writeFileSync(join(opencodeDir, 'openai-codex-accounts.json'), '{}');
 		writeFileSync(join(configDir, 'openai-codex-auth-config.json'), '{}');
 		writeFileSync(join(configDir, 'openai-codex-accounts.json'), '{}');
 		writeFileSync(join(opencodeDir, 'logs', 'codex-plugin', 'log.txt'), 'log');
 		writeFileSync(join(opencodeDir, 'cache', 'codex-instructions.md'), 'cache');
+		writeFileSync(join(configDir, 'logs', 'codex-plugin', 'log.txt'), 'log');
+		writeFileSync(join(configDir, 'cache', 'codex-instructions.md'), 'cache');
 
 		runInstaller(['--uninstall', '--all', '--no-cache-clear'], homeDir);
 
 		expect(existsSync(join(opencodeDir, 'auth', 'openai.json'))).toBe(false);
+		expect(existsSync(join(configDir, 'auth', 'openai.json'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'openai-codex-auth-config.json'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'openai-codex-accounts.json'))).toBe(false);
 		expect(existsSync(join(configDir, 'openai-codex-auth-config.json'))).toBe(false);
 		expect(existsSync(join(configDir, 'openai-codex-accounts.json'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'logs', 'codex-plugin'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'cache', 'codex-instructions.md'))).toBe(false);
+		expect(existsSync(join(configDir, 'logs', 'codex-plugin'))).toBe(false);
+		expect(existsSync(join(configDir, 'cache', 'codex-instructions.md'))).toBe(false);
 	});
 });

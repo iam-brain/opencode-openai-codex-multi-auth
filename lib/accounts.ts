@@ -12,6 +12,7 @@ import type {
 import { loadAccounts, saveAccounts } from "./storage.js";
 import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
 import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
+import { findAccountMatchIndex } from "./account-matching.js";
 
 export type BaseQuotaKey = ModelFamily;
 export type QuotaKey = BaseQuotaKey | `${BaseQuotaKey}:${string}`;
@@ -155,6 +156,101 @@ function isRateLimitedForFamily(
 
 	const baseKey = getQuotaKey(family);
 	return isRateLimitedForQuotaKey(account, baseKey);
+}
+
+function mergeAccountRecords(
+	existing: AccountStorageV3["accounts"],
+	incoming: AccountStorageV3["accounts"],
+): AccountStorageV3["accounts"] {
+	const merged = existing.map((account) => ({
+		...account,
+		rateLimitResetTimes: account.rateLimitResetTimes
+			? { ...account.rateLimitResetTimes }
+			: undefined,
+	}));
+
+	for (const candidate of incoming) {
+		const matchIndex = findAccountMatchIndex(merged, {
+			accountId: candidate.accountId,
+			plan: candidate.plan,
+		});
+		if (matchIndex < 0) {
+			merged.push({
+				...candidate,
+				rateLimitResetTimes: candidate.rateLimitResetTimes
+					? { ...candidate.rateLimitResetTimes }
+					: undefined,
+			});
+			continue;
+		}
+
+		const current = merged[matchIndex];
+		if (!current) continue;
+		const updated = { ...current };
+
+		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
+			updated.refreshToken = candidate.refreshToken;
+		}
+		if (!updated.accountId && candidate.accountId) {
+			updated.accountId = candidate.accountId;
+		}
+		if (!updated.email && candidate.email) {
+			updated.email = candidate.email;
+		}
+		if (!updated.plan && candidate.plan) {
+			updated.plan = candidate.plan;
+		}
+
+		if (
+			typeof candidate.addedAt === "number" &&
+			Number.isFinite(candidate.addedAt) &&
+			(typeof updated.addedAt !== "number" || candidate.addedAt < updated.addedAt)
+		) {
+			updated.addedAt = candidate.addedAt;
+		}
+		if (
+			typeof candidate.lastUsed === "number" &&
+			Number.isFinite(candidate.lastUsed) &&
+			(typeof updated.lastUsed !== "number" || candidate.lastUsed > updated.lastUsed)
+		) {
+			updated.lastUsed = candidate.lastUsed;
+		}
+		if (candidate.lastSwitchReason) {
+			updated.lastSwitchReason = candidate.lastSwitchReason;
+		}
+
+		if (candidate.rateLimitResetTimes) {
+			const mergedRateLimits = { ...updated.rateLimitResetTimes };
+			for (const [key, value] of Object.entries(candidate.rateLimitResetTimes)) {
+				const currentValue = mergedRateLimits[key];
+				if (typeof value === "number") {
+					mergedRateLimits[key] =
+						typeof currentValue === "number" ? Math.max(currentValue, value) : value;
+				}
+			}
+			updated.rateLimitResetTimes = mergedRateLimits;
+		}
+		if (
+			typeof candidate.coolingDownUntil === "number" &&
+			Number.isFinite(candidate.coolingDownUntil)
+		) {
+			const currentCooldown =
+				typeof updated.coolingDownUntil === "number" &&
+				Number.isFinite(updated.coolingDownUntil)
+					? updated.coolingDownUntil
+					: undefined;
+			if (currentCooldown === undefined || candidate.coolingDownUntil > currentCooldown) {
+				updated.coolingDownUntil = candidate.coolingDownUntil;
+			}
+		}
+		if (candidate.cooldownReason && !updated.cooldownReason) {
+			updated.cooldownReason = candidate.cooldownReason;
+		}
+
+		merged[matchIndex] = updated;
+	}
+
+	return merged;
 }
 
 export class AccountManager {
@@ -529,22 +625,34 @@ export class AccountManager {
 
 		const activeIndex = clampNonNegativeInt(activeIndexByFamily.codex, 0);
 
+		const snapshot = this.accounts.map((a) => ({
+			refreshToken: a.refreshToken,
+			accountId: a.accountId,
+			email: a.email,
+			plan: a.plan,
+			addedAt: a.addedAt,
+			lastUsed: a.lastUsed,
+			lastSwitchReason: a.lastSwitchReason,
+			rateLimitResetTimes:
+				Object.keys(a.rateLimitResetTimes).length > 0 ? a.rateLimitResetTimes : undefined,
+			coolingDownUntil: a.coolingDownUntil,
+			cooldownReason: a.cooldownReason,
+		}));
+
+		let accountsToSave: AccountStorageV3["accounts"] = snapshot;
+		try {
+			const latest = await loadAccounts();
+			if (latest?.accounts && latest.accounts.length > 0) {
+				accountsToSave = mergeAccountRecords(latest.accounts, snapshot);
+			}
+		} catch {
+			accountsToSave = snapshot;
+		}
+
 		const storage: AccountStorageV3 = {
 			version: 3,
-			accounts: this.accounts.map((a) => ({
-				refreshToken: a.refreshToken,
-				accountId: a.accountId,
-				email: a.email,
-				plan: a.plan,
-				addedAt: a.addedAt,
-				lastUsed: a.lastUsed,
-				lastSwitchReason: a.lastSwitchReason,
-				rateLimitResetTimes:
-					Object.keys(a.rateLimitResetTimes).length > 0 ? a.rateLimitResetTimes : undefined,
-				coolingDownUntil: a.coolingDownUntil,
-				cooldownReason: a.cooldownReason,
-			})),
-			activeIndex,
+			accounts: accountsToSave,
+			activeIndex: Math.min(activeIndex, Math.max(0, accountsToSave.length - 1)),
 			activeIndexByFamily,
 		};
 

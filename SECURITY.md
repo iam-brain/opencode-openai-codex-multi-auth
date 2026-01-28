@@ -23,7 +23,7 @@ This plugin handles sensitive OAuth tokens. To protect your security:
 - Use industry-standard authentication practices
 
 ⚠️ **What you should do:**
-- Never share your `~/.opencode/` directory (contains OAuth tokens, logs, and cache)
+- Never share your `~/.config/opencode/` directory (contains OAuth tokens, logs, and cache)
 - Never share your `~/.config/opencode/` directory (may contain account pools and plugin configs)
 - Do not commit OAuth tokens to version control
 - Regularly review authorized apps at [ChatGPT Settings](https://chatgpt.com/settings/apps)

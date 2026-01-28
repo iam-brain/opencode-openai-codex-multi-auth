@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { AccountManager } from "../lib/accounts.js";
+import { loadAccounts, saveAccounts } from "../lib/storage.js";
 import type { AccountStorageV3, OAuthAuthDetails } from "../lib/types.js";
 import type { ModelFamily } from "../lib/prompts/codex.js";
 
@@ -33,8 +38,14 @@ function createStorage(count: number): AccountStorageV3 {
 describe("AccountManager", () => {
 	const family: ModelFamily = "codex";
 	const originalPid = process.pid;
+	const originalXdg = process.env.XDG_CONFIG_HOME;
 
 	afterEach(() => {
+		if (originalXdg === undefined) {
+			delete process.env.XDG_CONFIG_HOME;
+		} else {
+			process.env.XDG_CONFIG_HOME = originalXdg;
+		}
 		Object.defineProperty(process, "pid", {
 			value: originalPid,
 			writable: false,
@@ -50,6 +61,53 @@ describe("AccountManager", () => {
 			enumerable: true,
 			configurable: true,
 		});
+	});
+
+	it("merge saveToDisk with latest storage", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const initialStorage: AccountStorageV3 = {
+				version: 3,
+				accounts: [
+					{
+						refreshToken: "refresh-0",
+						accountId: "acct-0",
+						plan: "Plus",
+						addedAt: 1,
+						lastUsed: 1,
+					},
+				],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			await saveAccounts(initialStorage);
+
+			const manager = await AccountManager.loadFromDisk(createAuth("refresh-0"));
+
+			const expandedStorage: AccountStorageV3 = {
+				...initialStorage,
+				accounts: [
+					...initialStorage.accounts,
+					{
+						refreshToken: "refresh-1",
+						accountId: "acct-1",
+						plan: "Team",
+						addedAt: 2,
+						lastUsed: 2,
+					},
+				],
+			};
+			await saveAccounts(expandedStorage);
+
+			await manager.saveToDisk();
+			const finalStorage = await loadAccounts();
+
+			expect(finalStorage?.accounts.length).toBe(2);
+			expect(finalStorage?.accounts.some((a) => a.accountId === "acct-1")).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("applies PID offset once in sticky mode", () => {

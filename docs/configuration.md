@@ -503,7 +503,7 @@ ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex-l
 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex-high
 
 # Compare reasoning.effort in logs
-cat ~/.opencode/logs/codex-plugin/request-*-after-transform.json | jq '.reasoning.effort'
+cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '.reasoning.effort'
 ```
 
 ---

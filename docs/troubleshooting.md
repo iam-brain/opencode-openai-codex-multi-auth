@@ -26,14 +26,14 @@ opencode auth login
 
 **2. Check auth file exists:**
 ```bash
-cat ~/.opencode/auth/openai.json
+cat ~/.config/opencode/auth/openai.json
 # Should show OAuth credentials
 ```
 
 **3. Check token expiration:**
 ```bash
 # Token has "expires" timestamp
-cat ~/.opencode/auth/openai.json | jq '.expires'
+cat ~/.config/opencode/auth/openai.json | jq '.expires'
 
 # Compare to current time
 date +%s000  # Current timestamp in milliseconds
@@ -91,6 +91,17 @@ lsof -i :1455
 ---
 
 ## Multi-Account Issues
+
+### Legacy .opencode cache/logs
+
+**Symptoms:**
+- Plugin logs or cache files still show under `~/.opencode`
+
+**Cause:**
+- Older versions stored cache/logs in `~/.opencode`
+
+**Fix:**
+- The plugin now migrates cache/logs to `~/.config/opencode` on first use. You can also remove the legacy files manually once confirmed.
 
 ### Multiple plans overwritten
 
@@ -253,7 +264,7 @@ ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode
 **Verify:**
 ```bash
 # Turn 2 should have full history
-cat ~/.opencode/logs/codex-plugin/request-*-after-transform.json | jq '.body.input | length'
+cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '.body.input | length'
 # Should show increasing count (3, 5, 7, 9, ...)
 ```
 
@@ -273,7 +284,7 @@ cat ~/.opencode/logs/codex-plugin/request-*-after-transform.json | jq '.body.inp
 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test"
 
 # Read error
-cat ~/.opencode/logs/codex-plugin/request-*-error-response.json
+cat ~/.config/opencode/logs/codex-plugin/request-*-error-response.json
 ```
 
 **Common causes:**
@@ -293,7 +304,7 @@ Rate limit reached for gpt-5-codex
 **1. Wait for reset:**
 Check headers in response logs:
 ```bash
-cat ~/.opencode/logs/codex-plugin/request-*-response.json | jq '.headers["x-codex-primary-reset-after-seconds"]'
+cat ~/.config/opencode/logs/codex-plugin/request-*-response.json | jq '.headers["x-codex-primary-reset-after-seconds"]'
 ```
 
 **2. Switch to different model:**
@@ -342,10 +353,10 @@ Using cached instructions
 **Verify fix:**
 ```bash
 # Should only check GitHub once per 15 minutes
-ls -lt ~/.opencode/cache/codex-instructions-meta.json
+ls -lt ~/.config/opencode/cache/codex-instructions-meta.json
 
 # Check lastChecked timestamp
-cat ~/.opencode/cache/codex-instructions-meta.json | jq '.lastChecked'
+cat ~/.config/opencode/cache/codex-instructions-meta.json | jq '.lastChecked'
 ```
 
 **Manual workaround** (if on old version):
@@ -368,9 +379,9 @@ DEBUG_CODEX_PLUGIN=1 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test"
 - Files: Complete request/response logs
 
 **Log locations:**
-- `~/.opencode/logs/codex-plugin/request-*-before-transform.json`
-- `~/.opencode/logs/codex-plugin/request-*-after-transform.json`
-- `~/.opencode/logs/codex-plugin/request-*-response.json`
+- `~/.config/opencode/logs/codex-plugin/request-*-before-transform.json`
+- `~/.config/opencode/logs/codex-plugin/request-*-after-transform.json`
+- `~/.config/opencode/logs/codex-plugin/request-*-response.json`
 
 ### Inspect Actual API Requests
 
@@ -379,7 +390,7 @@ DEBUG_CODEX_PLUGIN=1 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test"
 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex-low
 
 # Check what was sent to API
-cat ~/.opencode/logs/codex-plugin/request-*-after-transform.json | jq '{
+cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '{
   model: .body.model,
   reasoning: .body.reasoning,
   text: .body.text,
@@ -420,7 +431,7 @@ See [development/TESTING.md](development/TESTING.md) for expected values matrix.
 **Monitor usage:**
 ```bash
 # Tokens shown in logs
-cat ~/.opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"total_tokens":[0-9]*'
+cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"total_tokens":[0-9]*'
 ```
 
 **Reduce tokens:**
@@ -442,7 +453,7 @@ cat ~/.opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"total_t
 2. **Collect info:**
    - OpenCode version: `opencode --version`
    - Plugin version: Check `package.json` or npm
-   - Error logs from `~/.opencode/logs/codex-plugin/`
+- Error logs from `~/.config/opencode/logs/codex-plugin/`
    - Config file (redact sensitive info)
 
 3. **Check existing issues:**

@@ -24,13 +24,13 @@ This plugin prioritizes user privacy and data security. We believe in transparen
 All data is stored **locally on your machine**:
 
 ### OAuth Tokens
-- **Location:** `~/.opencode/auth/openai.json`
+- **Location:** `~/.config/opencode/auth/openai.json`
 - **Contents:** Access tokens, refresh tokens, expiration timestamps
 - **Managed by:** OpenCode's credential management system
 - **Security:** File permissions restrict access to your user account
 
 ### Cache Files
-- **Location:** `~/.opencode/cache/`
+- **Location:** `~/.config/opencode/cache/`
 - **Contents:**
   - `codex-instructions.txt` - Codex system instructions (fetched from GitHub)
   - `codex-instructions-meta.json` - ETag and timestamp metadata
@@ -38,7 +38,7 @@ All data is stored **locally on your machine**:
 - **TTL:** 15 minutes (automatically refreshes when stale)
 
 ### Debug Logs
-- **Location:** `~/.opencode/logs/codex-plugin/`
+- **Location:** `~/.config/opencode/logs/codex-plugin/`
 - **Contents:** Request/response logs (only when `ENABLE_PLUGIN_REQUEST_LOGGING=1` is set)
 - **Includes:**
   - API request bodies
@@ -103,17 +103,17 @@ You have complete control over your data:
 ```bash
 opencode auth logout
 # Or manually:
-rm ~/.opencode/auth/openai.json
+rm ~/.config/opencode/auth/openai.json
 ```
 
 ### Delete Cache Files
 ```bash
-rm -rf ~/.opencode/cache/
+rm -rf ~/.config/opencode/cache/
 ```
 
 ### Delete Logs
 ```bash
-rm -rf ~/.opencode/logs/codex-plugin/
+rm -rf ~/.config/opencode/logs/codex-plugin/
 ```
 
 ### Revoke OAuth Access

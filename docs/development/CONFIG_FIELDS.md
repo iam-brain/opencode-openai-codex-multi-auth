@@ -30,7 +30,7 @@ Understanding the difference between config key, `id`, and `name` fields in Open
 **Used For:**
 - ✅ CLI `--model` flag: `--model=openai/gpt-5-codex-low`
 - ✅ OpenCode internal lookups: `provider.info.models["gpt-5-codex-low"]`
-- ✅ TUI persistence: Saved to `~/.opencode/tui` as `model_id = "gpt-5-codex-low"`
+- ✅ TUI persistence: Saved to `~/.config/opencode/tui` as `model_id = "gpt-5-codex-low"`
 - ✅ Custom command frontmatter: `model: openai/gpt-5-codex-low`
 - ✅ Agent configuration: `"model": "openai/gpt-5-codex-low"`
 - ✅ **Plugin config lookup**: `userConfig.models["gpt-5-codex-low"]`
@@ -167,7 +167,7 @@ const parsedModel: ModelsDev.Model = {
 │     Returns: "gpt-5-codex" ← SENT TO CODEX API                 │
 │                                                                 │
 │  8. TUI Persistence                                             │
-│     ~/.opencode/tui:                                            │
+│     ~/.config/opencode/tui:                                     │
 │       provider_id = "openai"                                    │
 │       model_id = "gpt-5-codex-low" ← CONFIG KEY persisted      │
 │                                                                 │
@@ -514,7 +514,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 ```
 CONFIG KEY is the real identifier! 👑
   ├─ Used for selection (CLI, TUI, commands)
-  ├─ Used for persistence (saved to ~/.opencode/tui)
+  ├─ Used for persistence (saved to ~/.config/opencode/tui)
   ├─ Passed to custom loader (getModel receives this)
   ├─ Sent to AI SDK (body.model = this)
   └─ Received by plugin (our plugin sees this)

@@ -27,7 +27,7 @@ What actually happens.
 - Node.js version:
 
 **Logs**
-If applicable, attach logs from `~/.opencode/logs/codex-plugin/` (enable with `ENABLE_PLUGIN_REQUEST_LOGGING=1`)
+If applicable, attach logs from `~/.config/opencode/logs/codex-plugin/` (enable with `ENABLE_PLUGIN_REQUEST_LOGGING=1`)
 
 **Compliance Checklist**
 Please confirm:

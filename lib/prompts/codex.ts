@@ -1,14 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CacheMetadata, GitHubRelease } from "../types.js";
+import { getOpencodeCacheDir, migrateLegacyCacheFiles } from "../paths.js";
 
 const GITHUB_API_RELEASES =
 	"https://api.github.com/repos/openai/codex/releases/latest";
 const GITHUB_HTML_RELEASES =
 	"https://github.com/openai/codex/releases/latest";
-const CACHE_DIR = join(homedir(), ".opencode", "cache");
+const CACHE_DIR = getOpencodeCacheDir();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,6 +54,18 @@ const CACHE_FILES: Record<ModelFamily, string> = {
 	"gpt-5.2": "gpt-5.2-instructions.md",
 	"gpt-5.1": "gpt-5.1-instructions.md",
 };
+
+const CACHE_META_FILES = Object.values(CACHE_FILES).map((file) =>
+	file.replace(".md", "-meta.json"),
+);
+const LEGACY_CACHE_FILES = [...Object.values(CACHE_FILES), ...CACHE_META_FILES];
+let cacheMigrated = false;
+
+function ensureCacheMigrated(): void {
+	if (cacheMigrated) return;
+	migrateLegacyCacheFiles(LEGACY_CACHE_FILES);
+	cacheMigrated = true;
+}
 
 /**
  * Determine the model family based on the normalized model name
@@ -137,6 +149,7 @@ async function getLatestReleaseTag(): Promise<string> {
 export async function getCodexInstructions(
 	normalizedModel = "gpt-5.1-codex",
 ): Promise<string> {
+	ensureCacheMigrated();
 	const modelFamily = getModelFamily(normalizedModel);
 	const promptFile = PROMPT_FILES[modelFamily];
 	const cacheFile = join(CACHE_DIR, CACHE_FILES[modelFamily]);

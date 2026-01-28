@@ -122,7 +122,7 @@ Plugins can inject options via the `loader()` function.
 
 ### TUI Persistence
 
-The TUI stores recently used models in `~/.opencode/tui`:
+The TUI stores recently used models in `~/.config/opencode/tui`:
 
 ```toml
 [[recently_used_models]]
@@ -395,7 +395,7 @@ While you can set `CODEX_MODE=0` to disable the bridge prompt, it's better to do
 
 ### Model Not Persisting
 1. TUI remembers the `id` field, not the display name
-2. Check `~/.opencode/tui` for recently used models
+2. Check `~/.config/opencode/tui` for recently used models
 3. Verify your config has the correct `id` field
 
 ### Options Not Taking Effect

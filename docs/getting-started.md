@@ -311,7 +311,7 @@ opencode auth login
    If you see other OpenAI auth options, they are OpenCode's built-in methods. This plugin's flow is the one labeled **"(Codex Multi Auth)"**.
 3. Browser opens automatically for OAuth flow
 4. Log in with your ChatGPT account
-5. Done! Token saved to `~/.opencode/auth/openai.json`
+5. Done! Token saved to `~/.config/opencode/auth/openai.json`
 
 **Multi-account:** Run `opencode auth login` again to add more ChatGPT accounts (you'll be prompted to add vs fresh start). Accounts are stored in `~/.config/opencode/openai-codex-accounts.json`. See [Multi-Account](multi-account.md).
 
@@ -410,7 +410,7 @@ opencode --version
 ### Check Authentication
 
 ```bash
-cat ~/.opencode/auth/openai.json
+cat ~/.config/opencode/auth/openai.json
 # Should show OAuth credentials (if authenticated)
 ```
 
@@ -421,7 +421,7 @@ cat ~/.opencode/auth/openai.json
 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex
 
 # Check logs
-ls ~/.opencode/logs/codex-plugin/
+ls ~/.config/opencode/logs/codex-plugin/
 # Should show request logs
 ```
 

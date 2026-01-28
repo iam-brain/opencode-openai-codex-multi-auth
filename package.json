@@ -39,9 +39,9 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "release:patch": "npm test && npm run build && npm version patch -m \"release: v%s\"",
-    "release:minor": "npm test && npm run build && npm version minor -m \"release: v%s\"",
-    "release:major": "npm test && npm run build && npm version major -m \"release: v%s\""
+    "release:patch": "npm test && npm version patch -m \"release: v%s\" && npm run build",
+    "release:minor": "npm test && npm version minor -m \"release: v%s\" && npm run build",
+    "release:major": "npm test && npm version major -m \"release: v%s\" && npm run build"
   },
   "bin": {
     "opencode-openai-codex-multi-auth": "scripts/install-opencode-codex-auth.js",

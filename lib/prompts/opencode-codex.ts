@@ -6,14 +6,23 @@
  */
 
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { getOpencodeCacheDir, migrateLegacyCacheFiles } from "../paths.js";
 
 const OPENCODE_CODEX_URL =
 	"https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex.txt";
-const CACHE_DIR = join(homedir(), ".opencode", "cache");
+const CACHE_DIR = getOpencodeCacheDir();
 const CACHE_FILE = join(CACHE_DIR, "opencode-codex.txt");
 const CACHE_META_FILE = join(CACHE_DIR, "opencode-codex-meta.json");
+
+const LEGACY_CACHE_FILES = ["opencode-codex.txt", "opencode-codex-meta.json"];
+let cacheMigrated = false;
+
+function ensureCacheMigrated(): void {
+	if (cacheMigrated) return;
+	migrateLegacyCacheFiles(LEGACY_CACHE_FILES);
+	cacheMigrated = true;
+}
 
 interface CacheMeta {
 	etag: string;
@@ -29,6 +38,7 @@ interface CacheMeta {
  * @returns The codex.txt content
  */
 export async function getOpenCodeCodexPrompt(): Promise<string> {
+	ensureCacheMigrated();
 	await mkdir(CACHE_DIR, { recursive: true });
 
 	// Try to load cached content and metadata

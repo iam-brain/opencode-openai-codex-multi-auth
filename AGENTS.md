@@ -70,8 +70,8 @@ npm run test:coverage
 When asked to "bump version and push & release", follow this exact sequence:
 
 0.  **Test**: Run `npm test` to ensure all tests pass.
-1.  **Build**: Run `npm run build` to ensure static files in `dist/` are up to date.
-2.  **Version Bump**: Use `npm version <patch|minor|major> -m "release: v%s"` (replace `<patch|minor|major>` based on the scope of changes).
+1.  **Version Bump**: Use `npm version <patch|minor|major> -m "release: v%s"` (replace `<patch|minor|major>` based on the scope of changes).
+2.  **Build**: Run `npm run build` to ensure static files in `dist/` are up to date for the new version.
 3.  **Push**: Run `git push origin main --tags` to push the commit and tags to GitHub.
 4.  **GitHub Release**: Auto-created via tag workflow (`.github/workflows/release.yml`).
 5.  **Publish**: Run `npm publish` manually.
@@ -79,5 +79,5 @@ When asked to "bump version and push & release", follow this exact sequence:
 ## File Locations
 
 - **Plugin Config**: `~/.config/opencode/openai-codex-auth-config.json`
-- **Cache**: `~/.opencode/cache/` (ETag-cached instructions and system prompts).
-- **Logs**: `~/.opencode/logs/codex-plugin/` (if `ENABLE_PLUGIN_REQUEST_LOGGING=1`).
+- **Cache**: `~/.config/opencode/cache/` (ETag-cached instructions and system prompts).
+- **Logs**: `~/.config/opencode/logs/codex-plugin/` (if `ENABLE_PLUGIN_REQUEST_LOGGING=1`).
