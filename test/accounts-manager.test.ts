@@ -83,4 +83,22 @@ describe("AccountManager", () => {
 		const next = manager.getCurrentOrNextForFamily(family, null, "sticky", false);
 		expect(next?.index).toBe(1);
 	});
+
+	it("does not duplicate rate-limit keys when model matches family", () => {
+		const manager = new AccountManager(createAuth("refresh-0"), createStorage(1));
+		const codexFamily: ModelFamily = "gpt-5.2-codex";
+
+		const account = manager.getCurrentOrNextForFamily(
+			codexFamily,
+			codexFamily,
+			"sticky",
+			false,
+		);
+		if (!account) throw new Error("Expected account");
+
+		manager.markRateLimited(account, 60_000, codexFamily, codexFamily);
+		const keys = Object.keys(account.rateLimitResetTimes);
+		expect(keys).toHaveLength(1);
+		expect(keys[0]).toBe(codexFamily);
+	});
 });

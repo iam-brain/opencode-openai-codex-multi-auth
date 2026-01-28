@@ -400,7 +400,9 @@ export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
 		await fs.mkdir(dirname(filePath), { recursive: true });
 		const jsonContent = JSON.stringify(storage, null, 2);
 		debug(`[SaveAccounts] Writing ${jsonContent.length} bytes`);
-		await fs.writeFile(filePath, jsonContent, "utf-8");
+		const tmpPath = `${filePath}.tmp`;
+		await fs.writeFile(tmpPath, jsonContent, "utf-8");
+		await fs.rename(tmpPath, filePath);
 
 		if (AUTH_DEBUG_ENABLED) {
 			const verifyContent = await fs.readFile(filePath, "utf-8");

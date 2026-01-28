@@ -416,8 +416,12 @@ export class AccountManager {
 	): void {
 		const retryMs = Math.max(0, Math.floor(retryAfterMs));
 		const resetAt = nowMs() + retryMs;
-		account.rateLimitResetTimes[getQuotaKey(family)] = resetAt;
-		if (model) account.rateLimitResetTimes[getQuotaKey(family, model)] = resetAt;
+		const baseKey = getQuotaKey(family);
+		account.rateLimitResetTimes[baseKey] = resetAt;
+		if (model && model !== family) {
+			const modelKey = getQuotaKey(family, model);
+			account.rateLimitResetTimes[modelKey] = resetAt;
+		}
 	}
 
 	markAccountCoolingDown(
