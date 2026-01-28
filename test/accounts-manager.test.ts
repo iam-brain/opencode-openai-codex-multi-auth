@@ -5,17 +5,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AccountManager } from "../lib/accounts.js";
+import { JWT_CLAIM_PATH } from "../lib/constants.js";
 import { loadAccounts, saveAccounts } from "../lib/storage.js";
 import type { AccountStorageV3, OAuthAuthDetails } from "../lib/types.js";
 import type { ModelFamily } from "../lib/prompts/codex.js";
 
-function createAuth(refresh: string): OAuthAuthDetails {
+function createAuth(refresh: string, access = "access"): OAuthAuthDetails {
 	return {
 		type: "oauth",
-		access: "access",
+		access,
 		refresh,
 		expires: Date.now() + 60_000,
 	};
+}
+
+function createJwt(claims: Record<string, unknown>): string {
+	const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64");
+	const payload = Buffer.from(JSON.stringify(claims)).toString("base64");
+	return `${header}.${payload}.sig`;
 }
 
 function createStorage(count: number): AccountStorageV3 {
@@ -105,6 +112,54 @@ describe("AccountManager", () => {
 
 			expect(finalStorage?.accounts.length).toBe(2);
 			expect(finalStorage?.accounts.some((a) => a.accountId === "acct-1")).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("preserves plan-specific entries when fallback matches accountId", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const storage: AccountStorageV3 = {
+				version: 3,
+				accounts: [
+					{
+						refreshToken: "refresh-plus",
+						accountId: "acct-dup",
+						plan: "Plus",
+						addedAt: 1,
+						lastUsed: 1,
+					},
+					{
+						refreshToken: "refresh-team",
+						accountId: "acct-dup",
+						plan: "Team",
+						addedAt: 2,
+						lastUsed: 2,
+					},
+				],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			await saveAccounts(storage);
+
+			const access = createJwt({
+				[JWT_CLAIM_PATH]: {
+					chatgpt_account_id: "acct-dup",
+					chatgpt_plan_type: "plus",
+					email: "user@example.com",
+				},
+			});
+			const manager = await AccountManager.loadFromDisk(
+				createAuth("refresh-fallback", access),
+			);
+			const snapshot = manager.getAccountsSnapshot();
+			const plus = snapshot.find((account) => account.plan === "Plus");
+			const team = snapshot.find((account) => account.plan === "Team");
+
+			expect(plus?.refreshToken).toBe("refresh-fallback");
+			expect(team?.refreshToken).toBe("refresh-team");
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

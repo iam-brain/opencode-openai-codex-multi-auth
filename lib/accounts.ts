@@ -289,10 +289,11 @@ export class AccountManager {
 			this.accounts = stored.accounts
 				.map((record, index): ManagedAccount | null => {
 					if (!record?.refreshToken) return null;
+					const planMatches = !fallbackPlan || !record.plan || record.plan === fallbackPlan;
 					const matchesFallback =
 						!!authFallback &&
-						((fallbackAccountId && record.accountId === fallbackAccountId) ||
-							record.refreshToken === authFallback.refresh);
+						(record.refreshToken === authFallback.refresh ||
+							(planMatches && fallbackAccountId && record.accountId === fallbackAccountId));
 
 					return {
 						index,
@@ -314,11 +315,13 @@ export class AccountManager {
 
 			const hasMatchingFallback =
 				!!authFallback &&
-				this.accounts.some(
-					(a) =>
+				this.accounts.some((a) => {
+					const planMatches = !fallbackPlan || !a.plan || a.plan === fallbackPlan;
+					return (
 						a.refreshToken === authFallback.refresh ||
-						(fallbackAccountId && a.accountId === fallbackAccountId),
-				);
+						(planMatches && fallbackAccountId && a.accountId === fallbackAccountId)
+					);
+				});
 
 			if (authFallback && !hasMatchingFallback) {
 				const now = nowMs();
