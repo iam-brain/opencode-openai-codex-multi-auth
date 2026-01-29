@@ -171,6 +171,9 @@ function mergeAccountRecords(
 	}));
 
 	for (const candidate of incoming) {
+		if (!candidate.accountId || !candidate.email || !candidate.plan) {
+			continue;
+		}
 		const matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
@@ -286,40 +289,22 @@ export class AccountManager {
 		const fallbackAccountId = extractAccountId(authFallback?.access);
 		const fallbackEmail = sanitizeEmail(extractAccountEmail(authFallback?.access));
 		const fallbackPlan = extractAccountPlan(authFallback?.access);
+		const hasFallbackIdentity = Boolean(fallbackAccountId && fallbackEmail && fallbackPlan);
 
 		if (stored && stored.accounts.length > 0) {
 			const baseNow = nowMs();
 			const fallbackMatchIndex = (() => {
-				if (!authFallback) return -1;
-				if (fallbackAccountId && fallbackPlan) {
-					const exact = findAccountMatchIndex(stored.accounts, {
-						accountId: fallbackAccountId,
-						plan: fallbackPlan,
-						email: fallbackEmail,
-					});
-					if (exact >= 0) return exact;
-				}
-				if (authFallback.refresh) {
-					const refreshIndex = stored.accounts.findIndex(
-						(record) => record.refreshToken === authFallback.refresh,
-					);
-					if (refreshIndex >= 0) return refreshIndex;
-				}
-				if (fallbackAccountId) {
-					const matches = stored.accounts.filter(
-						(record) => record.accountId === fallbackAccountId,
-					);
-					if (matches.length === 1) {
-						return stored.accounts.findIndex(
-							(record) => record.accountId === fallbackAccountId,
-						);
-					}
-				}
-				return -1;
+				if (!authFallback || !hasFallbackIdentity) return -1;
+				return findAccountMatchIndex(stored.accounts, {
+					accountId: fallbackAccountId,
+					plan: fallbackPlan,
+					email: fallbackEmail,
+				});
 			})();
 			this.accounts = stored.accounts
 				.map((record, index): ManagedAccount | null => {
 					if (!record?.refreshToken) return null;
+					if (!record.accountId || !record.email || !record.plan) return null;
 					const matchesFallback = !!authFallback && index === fallbackMatchIndex;
 
 					return {
@@ -342,7 +327,7 @@ export class AccountManager {
 
 			const hasMatchingFallback = !!authFallback && fallbackMatchIndex >= 0;
 
-			if (authFallback && !hasMatchingFallback) {
+			if (authFallback && hasFallbackIdentity && !hasMatchingFallback) {
 				const now = nowMs();
 				this.accounts.push({
 					index: this.accounts.length,
@@ -372,7 +357,7 @@ export class AccountManager {
 			return;
 		}
 
-		if (authFallback) {
+		if (authFallback && hasFallbackIdentity) {
 			const now = nowMs();
 			this.accounts = [
 				{

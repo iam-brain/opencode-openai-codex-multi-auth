@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 
 import lockfile from "proper-lockfile";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,10 @@ function loadFixture(fileName: string): AccountStorageV3 {
 		readFileSync(new URL(`./fixtures/${fileName}`, import.meta.url), "utf-8"),
 	) as AccountStorageV3;
 }
+
+const fixture = loadFixture("openai-codex-accounts.json");
+const accountOne = fixture.accounts[0]!;
+const accountTwo = fixture.accounts[1]!;
 
 describe("storage", () => {
 	const originalXdg = process.env.XDG_CONFIG_HOME;
@@ -38,10 +42,7 @@ describe("storage", () => {
 				{
 					accounts: [
 						{
-							refreshToken: "r1",
-							accountId: "acct-123456",
-							email: "user@example.com",
-							plan: "Pro",
+							...accountOne,
 							addedAt: 123,
 							lastUsed: 456,
 						},
@@ -58,7 +59,7 @@ describe("storage", () => {
 		const loaded = await loadAccounts();
 		expect(loaded?.version).toBe(3);
 		expect(loaded?.accounts).toHaveLength(1);
-		expect(loaded?.accounts[0]?.plan).toBe("Pro");
+		expect(loaded?.accounts[0]?.plan).toBe(accountOne.plan);
 	});
 
 	it("loadAccounts supports legacy array-of-accounts format", async () => {
@@ -69,7 +70,13 @@ describe("storage", () => {
 		mkdirSync(join(root, "opencode"), { recursive: true });
 		writeFileSync(
 			storagePath,
-			JSON.stringify([{ refreshToken: "r1", accountId: "acct-123456" }], null, 2),
+			JSON.stringify([
+				{
+					...accountOne,
+					addedAt: accountOne.addedAt,
+					lastUsed: accountOne.lastUsed,
+				},
+			], null, 2),
 			"utf-8",
 		);
 
@@ -78,6 +85,44 @@ describe("storage", () => {
 		expect(loaded?.accounts).toHaveLength(1);
 		expect(typeof loaded?.accounts[0]?.addedAt).toBe("number");
 		expect(typeof loaded?.accounts[0]?.lastUsed).toBe("number");
+	});
+
+	it("loadAccounts drops entries missing identity fields", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		const storagePath = getStoragePath();
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		writeFileSync(
+			storagePath,
+			JSON.stringify(
+				{
+					accounts: [
+						{
+							...accountOne,
+							addedAt: 100,
+							lastUsed: 200,
+						},
+						{
+							...accountTwo,
+							email: undefined,
+							plan: undefined,
+							addedAt: 100,
+							lastUsed: 200,
+						},
+					],
+					activeIndex: 0,
+					activeIndexByFamily: { codex: 0 },
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts).toHaveLength(1);
+		expect(loaded?.accounts[0]?.accountId).toBe(accountOne.accountId);
 	});
 
 	it("saveAccounts writes via temp file and rename", async () => {
@@ -105,7 +150,6 @@ describe("storage", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
 
-		const fixture = loadFixture("openai-codex-accounts.json");
 		await saveAccounts(fixture);
 
 		const storagePath = getStoragePath();
@@ -158,6 +202,74 @@ describe("storage", () => {
 		);
 	});
 
+	it("saveAccounts maps activeIndex to merged account", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+
+		await saveAccounts({
+			...fixture,
+			accounts: [accountOne, accountTwo],
+			activeIndex: 1,
+			activeIndexByFamily: { codex: 1 },
+		});
+
+		await saveAccounts({
+			version: 3,
+			accounts: [accountTwo],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		});
+
+		const loaded = await loadAccounts();
+		const mappedIndex = loaded?.accounts.findIndex(
+			(account) =>
+				account.accountId === accountTwo.accountId &&
+				account.plan === accountTwo.plan &&
+				account.email === accountTwo.email,
+		);
+		expect(mappedIndex).toBeGreaterThanOrEqual(0);
+		expect(loaded?.activeIndex).toBe(mappedIndex);
+	});
+
+	it("loadAccounts drops duplicate refresh tokens", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		const storagePath = getStoragePath();
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		writeFileSync(
+			storagePath,
+			JSON.stringify(
+				{
+					accounts: [
+						{
+							...accountOne,
+							refreshToken: accountOne.refreshToken,
+							addedAt: 100,
+							lastUsed: 200,
+						},
+						{
+							...accountTwo,
+							refreshToken: accountOne.refreshToken,
+							addedAt: 100,
+							lastUsed: 50,
+						},
+					],
+					activeIndex: 0,
+					activeIndexByFamily: { codex: 0 },
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts).toHaveLength(1);
+		expect(loaded?.accounts[0]?.accountId).toBe(accountOne.accountId);
+	});
+
 	it("saveAccounts locks the storage file path", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
@@ -165,9 +277,10 @@ describe("storage", () => {
 
 		const storagePath = getStoragePath();
 		const storage = loadFixture("openai-codex-accounts.json");
-		const lockSpy = vi
-			.spyOn(lockfile, "lock")
-			.mockResolvedValue(async () => undefined);
+		const lockSpy = vi.spyOn(lockfile, "lock").mockImplementation(async (path) => {
+			expect(existsSync(path)).toBe(true);
+			return async () => undefined;
+		});
 
 		await saveAccounts(storage);
 

@@ -32,18 +32,26 @@ describe("account matching", () => {
 		expect(index).toBe(-1);
 	});
 
-	it("returns -1 when plan is missing and multiple matches exist", () => {
+	it("returns -1 when plan is missing", () => {
 		const index = findAccountMatchIndex(accounts, {
 			accountId: accountTwo.accountId,
 		});
 		expect(index).toBe(-1);
 	});
 
-	it("matches by accountId and email when plan is missing and unique", () => {
+	it("returns -1 when plan is missing even if unique", () => {
 		const index = findAccountMatchIndex(accounts, {
 			accountId: accountOne.accountId,
 			email: accountOne.email,
 		});
-		expect(index).toBe(0);
+		expect(index).toBe(-1);
+	});
+
+	it("returns -1 when email is missing", () => {
+		const index = findAccountMatchIndex(accounts, {
+			accountId: accountOne.accountId,
+			plan: accountOne.plan,
+		});
+		expect(index).toBe(-1);
 	});
 });

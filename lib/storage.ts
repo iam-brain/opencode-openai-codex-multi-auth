@@ -104,6 +104,8 @@ function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 					: undefined;
 		const plan = typeof planRaw === "string" && planRaw.trim() ? planRaw : undefined;
 
+		if (!accountId || !email || !plan) return null;
+
 		const addedAt =
 			typeof record.addedAt === "number" && Number.isFinite(record.addedAt)
 				? record.addedAt
@@ -163,9 +165,10 @@ function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 	}
 
 	if (!Array.isArray(accountsSource)) return null;
-	const accounts = accountsSource
+	const normalizedAccounts = accountsSource
 		.map(normalizeAccountRecord)
 		.filter((a): a is AccountRecord => a !== null);
+	const { accounts } = dedupeRefreshTokens(normalizedAccounts);
 	if (accounts.length === 0) return null;
 
 	const activeIndex =
@@ -198,6 +201,39 @@ function areRateLimitStatesEqual(left: RateLimitState, right: RateLimitState): b
 	return true;
 }
 
+function shouldPreferDuplicate(candidate: AccountRecord, existing: AccountRecord): boolean {
+	if (candidate.lastUsed !== existing.lastUsed) {
+		return candidate.lastUsed > existing.lastUsed;
+	}
+	return candidate.addedAt > existing.addedAt;
+}
+
+function dedupeRefreshTokens(accounts: AccountRecord[]): {
+	accounts: AccountRecord[];
+	changed: boolean;
+} {
+	const deduped: AccountRecord[] = [];
+	const indexByToken = new Map<string, number>();
+	let changed = false;
+
+	for (const account of accounts) {
+		const existingIndex = indexByToken.get(account.refreshToken);
+		if (existingIndex === undefined) {
+			indexByToken.set(account.refreshToken, deduped.length);
+			deduped.push(account);
+			continue;
+		}
+		const existing = deduped[existingIndex];
+		if (!existing) continue;
+		if (shouldPreferDuplicate(account, existing)) {
+			deduped[existingIndex] = account;
+		}
+		changed = true;
+	}
+
+	return { accounts: deduped, changed };
+}
+
 function mergeAccounts(
 	existing: AccountRecord[],
 	incoming: AccountRecord[],
@@ -206,6 +242,10 @@ function mergeAccounts(
 	let changed = false;
 
 	for (const candidate of incoming) {
+		if (!candidate.accountId || !candidate.email || !candidate.plan) {
+			changed = true;
+			continue;
+		}
 		const matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
@@ -316,7 +356,9 @@ function mergeAccounts(
 		}
 	}
 
-	return { accounts: merged, changed };
+	const deduped = dedupeRefreshTokens(merged);
+	if (deduped.changed) changed = true;
+	return { accounts: deduped.accounts, changed };
 }
 
 function mergeAccountStorage(
@@ -324,8 +366,23 @@ function mergeAccountStorage(
 	incoming: AccountStorageV3,
 ): AccountStorageV3 {
 	const { accounts: mergedAccounts } = mergeAccounts(existing.accounts, incoming.accounts);
+	const incomingActive =
+		incoming.activeIndex >= 0 && incoming.activeIndex < incoming.accounts.length
+			? incoming.accounts[incoming.activeIndex]
+			: null;
+	const mappedIndex = incomingActive
+		? findAccountMatchIndex(mergedAccounts, {
+				accountId: incomingActive.accountId,
+				plan: incomingActive.plan,
+				email: incomingActive.email,
+			})
+		: -1;
 	const baseActiveIndex =
-		incoming.accounts.length > 0 ? incoming.activeIndex : existing.activeIndex;
+		mappedIndex >= 0
+			? mappedIndex
+			: incoming.accounts.length > 0
+				? incoming.activeIndex
+				: existing.activeIndex;
 	const activeIndex =
 		mergedAccounts.length > 0
 			? Math.min(Math.max(0, baseActiveIndex), mergedAccounts.length - 1)
@@ -443,6 +500,22 @@ export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
 
 	try {
 		await fs.mkdir(dirname(filePath), { recursive: true });
+		if (!existsSync(filePath)) {
+			await fs.writeFile(
+				filePath,
+				JSON.stringify(
+					{
+						version: 3,
+						accounts: [],
+						activeIndex: 0,
+						activeIndexByFamily: {},
+					},
+					null,
+					2,
+				),
+				"utf-8",
+			);
+		}
 		await withFileLock(filePath, async () => {
 			const existing = await loadAccounts().catch(() => null);
 			const mergedStorage = existing ? mergeAccountStorage(existing, storage) : storage;

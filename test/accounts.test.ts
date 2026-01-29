@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 
+import { readFileSync } from "node:fs";
+
 import { extractAccountPlan, formatAccountLabel } from "../lib/accounts.js";
 
 function makeJwt(payload: Record<string, unknown>): string {
@@ -9,6 +11,15 @@ function makeJwt(payload: Record<string, unknown>): string {
 	const signatureB64 = Buffer.from("sig").toString("base64url");
 	return `${headerB64}.${payloadB64}.${signatureB64}`;
 }
+
+type AccountsFixture = {
+	accounts: Array<{ accountId: string; email: string; plan: string }>;
+};
+
+const fixture = JSON.parse(
+	readFileSync(new URL("./fixtures/openai-codex-accounts.json", import.meta.url), "utf-8"),
+) as AccountsFixture;
+const fixtureAccount = fixture.accounts[0]!;
 
 describe("accounts", () => {
 	it("extractAccountPlan reads ChatGPT plan type from JWT claim", () => {
@@ -24,18 +35,23 @@ describe("accounts", () => {
 	it("formatAccountLabel shows email and plan", () => {
 		expect(
 			formatAccountLabel(
-				{ email: "user@example.com", plan: "Pro", accountId: "acct-123456" },
+				{
+					email: fixtureAccount.email,
+					plan: fixtureAccount.plan,
+					accountId: fixtureAccount.accountId,
+				},
 				0,
 			),
-		).toBe("user@example.com (Pro)");
+		).toBe(`${fixtureAccount.email} (${fixtureAccount.plan})`);
 	});
 
 	it("formatAccountLabel shows just email when plan missing", () => {
-		expect(formatAccountLabel({ email: "user@example.com" }, 0)).toBe("user@example.com");
+		expect(formatAccountLabel({ email: fixtureAccount.email }, 0)).toBe(fixtureAccount.email);
 	});
 
 	it("formatAccountLabel falls back to id suffix", () => {
-		expect(formatAccountLabel({ accountId: "acct-123456" }, 0)).toBe("id:123456");
+		const suffix = fixtureAccount.accountId.slice(-6);
+		expect(formatAccountLabel({ accountId: fixtureAccount.accountId }, 0)).toBe(`id:${suffix}`);
 	});
 
 	it("formatAccountLabel falls back to numbered account", () => {

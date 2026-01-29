@@ -33,16 +33,19 @@ function createJwt(claims: Record<string, unknown>): string {
 	return `${header}.${payload}.sig`;
 }
 
+const fixture = loadFixture("openai-codex-accounts.json");
+const fixtureAccounts = fixture.accounts;
+
 function createStorage(count: number): AccountStorageV3 {
-	const now = Date.now();
+	const accounts = fixtureAccounts.slice(0, count).map((account) => ({
+		...account,
+		rateLimitResetTimes: account.rateLimitResetTimes
+			? { ...account.rateLimitResetTimes }
+			: undefined,
+	}));
 	return {
 		version: 3,
-		accounts: Array.from({ length: count }, (_, idx) => ({
-			refreshToken: `rt_test_${idx}.token`,
-			accountId: `00000000-0000-4000-8000-00000000000${idx}`,
-			addedAt: now,
-			lastUsed: 0,
-		})),
+		accounts,
 		activeIndex: 0,
 		activeIndexByFamily: {
 			codex: 0,
@@ -112,7 +115,10 @@ describe("AccountManager", () => {
 	});
 
 	it("updates lastUsed only when marked used", () => {
-		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(1));
+		const manager = new AccountManager(
+			createAuth(fixtureAccounts[0]!.refreshToken),
+			createStorage(1),
+		);
 		const account = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
 		if (!account) throw new Error("Expected account");
 		const originalLastUsed = account.lastUsed;
@@ -155,8 +161,7 @@ describe("AccountManager", () => {
 		try {
 			const fixture = loadFixture("openai-codex-accounts.json");
 			const accountOne = fixture.accounts[0]!;
-			const updatedToken =
-				"rt_Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2H1g0F9.e8D7c6B5a4Z3y2X1w0V9u8T7s6R5q4P3o2N1m0L9k8";
+			const updatedToken = `${accountOne.refreshToken}-new`;
 
 			await saveAccounts({ ...fixture, accounts: [accountOne] });
 			const manager = await AccountManager.loadFromDisk(createAuth(accountOne.refreshToken));
@@ -257,7 +262,7 @@ describe("AccountManager", () => {
 		}
 	});
 
-	it("does not overwrite other plans when fallback plan is missing", async () => {
+	it("skips fallback account when plan is missing", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
@@ -283,6 +288,7 @@ describe("AccountManager", () => {
 			const plus = snapshot.find((account) => account.plan === "Plus");
 			const team = snapshot.find((account) => account.plan === "Team");
 
+			expect(snapshot).toHaveLength(2);
 			expect(plus?.refreshToken).toBe(accountPlus.refreshToken);
 			expect(team?.refreshToken).toBe(accountTeam.refreshToken);
 		} finally {
@@ -291,7 +297,10 @@ describe("AccountManager", () => {
 	});
 
 	it("applies PID offset once in sticky mode", () => {
-		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(3));
+		const manager = new AccountManager(
+			createAuth(fixtureAccounts[0]!.refreshToken),
+			createStorage(3),
+		);
 
 		const first = manager.getCurrentOrNextForFamily(family, null, "sticky", true);
 		expect(first?.index).toBe(1);
@@ -301,7 +310,10 @@ describe("AccountManager", () => {
 	});
 
 	it("round-robin rotates accounts each call", () => {
-		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(3));
+		const manager = new AccountManager(
+			createAuth(fixtureAccounts[0]!.refreshToken),
+			createStorage(3),
+		);
 
 		const first = manager.getCurrentOrNextForFamily(family, null, "round-robin", true);
 		const second = manager.getCurrentOrNextForFamily(family, null, "round-robin", true);
@@ -311,7 +323,10 @@ describe("AccountManager", () => {
 	});
 
 	it("skips rate-limited current account in sticky mode", () => {
-		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(2));
+		const manager = new AccountManager(
+			createAuth(fixtureAccounts[0]!.refreshToken),
+			createStorage(2),
+		);
 		const first = manager.getCurrentOrNextForFamily(family, null, "sticky", false);
 		expect(first?.index).toBe(0);
 
@@ -323,7 +338,10 @@ describe("AccountManager", () => {
 	});
 
 	it("does not duplicate rate-limit keys when model matches family", () => {
-		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(1));
+		const manager = new AccountManager(
+			createAuth(fixtureAccounts[0]!.refreshToken),
+			createStorage(1),
+		);
 		const codexFamily: ModelFamily = "gpt-5.2-codex";
 
 		const account = manager.getCurrentOrNextForFamily(
