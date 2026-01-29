@@ -46,6 +46,57 @@ export interface PluginConfig {
 	rateLimitToastDebounceMs?: number;
 
 	/**
+	 * Scheduling mode for rate-limit handling.
+	 * - cache_first: wait briefly for the same account before switching
+	 * - balance: switch accounts on rate limit
+	 * - performance_first: switch quickly for throughput
+	 * @default "cache_first"
+	 */
+	schedulingMode?: SchedulingMode;
+
+	/**
+	 * Maximum wait (in seconds) before switching in cache_first mode.
+	 * @default 60
+	 */
+	maxCacheFirstWaitSeconds?: number;
+
+	/**
+	 * Switch accounts on first rate limit when possible.
+	 * @default true
+	 */
+	switchOnFirstRateLimit?: boolean;
+
+	/**
+	 * Rate-limit dedup window (ms) to avoid thrashing.
+	 * @default 2000
+	 */
+	rateLimitDedupWindowMs?: number;
+
+	/**
+	 * Reset rate-limit state after idle (ms).
+	 * @default 120000
+	 */
+	rateLimitStateResetMs?: number;
+
+	/**
+	 * Default retry delay when server omits Retry-After.
+	 * @default 60000
+	 */
+	defaultRetryAfterMs?: number;
+
+	/**
+	 * Maximum backoff delay (ms).
+	 * @default 120000
+	 */
+	maxBackoffMs?: number;
+
+	/**
+	 * Max jitter to add to backoff (ms).
+	 * @default 1000
+	 */
+	requestJitterMaxMs?: number;
+
+	/**
 	 * When all accounts are rate-limited, optionally wait and retry.
 	 * @default false
 	 */
@@ -66,6 +117,8 @@ export interface PluginConfig {
 }
 
 export type AccountSelectionStrategy = "sticky" | "round-robin" | "hybrid";
+
+export type SchedulingMode = "cache_first" | "balance" | "performance_first";
 
 export type OAuthAuthDetails = Extract<Auth, { type: "oauth" }>;
 

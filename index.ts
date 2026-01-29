@@ -36,12 +36,20 @@ import { startLocalOAuthServer } from "./lib/auth/server.js";
 import {
 	getAccountSelectionStrategy,
 	getCodexMode,
+	getDefaultRetryAfterMs,
+	getMaxBackoffMs,
+	getMaxCacheFirstWaitSeconds,
 	getPidOffsetEnabled,
 	getQuietMode,
+	getRateLimitDedupWindowMs,
+	getRateLimitStateResetMs,
 	getRateLimitToastDebounceMs,
+	getRequestJitterMaxMs,
 	getRetryAllAccountsMaxRetries,
 	getRetryAllAccountsMaxWaitMs,
 	getRetryAllAccountsRateLimited,
+	getSchedulingMode,
+	getSwitchOnFirstRateLimit,
 	getTokenRefreshSkewMs,
 	loadPluginConfig,
 } from "./lib/config.js";
@@ -81,6 +89,7 @@ import { findAccountMatchIndex } from "./lib/account-matching.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
+import { RateLimitTracker, decideRateLimitAction, parseRateLimitReason } from "./lib/rate-limit.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
@@ -269,6 +278,22 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const retryAllAccountsRateLimited = getRetryAllAccountsRateLimited(pluginConfig);
 				const retryAllAccountsMaxWaitMs = getRetryAllAccountsMaxWaitMs(pluginConfig);
 				const retryAllAccountsMaxRetries = getRetryAllAccountsMaxRetries(pluginConfig);
+				const schedulingMode = getSchedulingMode(pluginConfig);
+				const maxCacheFirstWaitSeconds = getMaxCacheFirstWaitSeconds(pluginConfig);
+				const switchOnFirstRateLimit = getSwitchOnFirstRateLimit(pluginConfig);
+				const rateLimitDedupWindowMs = getRateLimitDedupWindowMs(pluginConfig);
+				const rateLimitStateResetMs = getRateLimitStateResetMs(pluginConfig);
+				const defaultRetryAfterMs = getDefaultRetryAfterMs(pluginConfig);
+				const maxBackoffMs = getMaxBackoffMs(pluginConfig);
+				const requestJitterMaxMs = getRequestJitterMaxMs(pluginConfig);
+				const maxCacheFirstWaitMs = Math.max(0, Math.floor(maxCacheFirstWaitSeconds * 1000));
+				const rateLimitTracker = new RateLimitTracker({
+					dedupWindowMs: rateLimitDedupWindowMs,
+					resetMs: rateLimitStateResetMs,
+					defaultRetryMs: defaultRetryAfterMs,
+					maxBackoffMs,
+					jitterMaxMs: requestJitterMaxMs,
+				});
 
 				// Return SDK configuration
 				return {
@@ -449,12 +474,13 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										accountCount,
 									});
 
-									if (res.ok) {
-										if (accountSelectionStrategy === "hybrid") {
-											getHealthTracker().recordSuccess(account.index);
-										}
-										return await handleSuccessResponse(res, isStreaming);
-									}
+							if (res.ok) {
+								if (accountSelectionStrategy === "hybrid") {
+									getHealthTracker().recordSuccess(account.index);
+								}
+								accountManager.markAccountUsed(account.index);
+								return await handleSuccessResponse(res, isStreaming);
+							}
 
 									const handled = await handleErrorResponse(res);
 									if (handled.status !== HTTP_STATUS.TOO_MANY_REQUESTS) {
@@ -464,35 +490,61 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										return handled;
 									}
 
-									const retryAfterMs = parseRetryAfterMs(handled.headers) ?? 60_000;
-									if (tokenConsumed) {
-										getTokenTracker().refund(account.index);
-										tokenConsumed = false;
-									}
-									if (accountSelectionStrategy === "hybrid") {
-										getHealthTracker().recordRateLimit(account.index);
-									}
-									if (retryAfterMs <= RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS) {
-										await showToast(
-											`Rate limited. Retrying in ${formatWaitTime(retryAfterMs)}...`,
-											"warning",
-											quietMode,
-										);
-										await sleep(retryAfterMs);
-										continue;
-									}
+							const retryAfterMs = parseRetryAfterMs(handled.headers);
+							let responseText = "";
+							try {
+								responseText = await handled.clone().text();
+							} catch {
+								responseText = "";
+							}
+							const reason = parseRateLimitReason(handled.status, responseText);
+							const trackerKey = `${account.index}:${modelFamily}:${model ?? ""}`;
+							const backoff = rateLimitTracker.getBackoff(trackerKey, reason, retryAfterMs);
+							const decision = decideRateLimitAction({
+								schedulingMode,
+								accountCount,
+								maxCacheFirstWaitMs,
+								switchOnFirstRateLimit,
+								shortRetryThresholdMs: RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS,
+								backoff,
+							});
+							if (tokenConsumed) {
+								getTokenTracker().refund(account.index);
+								tokenConsumed = false;
+							}
+							if (accountSelectionStrategy === "hybrid") {
+								getHealthTracker().recordRateLimit(account.index);
+							}
+							accountManager.markRateLimited(account, backoff.delayMs, modelFamily, model);
+							const shouldPersistRateLimit = !backoff.isDuplicate;
 
-									accountManager.markRateLimited(account, retryAfterMs, modelFamily, model);
-									accountManager.markSwitched(account, "rate-limit", modelFamily);
+							if (decision.action === "wait") {
+								if (shouldPersistRateLimit) {
 									await accountManager.saveToDisk();
 									await showToast(
-										`Rate limited. Switching accounts (retry in ${formatWaitTime(retryAfterMs)}).`,
+										`Rate limited. Retrying in ${formatWaitTime(decision.delayMs)}...`,
 										"warning",
 										quietMode,
 									);
-									break;
 								}
+								if (decision.delayMs > 0) {
+									await sleep(decision.delayMs);
+								}
+								continue;
 							}
+
+							accountManager.markSwitched(account, "rate-limit", modelFamily);
+							if (shouldPersistRateLimit) {
+								await accountManager.saveToDisk();
+								await showToast(
+									`Rate limited. Switching accounts (retry in ${formatWaitTime(decision.delayMs)}).`,
+									"warning",
+									quietMode,
+								);
+							}
+							break;
+						}
+					}
 
 							const waitMs = accountManager.getMinWaitTimeForFamily(modelFamily, model);
 							if (

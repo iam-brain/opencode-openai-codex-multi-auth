@@ -181,9 +181,13 @@ export interface AccountWithMetrics {
 	isCoolingDown: boolean;
 }
 
+const STICKINESS_BONUS = 150;
+const SWITCH_THRESHOLD = 100;
+
 export function selectHybridAccount(
 	accounts: AccountWithMetrics[],
 	tokenTracker: TokenBucketTracker,
+	currentAccountIndex: number | null = null,
 	minHealthScore = 50,
 ): number | null {
 	const candidates = accounts
@@ -200,10 +204,21 @@ export function selectHybridAccount(
 
 	const maxTokens = tokenTracker.getMaxTokens();
 	const scored = candidates
-		.map((acc) => ({ index: acc.index, score: calculateHybridScore(acc, maxTokens) }))
+		.map((acc) => {
+			const base = calculateHybridScore(acc, maxTokens);
+			const isCurrent = currentAccountIndex !== null && acc.index === currentAccountIndex;
+			const score = base + (isCurrent ? STICKINESS_BONUS : 0);
+			return { index: acc.index, score, base, isCurrent };
+		})
 		.sort((a, b) => b.score - a.score);
 
-	return scored[0]?.index ?? null;
+	const best = scored[0];
+	const current = scored.find((item) => item.isCurrent);
+	if (current && best && !best.isCurrent && best.base - current.base < SWITCH_THRESHOLD) {
+		return current.index;
+	}
+
+	return best?.index ?? null;
 }
 
 function calculateHybridScore(

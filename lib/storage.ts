@@ -1,7 +1,9 @@
-import { existsSync } from "node:fs";
-import { promises as fs } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
+import lockfile from "proper-lockfile";
 
 import type { AccountStorageV3 } from "./types.js";
 import { findAccountMatchIndex } from "./account-matching.js";
@@ -16,6 +18,33 @@ const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
 function debug(...args: unknown[]): void {
 	if (!AUTH_DEBUG_ENABLED) return;
 	console.debug(...args);
+}
+
+const LOCK_OPTIONS = {
+	stale: 10_000,
+	retries: {
+		retries: 5,
+		minTimeout: 100,
+		maxTimeout: 1000,
+		factor: 2,
+	},
+	realpath: false,
+};
+
+async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+	let release: (() => Promise<void>) | null = null;
+	try {
+		release = await lockfile.lock(path, LOCK_OPTIONS);
+		return await fn();
+	} finally {
+		if (release) {
+			try {
+				await release();
+			} catch {
+				// ignore lock release errors
+			}
+		}
+	}
 }
 
 function getOpencodeConfigDir(): string {
@@ -192,7 +221,7 @@ function mergeAccounts(
 		const updated = { ...current };
 		let didUpdate = false;
 
-		if (!updated.refreshToken && candidate.refreshToken) {
+		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
 			updated.refreshToken = candidate.refreshToken;
 			didUpdate = true;
 		}
@@ -247,10 +276,13 @@ function mergeAccounts(
 		}
 
 		if (candidate.rateLimitResetTimes) {
-			const mergedRateLimits = {
-				...candidate.rateLimitResetTimes,
-				...updated.rateLimitResetTimes,
-			};
+			const mergedRateLimits: RateLimitState = { ...(updated.rateLimitResetTimes ?? {}) };
+			for (const [key, value] of Object.entries(candidate.rateLimitResetTimes)) {
+				if (typeof value !== "number") continue;
+				const currentValue = mergedRateLimits[key];
+				mergedRateLimits[key] =
+					typeof currentValue === "number" ? Math.max(currentValue, value) : value;
+			}
 			const currentRateLimits = updated.rateLimitResetTimes ?? {};
 			if (!areRateLimitStatesEqual(currentRateLimits, mergedRateLimits)) {
 				updated.rateLimitResetTimes = mergedRateLimits;
@@ -285,6 +317,29 @@ function mergeAccounts(
 	}
 
 	return { accounts: merged, changed };
+}
+
+function mergeAccountStorage(
+	existing: AccountStorageV3,
+	incoming: AccountStorageV3,
+): AccountStorageV3 {
+	const { accounts: mergedAccounts } = mergeAccounts(existing.accounts, incoming.accounts);
+	const baseActiveIndex =
+		incoming.accounts.length > 0 ? incoming.activeIndex : existing.activeIndex;
+	const activeIndex =
+		mergedAccounts.length > 0
+			? Math.min(Math.max(0, baseActiveIndex), mergedAccounts.length - 1)
+			: 0;
+	const activeIndexByFamily = {
+		...(existing.activeIndexByFamily ?? {}),
+		...(incoming.activeIndexByFamily ?? {}),
+	};
+	return {
+		version: 3,
+		accounts: mergedAccounts,
+		activeIndex,
+		activeIndexByFamily,
+	};
 }
 
 async function migrateLegacyAccountsFileIfNeeded(): Promise<void> {
@@ -388,23 +443,27 @@ export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
 
 	try {
 		await fs.mkdir(dirname(filePath), { recursive: true });
-		const jsonContent = JSON.stringify(storage, null, 2);
-		debug(`[SaveAccounts] Writing ${jsonContent.length} bytes`);
-		const tmpPath = `${filePath}.tmp`;
-		await fs.writeFile(tmpPath, jsonContent, "utf-8");
-		await fs.rename(tmpPath, filePath);
+		await withFileLock(filePath, async () => {
+			const existing = await loadAccounts().catch(() => null);
+			const mergedStorage = existing ? mergeAccountStorage(existing, storage) : storage;
+			const jsonContent = JSON.stringify(mergedStorage, null, 2);
+			debug(`[SaveAccounts] Writing ${jsonContent.length} bytes`);
+			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+			await fs.writeFile(tmpPath, jsonContent, "utf-8");
+			await fs.rename(tmpPath, filePath);
 
-		if (AUTH_DEBUG_ENABLED) {
-			const verifyContent = await fs.readFile(filePath, "utf-8");
-			const verifyStorage = normalizeStorage(JSON.parse(verifyContent));
-			if (verifyStorage) {
-				debug(
-					`[SaveAccounts] Verification successful - ${verifyStorage.accounts.length} accounts in file`,
-				);
-			} else {
-				debug("[SaveAccounts] Verification failed - invalid storage format");
+			if (AUTH_DEBUG_ENABLED) {
+				const verifyContent = await fs.readFile(filePath, "utf-8");
+				const verifyStorage = normalizeStorage(JSON.parse(verifyContent));
+				if (verifyStorage) {
+					debug(
+						`[SaveAccounts] Verification successful - ${verifyStorage.accounts.length} accounts in file`,
+					);
+				} else {
+					debug("[SaveAccounts] Verification failed - invalid storage format");
+				}
 			}
-		}
+		});
 	} catch (error) {
 		console.error("[SaveAccounts] Error saving accounts:", error);
 		throw error;

@@ -111,6 +111,16 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("updates lastUsed only when marked used", () => {
+		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(1));
+		const account = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+		if (!account) throw new Error("Expected account");
+		const originalLastUsed = account.lastUsed;
+
+		manager.markAccountUsed(account.index);
+		expect(account.lastUsed).toBeGreaterThanOrEqual(originalLastUsed);
+	});
+
 	it("dedupes concurrent refresh for same account", async () => {
 		const fixture = loadFixture("openai-codex-accounts.json");
 		const accountOne = fixture.accounts[0]!;

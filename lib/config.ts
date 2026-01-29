@@ -55,6 +55,14 @@ const DEFAULT_CONFIG: PluginConfig = {
 	retryAllAccountsMaxRetries: 1,
 	tokenRefreshSkewMs: 60_000,
 	rateLimitToastDebounceMs: 60_000,
+	schedulingMode: "cache_first",
+	maxCacheFirstWaitSeconds: 60,
+	switchOnFirstRateLimit: true,
+	rateLimitDedupWindowMs: 2000,
+	rateLimitStateResetMs: 120_000,
+	defaultRetryAfterMs: 60_000,
+	maxBackoffMs: 120_000,
+	requestJitterMaxMs: 1000,
 };
 
 /**
@@ -196,6 +204,77 @@ export function getRetryAllAccountsMaxRetries(pluginConfig: PluginConfig): numbe
 		"CODEX_AUTH_RETRY_ALL_MAX_RETRIES",
 		pluginConfig.retryAllAccountsMaxRetries,
 		1,
+		{ min: 0 },
+	);
+}
+
+export function getSchedulingMode(pluginConfig: PluginConfig):
+	| "cache_first"
+	| "balance"
+	| "performance_first" {
+	const env = process.env.CODEX_AUTH_SCHEDULING_MODE;
+	if (env === "cache_first" || env === "balance" || env === "performance_first") return env;
+	return pluginConfig.schedulingMode ?? "cache_first";
+}
+
+export function getMaxCacheFirstWaitSeconds(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS",
+		pluginConfig.maxCacheFirstWaitSeconds,
+		60,
+		{ min: 0 },
+	);
+}
+
+export function getSwitchOnFirstRateLimit(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_SWITCH_ON_FIRST_RATE_LIMIT",
+		pluginConfig.switchOnFirstRateLimit,
+		true,
+	);
+}
+
+export function getRateLimitDedupWindowMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_RATE_LIMIT_DEDUP_WINDOW_MS",
+		pluginConfig.rateLimitDedupWindowMs,
+		2000,
+		{ min: 0 },
+	);
+}
+
+export function getRateLimitStateResetMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_RATE_LIMIT_STATE_RESET_MS",
+		pluginConfig.rateLimitStateResetMs,
+		120_000,
+		{ min: 0 },
+	);
+}
+
+export function getDefaultRetryAfterMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_DEFAULT_RETRY_AFTER_MS",
+		pluginConfig.defaultRetryAfterMs,
+		60_000,
+		{ min: 0 },
+	);
+}
+
+export function getMaxBackoffMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_MAX_BACKOFF_MS",
+		pluginConfig.maxBackoffMs,
+		120_000,
+		{ min: 0 },
+	);
+}
+
+export function getRequestJitterMaxMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_REQUEST_JITTER_MAX_MS",
+		pluginConfig.requestJitterMaxMs,
+		1000,
 		{ min: 0 },
 	);
 }

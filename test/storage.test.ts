@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 
+import lockfile from "proper-lockfile";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,7 +95,7 @@ describe("storage", () => {
 		expect(renameSpy).toHaveBeenCalledTimes(1);
 		const [fromPath, toPath] = renameSpy.mock.calls[0] ?? [];
 		expect(String(toPath)).toBe(storagePath);
-		expect(String(fromPath)).toMatch(/openai-codex-accounts\.json\.tmp/);
+		expect(String(fromPath)).toMatch(/openai-codex-accounts\.json\.[a-f0-9]{12}\.tmp/);
 
 		renameSpy.mockRestore();
 	});
@@ -114,5 +115,65 @@ describe("storage", () => {
 		const loaded = await loadAccounts();
 		expect(loaded).toMatchObject(fixture);
 		expect(loaded?.accounts.length).toBe(fixture.accounts.length);
+	});
+
+	it("saveAccounts merges with existing storage", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+
+		const fixture = loadFixture("openai-codex-accounts.json");
+		await saveAccounts(fixture);
+
+		const target = fixture.accounts[0]!;
+		const updatedLastUsed = target.lastUsed + 5000;
+		const update: AccountStorageV3 = {
+			version: 3,
+			accounts: [
+				{
+					...target,
+					lastUsed: updatedLastUsed,
+					rateLimitResetTimes: {
+						...target.rateLimitResetTimes,
+						"gpt-5.2-codex": (target.rateLimitResetTimes?.["gpt-5.2-codex"] ?? 0) + 1000,
+					},
+				},
+			],
+			activeIndex: fixture.activeIndex,
+			activeIndexByFamily: fixture.activeIndexByFamily,
+		};
+		await saveAccounts(update);
+
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts.length).toBe(fixture.accounts.length);
+		const merged = loaded?.accounts.find(
+			(account) =>
+				account.accountId === target.accountId &&
+				account.plan === target.plan &&
+				account.email === target.email,
+		);
+		expect(merged?.lastUsed).toBe(updatedLastUsed);
+		expect(merged?.rateLimitResetTimes?.["gpt-5.2-codex"]).toBe(
+			(target.rateLimitResetTimes?.["gpt-5.2-codex"] ?? 0) + 1000,
+		);
+	});
+
+	it("saveAccounts locks the storage file path", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+
+		const storagePath = getStoragePath();
+		const storage = loadFixture("openai-codex-accounts.json");
+		const lockSpy = vi
+			.spyOn(lockfile, "lock")
+			.mockResolvedValue(async () => undefined);
+
+		await saveAccounts(storage);
+
+		expect(lockSpy).toHaveBeenCalled();
+		expect(lockSpy.mock.calls[0]?.[0]).toBe(storagePath);
+
+		lockSpy.mockRestore();
 	});
 });

@@ -470,11 +470,18 @@ export class AccountManager {
 				};
 			});
 
-			const selectedIndex = selectHybridAccount(accountsWithMetrics, tokenTracker);
+			const currentIndex =
+				this.currentAccountIndexByFamily[family] >= 0
+					? this.currentAccountIndexByFamily[family]
+					: null;
+			const selectedIndex = selectHybridAccount(
+				accountsWithMetrics,
+				tokenTracker,
+				currentIndex,
+			);
 			if (selectedIndex !== null) {
 				const selected = this.accounts[selectedIndex];
 				if (selected) {
-					selected.lastUsed = nowMs();
 					this.currentAccountIndexByFamily[family] = selected.index;
 					return selected;
 				}
@@ -494,7 +501,6 @@ export class AccountManager {
 		if (current) {
 			clearExpiredRateLimits(current);
 			if (!isRateLimitedForFamily(current, family, model) && !this.isAccountCoolingDown(current)) {
-				current.lastUsed = nowMs();
 				return current;
 			}
 		}
@@ -513,7 +519,6 @@ export class AccountManager {
 		const account = available[this.cursor % available.length];
 		if (!account) return null;
 		this.cursor += 1;
-		account.lastUsed = nowMs();
 		return account;
 	}
 
@@ -573,6 +578,12 @@ export class AccountManager {
 	markToastShown(accountIndex: number): void {
 		this.lastToastAccountIndex = accountIndex;
 		this.lastToastTime = nowMs();
+	}
+
+	markAccountUsed(accountIndex: number): void {
+		const account = this.accounts.find((a) => a.index === accountIndex);
+		if (!account) return;
+		account.lastUsed = nowMs();
 	}
 
 	updateFromAuth(account: ManagedAccount, auth: OAuthAuthDetails): void {
