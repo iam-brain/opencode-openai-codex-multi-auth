@@ -270,6 +270,45 @@ describe("storage", () => {
 		expect(loaded?.accounts[0]?.accountId).toBe(accountOne.accountId);
 	});
 
+	it("loadAccounts remaps active index after dedupe", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		const storagePath = getStoragePath();
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		writeFileSync(
+			storagePath,
+			JSON.stringify(
+				{
+					accounts: [
+						{
+							...accountOne,
+							refreshToken: accountOne.refreshToken,
+							addedAt: 100,
+							lastUsed: 200,
+						},
+						{
+							...accountTwo,
+							refreshToken: accountOne.refreshToken,
+							addedAt: 100,
+							lastUsed: 50,
+						},
+					],
+					activeIndex: 1,
+					activeIndexByFamily: { codex: 1 },
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts).toHaveLength(1);
+		expect(loaded?.activeIndex).toBe(0);
+		expect(loaded?.activeIndexByFamily?.codex).toBe(0);
+	});
+
 	it("saveAccounts locks the storage file path", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;

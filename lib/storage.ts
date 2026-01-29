@@ -168,20 +168,55 @@ function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 	const normalizedAccounts = accountsSource
 		.map(normalizeAccountRecord)
 		.filter((a): a is AccountRecord => a !== null);
-	const { accounts } = dedupeRefreshTokens(normalizedAccounts);
-	if (accounts.length === 0) return null;
-
-	const activeIndex =
+	const activeIndexRaw =
 		typeof activeIndexSource === "number" && Number.isFinite(activeIndexSource)
 			? Math.max(0, Math.floor(activeIndexSource))
 			: 0;
-	const clampedActiveIndex =
-		accounts.length > 0 ? Math.min(activeIndex, accounts.length - 1) : 0;
+	const activeIndexClamped =
+		normalizedAccounts.length > 0
+			? Math.min(activeIndexRaw, normalizedAccounts.length - 1)
+			: 0;
+	const activeCandidate = normalizedAccounts[activeIndexClamped] ?? null;
 
-	const activeIndexByFamily =
-		activeIndexByFamilySource && typeof activeIndexByFamilySource === "object"
+	const activeIndexByFamilyRaw =
+		(activeIndexByFamilySource && typeof activeIndexByFamilySource === "object"
 			? (activeIndexByFamilySource as AccountStorageV3["activeIndexByFamily"])
-			: {};
+			: {}) ?? {};
+	const activeCandidatesByFamily: Record<string, AccountRecord> = {};
+	for (const [family, index] of Object.entries(activeIndexByFamilyRaw)) {
+		if (typeof index !== "number" || !Number.isFinite(index)) continue;
+		const clamped =
+			normalizedAccounts.length > 0
+				? Math.min(Math.max(0, Math.floor(index)), normalizedAccounts.length - 1)
+				: 0;
+		const candidate = normalizedAccounts[clamped];
+		if (candidate) activeCandidatesByFamily[family] = candidate;
+	}
+
+	const { accounts } = dedupeRefreshTokens(normalizedAccounts);
+	if (accounts.length === 0) return null;
+
+	const mappedActiveIndex = activeCandidate
+		? findAccountMatchIndex(accounts, {
+				accountId: activeCandidate.accountId,
+				plan: activeCandidate.plan,
+				email: activeCandidate.email,
+			})
+		: -1;
+	const fallbackActiveIndex =
+		accounts.length > 0 ? Math.min(activeIndexRaw, accounts.length - 1) : 0;
+	const clampedActiveIndex =
+		mappedActiveIndex >= 0 ? mappedActiveIndex : fallbackActiveIndex;
+
+	const activeIndexByFamily: AccountStorageV3["activeIndexByFamily"] = {};
+	for (const [family, candidate] of Object.entries(activeCandidatesByFamily)) {
+		const mappedIndex = findAccountMatchIndex(accounts, {
+			accountId: candidate.accountId,
+			plan: candidate.plan,
+			email: candidate.email,
+		});
+		activeIndexByFamily[family] = mappedIndex >= 0 ? mappedIndex : clampedActiveIndex;
+	}
 
 	return {
 		version: 3,
