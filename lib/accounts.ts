@@ -10,7 +10,7 @@ import type {
 	RateLimitStateV3,
 	TokenResult,
 } from "./types.js";
-import { loadAccounts, saveAccounts } from "./storage.js";
+import { backupAccountsFile, loadAccounts, saveAccounts } from "./storage.js";
 import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
 import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
 import { findAccountMatchIndex } from "./account-matching.js";
@@ -114,11 +114,24 @@ export function formatWaitTime(ms: number): string {
 	return `${seconds}s`;
 }
 
+function hasCompleteIdentity(account: {
+	accountId?: string;
+	email?: string;
+	plan?: string;
+}): boolean {
+	return Boolean(account.accountId && account.email && account.plan);
+}
+
+function isAccountEnabled(account: { enabled?: boolean }): boolean {
+	return account.enabled !== false;
+}
+
 export interface ManagedAccount {
 	index: number;
 	accountId?: string;
 	email?: string;
 	plan?: string;
+	enabled?: boolean;
 	refreshToken: string;
 	access?: string;
 	expires?: number;
@@ -159,6 +172,58 @@ function isRateLimitedForFamily(
 	return isRateLimitedForQuotaKey(account, baseKey);
 }
 
+async function migrateLegacyAccounts(storage: AccountStorageV3): Promise<AccountStorageV3> {
+	const needsMigration = storage.accounts.some((record) => !hasCompleteIdentity(record));
+	if (!needsMigration) return storage;
+
+	let updated = false;
+	const migratedAccounts: AccountStorageV3["accounts"] = [];
+
+	for (const record of storage.accounts) {
+		if (hasCompleteIdentity(record)) {
+			migratedAccounts.push(record);
+			continue;
+		}
+		if (!record.refreshToken) {
+			migratedAccounts.push(record);
+			continue;
+		}
+		const result = await refreshAccessToken(record.refreshToken);
+		if (result.type !== "success") {
+			migratedAccounts.push(record);
+			continue;
+		}
+		const token = result.idToken ?? result.access;
+		const accountId = extractAccountId(token);
+		const email = sanitizeEmail(extractAccountEmail(token));
+		const plan = extractAccountPlan(token);
+		if (!accountId || !email || !plan) {
+			migratedAccounts.push(record);
+			continue;
+		}
+
+		updated = true;
+		migratedAccounts.push({
+			...record,
+			accountId,
+			email,
+			plan,
+			refreshToken: result.refresh,
+		});
+	}
+
+	if (!updated) return storage;
+	const backupPath = await backupAccountsFile();
+	if (!backupPath) return storage;
+
+	const migrated: AccountStorageV3 = {
+		...storage,
+		accounts: migratedAccounts,
+	};
+	await saveAccounts(migrated);
+	return migrated;
+}
+
 function mergeAccountRecords(
 	existing: AccountStorageV3["accounts"],
 	incoming: AccountStorageV3["accounts"],
@@ -171,9 +236,6 @@ function mergeAccountRecords(
 	}));
 
 	for (const candidate of incoming) {
-		if (!candidate.accountId || !candidate.email || !candidate.plan) {
-			continue;
-		}
 		const matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
@@ -204,6 +266,9 @@ function mergeAccountRecords(
 		}
 		if (!updated.plan && candidate.plan) {
 			updated.plan = candidate.plan;
+		}
+		if (typeof candidate.enabled === "boolean" && candidate.enabled !== updated.enabled) {
+			updated.enabled = candidate.enabled;
 		}
 
 		if (
@@ -282,7 +347,8 @@ export class AccountManager {
 
 	static async loadFromDisk(authFallback?: OAuthAuthDetails): Promise<AccountManager> {
 		const stored = await loadAccounts();
-		return new AccountManager(authFallback, stored);
+		const migrated = stored ? await migrateLegacyAccounts(stored) : stored;
+		return new AccountManager(authFallback, migrated);
 	}
 
 	constructor(authFallback?: OAuthAuthDetails, stored?: AccountStorageV3 | null) {
@@ -304,7 +370,6 @@ export class AccountManager {
 			this.accounts = stored.accounts
 				.map((record, index): ManagedAccount | null => {
 					if (!record?.refreshToken) return null;
-					if (!record.accountId || !record.email || !record.plan) return null;
 					const matchesFallback = !!authFallback && index === fallbackMatchIndex;
 
 					return {
@@ -312,6 +377,7 @@ export class AccountManager {
 						accountId: matchesFallback ? fallbackAccountId ?? record.accountId : record.accountId,
 						email: matchesFallback ? fallbackEmail ?? record.email : sanitizeEmail(record.email),
 						plan: matchesFallback ? fallbackPlan ?? record.plan : record.plan,
+						enabled: record.enabled,
 						refreshToken: matchesFallback && authFallback ? authFallback.refresh : record.refreshToken,
 						access: matchesFallback && authFallback ? authFallback.access : undefined,
 						expires: matchesFallback && authFallback ? authFallback.expires : undefined,
@@ -382,7 +448,9 @@ export class AccountManager {
 	}
 
 	getAccountCount(): number {
-		return this.accounts.length;
+		return this.accounts.filter(
+			(account) => hasCompleteIdentity(account) && isAccountEnabled(account),
+		).length;
 	}
 
 	getAccountsSnapshot(): ManagedAccount[] {
@@ -444,7 +512,10 @@ export class AccountManager {
 			const healthTracker = getHealthTracker();
 			const tokenTracker = getTokenTracker();
 
-			const accountsWithMetrics = this.accounts.map((acc) => {
+			const eligibleAccounts = this.accounts.filter(
+				(acc) => hasCompleteIdentity(acc) && isAccountEnabled(acc),
+			);
+			const accountsWithMetrics = eligibleAccounts.map((acc) => {
 				clearExpiredRateLimits(acc);
 				return {
 					index: acc.index,
@@ -483,7 +554,7 @@ export class AccountManager {
 		}
 
 		const current = this.getCurrentAccountForFamily(family);
-		if (current) {
+		if (current && hasCompleteIdentity(current) && isAccountEnabled(current)) {
 			clearExpiredRateLimits(current);
 			if (!isRateLimitedForFamily(current, family, model) && !this.isAccountCoolingDown(current)) {
 				return current;
@@ -498,7 +569,12 @@ export class AccountManager {
 	getNextForFamily(family: ModelFamily, model?: string | null): ManagedAccount | null {
 		const available = this.accounts.filter((a) => {
 			clearExpiredRateLimits(a);
-			return !isRateLimitedForFamily(a, family, model) && !this.isAccountCoolingDown(a);
+			return (
+				hasCompleteIdentity(a) &&
+				isAccountEnabled(a) &&
+				!isRateLimitedForFamily(a, family, model) &&
+				!this.isAccountCoolingDown(a)
+			);
 		});
 		if (available.length === 0) return null;
 		const account = available[this.cursor % available.length];

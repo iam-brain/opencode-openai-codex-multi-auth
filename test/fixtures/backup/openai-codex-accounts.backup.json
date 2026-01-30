@@ -24,6 +24,15 @@
       "rateLimitResetTimes": {
         "gpt-5.2-codex": 1769553200000
       }
+    },
+    {
+      "refreshToken": "rt_C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2.w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9N0q1",
+      "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+      "email": "user.two@example.com",
+      "plan": "Team",
+      "addedAt": 1769551200000,
+      "lastUsed": 1769552200000,
+      "lastSwitchReason": "rate-limit"
     }
   ],
   "activeIndex": 0,

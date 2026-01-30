@@ -131,6 +131,7 @@ export interface AccountRecordV3 {
 	accountId?: string;
 	email?: string;
 	plan?: string;
+	enabled?: boolean;
 	addedAt: number;
 	lastUsed: number;
 	lastSwitchReason?: "rate-limit" | "initial" | "rotation";

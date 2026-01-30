@@ -1,14 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import {
+	copyFileSync,
+	mkdtempSync,
+	rmSync,
+	readFileSync,
+	mkdirSync,
+	readdirSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { vi } from "vitest";
 
 import { AccountManager } from "../lib/accounts.js";
+import * as authModule from "../lib/auth/auth.js";
 import { JWT_CLAIM_PATH } from "../lib/constants.js";
-import { loadAccounts, saveAccounts } from "../lib/storage.js";
+import { getStoragePath, loadAccounts, saveAccounts } from "../lib/storage.js";
 import type { AccountStorageV3, OAuthAuthDetails } from "../lib/types.js";
 import type { ModelFamily } from "../lib/prompts/codex.js";
 
@@ -35,6 +44,17 @@ function createJwt(claims: Record<string, unknown>): string {
 
 const fixture = loadFixture("openai-codex-accounts.json");
 const fixtureAccounts = fixture.accounts;
+const backupFixtureUrl = new URL(
+	"./fixtures/backup/openai-codex-accounts.backup.json",
+	import.meta.url,
+);
+
+function seedStorageFromBackup(root: string): AccountStorageV3 {
+	const storagePath = join(root, "opencode", "openai-codex-accounts.json");
+	mkdirSync(join(root, "opencode"), { recursive: true });
+	copyFileSync(backupFixtureUrl, storagePath);
+	return JSON.parse(readFileSync(storagePath, "utf-8")) as AccountStorageV3;
+}
 
 function createStorage(count: number): AccountStorageV3 {
 	const accounts = fixtureAccounts.slice(0, count).map((account) => ({
@@ -85,6 +105,7 @@ describe("AccountManager", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
+			seedStorageFromBackup(root);
 			const fixture = loadFixture("openai-codex-accounts.json");
 			const accountOne = fixture.accounts[0]!;
 			const accountTwo = fixture.accounts[1]!;
@@ -92,7 +113,11 @@ describe("AccountManager", () => {
 				...fixture,
 				accounts: [accountOne],
 			};
-			await saveAccounts(initialStorage);
+			writeFileSync(
+				getStoragePath(),
+				JSON.stringify(initialStorage, null, 2),
+				"utf-8",
+			);
 
 			const manager = await AccountManager.loadFromDisk(createAuth(accountOne.refreshToken));
 
@@ -159,6 +184,7 @@ describe("AccountManager", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
+			seedStorageFromBackup(root);
 			const fixture = loadFixture("openai-codex-accounts.json");
 			const accountOne = fixture.accounts[0]!;
 			const updatedToken = `${accountOne.refreshToken}-new`;
@@ -194,15 +220,133 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("migrates legacy accounts and writes a backup", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+			const base = seedStorageFromBackup(root);
+			const original = base.accounts[0]!;
+			const legacy = {
+				...original,
+				email: undefined,
+				plan: undefined,
+			};
+			const storagePath = getStoragePath();
+			writeFileSync(
+				storagePath,
+				JSON.stringify(
+					{
+						...base,
+						accounts: [legacy, ...base.accounts.slice(1)],
+					},
+					null,
+					2,
+				),
+				"utf-8",
+			);
+
+			const idToken = createJwt({
+				[JWT_CLAIM_PATH]: {
+					chatgpt_account_id: original.accountId,
+					chatgpt_plan_type: original.plan?.toLowerCase(),
+					email: original.email,
+				},
+			});
+			const refreshSpy = vi
+				.spyOn(authModule, "refreshAccessToken")
+				.mockResolvedValue({
+					type: "success",
+					access: "access",
+					refresh: `${original.refreshToken}-new`,
+					expires: Date.now() + 60_000,
+					idToken,
+				});
+
+			await AccountManager.loadFromDisk();
+
+			const migrated = await loadAccounts();
+			const updated = migrated?.accounts.find(
+				(account) => account.refreshToken === `${original.refreshToken}-new`,
+			);
+			expect(updated?.accountId).toBe(original.accountId);
+			expect(updated?.email).toBe(original.email);
+			expect(updated?.plan).toBe(original.plan);
+			expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+			const backups = readdirSync(join(root, "opencode")).filter((name) =>
+				name.startsWith("openai-codex-accounts.json.bak-"),
+			);
+			expect(backups).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps legacy accounts but skips them for selection", () => {
+		const legacyStorage: AccountStorageV3 = {
+			...fixture,
+			accounts: [
+				{
+					...fixtureAccounts[0]!,
+					email: undefined,
+					plan: undefined,
+				},
+				fixtureAccounts[1]!,
+				fixtureAccounts[2]!,
+			],
+		};
+		const manager = new AccountManager(undefined, legacyStorage);
+		const snapshot = manager.getAccountsSnapshot();
+		expect(snapshot).toHaveLength(3);
+
+		const selected = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+		expect(selected?.accountId).toBe(fixtureAccounts[1]!.accountId);
+	});
+
+	it("getAccountCount ignores legacy accounts missing identity", () => {
+		const legacyStorage: AccountStorageV3 = {
+			...fixture,
+			accounts: [
+				{
+					...fixtureAccounts[0]!,
+					email: undefined,
+					plan: undefined,
+				},
+				fixtureAccounts[1]!,
+			],
+		};
+		const manager = new AccountManager(undefined, legacyStorage);
+		expect(manager.getAccountCount()).toBe(1);
+	});
+
+	it("skips disabled accounts for selection", () => {
+		const storage: AccountStorageV3 = {
+			...fixture,
+			accounts: [
+				{ ...fixtureAccounts[0]!, enabled: false },
+				fixtureAccounts[1]!,
+				fixtureAccounts[2]!,
+			],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		const manager = new AccountManager(undefined, storage);
+		const selected = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+		expect(selected?.accountId).toBe(fixtureAccounts[1]!.accountId);
+	});
+
 	it("preserves plan-specific entries when fallback matches accountId", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
-			const fixture = loadFixture("openai-codex-accounts-plan.json");
-			const accountPlus = fixture.accounts[0]!;
-			const accountTeam = fixture.accounts[1]!;
+			const base = seedStorageFromBackup(root);
+			const accountPlus = base.accounts[0]!;
+			const accountTeam = base.accounts[1]!;
 			const storage: AccountStorageV3 = {
-				...fixture,
+				...base,
 				accounts: [accountPlus, accountTeam],
 			};
 			await saveAccounts(storage);
@@ -232,6 +376,7 @@ describe("AccountManager", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
+			seedStorageFromBackup(root);
 			const fixture = loadFixture("openai-codex-accounts.json");
 			const accountOne = fixture.accounts[1]!;
 			const accountTwo = fixture.accounts[2]!;
@@ -252,8 +397,12 @@ describe("AccountManager", () => {
 				createAuth(accountOne.refreshToken, access),
 			);
 			const snapshot = manager.getAccountsSnapshot();
-			const first = snapshot.find((account) => account.email === accountOne.email);
-			const second = snapshot.find((account) => account.email === accountTwo.email);
+			const first = snapshot.find(
+				(account) => account.email === accountOne.email && account.plan === accountOne.plan,
+			);
+			const second = snapshot.find(
+				(account) => account.email === accountTwo.email && account.plan === accountTwo.plan,
+			);
 
 			expect(first?.refreshToken).toBe(accountOne.refreshToken);
 			expect(second?.refreshToken).toBe(accountTwo.refreshToken);
@@ -266,11 +415,11 @@ describe("AccountManager", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
-			const fixture = loadFixture("openai-codex-accounts-plan.json");
-			const accountPlus = fixture.accounts[0]!;
-			const accountTeam = fixture.accounts[1]!;
+			const base = seedStorageFromBackup(root);
+			const accountPlus = base.accounts[0]!;
+			const accountTeam = base.accounts[1]!;
 			const storage: AccountStorageV3 = {
-				...fixture,
+				...base,
 				accounts: [accountPlus, accountTeam],
 			};
 			await saveAccounts(storage);
@@ -288,7 +437,7 @@ describe("AccountManager", () => {
 			const plus = snapshot.find((account) => account.plan === "Plus");
 			const team = snapshot.find((account) => account.plan === "Team");
 
-			expect(snapshot).toHaveLength(2);
+			expect(snapshot).toHaveLength(3);
 			expect(plus?.refreshToken).toBe(accountPlus.refreshToken);
 			expect(team?.refreshToken).toBe(accountTeam.refreshToken);
 		} finally {

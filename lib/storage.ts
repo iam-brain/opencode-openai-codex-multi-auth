@@ -63,6 +63,17 @@ export function getStoragePath(): string {
 	return join(getOpencodeConfigDir(), STORAGE_FILE);
 }
 
+export async function backupAccountsFile(): Promise<string | null> {
+	const filePath = getStoragePath();
+	if (!existsSync(filePath)) return null;
+	const backupPath = `${filePath}.bak-${Date.now()}`;
+	await withFileLock(filePath, async () => {
+		if (!existsSync(filePath)) return;
+		await fs.copyFile(filePath, backupPath);
+	});
+	return backupPath;
+}
+
 function getLegacyStoragePath(): string {
 	return join(getLegacyOpencodeDir(), STORAGE_FILE);
 }
@@ -103,8 +114,8 @@ function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 					? record.chatgpt_plan_type
 					: undefined;
 		const plan = typeof planRaw === "string" && planRaw.trim() ? planRaw : undefined;
+		const enabled = typeof record.enabled === "boolean" ? record.enabled : undefined;
 
-		if (!accountId || !email || !plan) return null;
 
 		const addedAt =
 			typeof record.addedAt === "number" && Number.isFinite(record.addedAt)
@@ -135,6 +146,7 @@ function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 			accountId,
 			email,
 			plan,
+			enabled,
 			addedAt: Math.max(0, Math.floor(addedAt)),
 			lastUsed: Math.max(0, Math.floor(lastUsed)),
 			lastSwitchReason:
@@ -277,10 +289,6 @@ function mergeAccounts(
 	let changed = false;
 
 	for (const candidate of incoming) {
-		if (!candidate.accountId || !candidate.email || !candidate.plan) {
-			changed = true;
-			continue;
-		}
 		const matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
@@ -310,6 +318,10 @@ function mergeAccounts(
 		}
 		if (!updated.plan && candidate.plan) {
 			updated.plan = candidate.plan;
+			didUpdate = true;
+		}
+		if (typeof candidate.enabled === "boolean" && candidate.enabled !== updated.enabled) {
+			updated.enabled = candidate.enabled;
 			didUpdate = true;
 		}
 

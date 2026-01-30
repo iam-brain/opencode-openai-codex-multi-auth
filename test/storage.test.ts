@@ -1,7 +1,14 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 
 import lockfile from "proper-lockfile";
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdtempSync,
+	mkdirSync,
+	writeFileSync,
+	readFileSync,
+} from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +25,15 @@ function loadFixture(fileName: string): AccountStorageV3 {
 const fixture = loadFixture("openai-codex-accounts.json");
 const accountOne = fixture.accounts[0]!;
 const accountTwo = fixture.accounts[1]!;
+const backupFixtureUrl = new URL(
+	"./fixtures/backup/openai-codex-accounts.backup.json",
+	import.meta.url,
+);
+
+function seedStorageFromBackup(storagePath: string): AccountStorageV3 {
+	copyFileSync(backupFixtureUrl, storagePath);
+	return JSON.parse(readFileSync(storagePath, "utf-8")) as AccountStorageV3;
+}
 
 describe("storage", () => {
 	const originalXdg = process.env.XDG_CONFIG_HOME;
@@ -36,13 +52,14 @@ describe("storage", () => {
 
 		const storagePath = getStoragePath();
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		const base = seedStorageFromBackup(storagePath);
 		writeFileSync(
 			storagePath,
 			JSON.stringify(
 				{
 					accounts: [
 						{
-							...accountOne,
+							...base.accounts[0]!,
 							addedAt: 123,
 							lastUsed: 456,
 						},
@@ -68,13 +85,14 @@ describe("storage", () => {
 
 		const storagePath = getStoragePath();
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		const base = seedStorageFromBackup(storagePath);
 		writeFileSync(
 			storagePath,
 			JSON.stringify([
 				{
-					...accountOne,
-					addedAt: accountOne.addedAt,
-					lastUsed: accountOne.lastUsed,
+					...base.accounts[0]!,
+					addedAt: base.accounts[0]!.addedAt,
+					lastUsed: base.accounts[0]!.lastUsed,
 				},
 			], null, 2),
 			"utf-8",
@@ -87,24 +105,25 @@ describe("storage", () => {
 		expect(typeof loaded?.accounts[0]?.lastUsed).toBe("number");
 	});
 
-	it("loadAccounts drops entries missing identity fields", async () => {
+	it("loadAccounts preserves legacy entries missing identity fields", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
 
 		const storagePath = getStoragePath();
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		const base = seedStorageFromBackup(storagePath);
 		writeFileSync(
 			storagePath,
 			JSON.stringify(
 				{
 					accounts: [
 						{
-							...accountOne,
+							...base.accounts[0]!,
 							addedAt: 100,
 							lastUsed: 200,
 						},
 						{
-							...accountTwo,
+							...base.accounts[1]!,
 							email: undefined,
 							plan: undefined,
 							addedAt: 100,
@@ -121,8 +140,9 @@ describe("storage", () => {
 		);
 
 		const loaded = await loadAccounts();
-		expect(loaded?.accounts).toHaveLength(1);
+		expect(loaded?.accounts).toHaveLength(2);
 		expect(loaded?.accounts[0]?.accountId).toBe(accountOne.accountId);
+		expect(loaded?.accounts[1]?.email).toBeUndefined();
 	});
 
 	it("saveAccounts writes via temp file and rename", async () => {
@@ -131,6 +151,7 @@ describe("storage", () => {
 
 		mkdirSync(join(root, "opencode"), { recursive: true });
 		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
 		const storage = loadFixture("openai-codex-accounts.json");
 
 		const renameSpy = vi.spyOn(fsPromises, "rename");
@@ -149,6 +170,7 @@ describe("storage", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		seedStorageFromBackup(getStoragePath());
 
 		await saveAccounts(fixture);
 
@@ -165,6 +187,7 @@ describe("storage", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		seedStorageFromBackup(getStoragePath());
 
 		const fixture = loadFixture("openai-codex-accounts.json");
 		await saveAccounts(fixture);
@@ -206,6 +229,7 @@ describe("storage", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		seedStorageFromBackup(getStoragePath());
 
 		await saveAccounts({
 			...fixture,
@@ -238,6 +262,7 @@ describe("storage", () => {
 
 		const storagePath = getStoragePath();
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		seedStorageFromBackup(storagePath);
 		writeFileSync(
 			storagePath,
 			JSON.stringify(
@@ -276,6 +301,7 @@ describe("storage", () => {
 
 		const storagePath = getStoragePath();
 		mkdirSync(join(root, "opencode"), { recursive: true });
+		seedStorageFromBackup(storagePath);
 		writeFileSync(
 			storagePath,
 			JSON.stringify(
@@ -315,6 +341,7 @@ describe("storage", () => {
 		mkdirSync(join(root, "opencode"), { recursive: true });
 
 		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
 		const storage = loadFixture("openai-codex-accounts.json");
 		const lockSpy = vi.spyOn(lockfile, "lock").mockImplementation(async (path) => {
 			expect(existsSync(path)).toBe(true);
