@@ -135,7 +135,7 @@ identity fields. If issues are found, it prompts to repair before continuing.
 - Corrupt files are quarantined and replaced with an empty accounts file.
 - Corrupt or unrepairable entries are removed and written to a quarantine file.
 - Auto-repair runs once on the first request if no eligible accounts remain; failures are
-  quarantined and the request retries the next account.
+  quarantined and the request retries the next eligible account if one exists.
 
 Quarantine files live next to the accounts file with a `.quarantine-<timestamp>.json` suffix
 and include the reason and records.

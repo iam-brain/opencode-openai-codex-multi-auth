@@ -121,7 +121,8 @@ opencode auth login
 
 **Symptoms:**
 - Login prompt mentions repair and quarantine
-- Toast or CLI output references a `.quarantine-<timestamp>.json` file
+- Toast or CLI output references a `.quarantine-<timestamp>.json` file stored next to
+  `~/.config/opencode/openai-codex-accounts.json`
 
 **Cause:**
 - The accounts file is corrupt, or legacy entries could not be repaired
