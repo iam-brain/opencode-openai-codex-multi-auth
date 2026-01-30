@@ -141,6 +141,7 @@ export interface ManagedAccount {
 	plan?: string;
 	enabled?: boolean;
 	refreshToken: string;
+	originalRefreshToken: string;
 	access?: string;
 	expires?: number;
 	addedAt: number;
@@ -234,7 +235,7 @@ async function migrateLegacyAccounts(storage: AccountStorageV3): Promise<Account
 
 function mergeAccountRecords(
 	existing: AccountStorageV3["accounts"],
-	incoming: AccountStorageV3["accounts"],
+	incoming: ManagedAccount[],
 ): AccountStorageV3["accounts"] {
 	const merged = existing.map((account) => ({
 		...account,
@@ -251,10 +252,19 @@ function mergeAccountRecords(
 		});
 		if (matchIndex < 0) {
 			merged.push({
-				...candidate,
+				refreshToken: candidate.refreshToken,
+				accountId: candidate.accountId,
+				email: candidate.email,
+				plan: candidate.plan,
+				enabled: candidate.enabled,
+				addedAt: candidate.addedAt,
+				lastUsed: candidate.lastUsed,
+				lastSwitchReason: candidate.lastSwitchReason,
 				rateLimitResetTimes: candidate.rateLimitResetTimes
 					? { ...candidate.rateLimitResetTimes }
 					: undefined,
+				coolingDownUntil: candidate.coolingDownUntil,
+				cooldownReason: candidate.cooldownReason,
 			});
 			continue;
 		}
@@ -264,7 +274,9 @@ function mergeAccountRecords(
 		const updated = { ...current };
 
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
-			updated.refreshToken = candidate.refreshToken;
+			if (candidate.refreshToken !== candidate.originalRefreshToken) {
+				updated.refreshToken = candidate.refreshToken;
+			}
 		}
 		if (!updated.accountId && candidate.accountId) {
 			updated.accountId = candidate.accountId;
@@ -386,8 +398,9 @@ export class AccountManager {
 						accountId: matchesFallback ? fallbackAccountId ?? record.accountId : record.accountId,
 						email: matchesFallback ? fallbackEmail ?? record.email : sanitizeEmail(record.email),
 						plan: matchesFallback ? fallbackPlan ?? record.plan : record.plan,
-					enabled: record.enabled !== false,
+						enabled: record.enabled !== false,
 						refreshToken: matchesFallback && authFallback ? authFallback.refresh : record.refreshToken,
+						originalRefreshToken: record.refreshToken,
 						access: matchesFallback && authFallback ? authFallback.access : undefined,
 						expires: matchesFallback && authFallback ? authFallback.expires : undefined,
 						addedAt: clampNonNegativeInt(record.addedAt, baseNow),
@@ -411,6 +424,7 @@ export class AccountManager {
 					plan: fallbackPlan,
 					enabled: true,
 					refreshToken: authFallback.refresh,
+					originalRefreshToken: authFallback.refresh,
 					access: authFallback.access,
 					expires: authFallback.expires,
 					addedAt: now,
@@ -443,6 +457,7 @@ export class AccountManager {
 					plan: fallbackPlan,
 					enabled: true,
 					refreshToken: authFallback.refresh,
+					originalRefreshToken: authFallback.refresh,
 					access: authFallback.access,
 					expires: authFallback.expires,
 					addedAt: now,
@@ -895,7 +910,7 @@ export class AccountManager {
 		try {
 			const latest = await loadAccounts();
 			if (latest?.accounts && latest.accounts.length > 0) {
-				accountsToSave = mergeAccountRecords(latest.accounts, snapshot.accounts);
+				accountsToSave = mergeAccountRecords(latest.accounts, this.accounts);
 			}
 		} catch {
 			accountsToSave = snapshot.accounts;
@@ -909,6 +924,11 @@ export class AccountManager {
 		};
 
 		await saveAccounts(storage);
+
+		// Update originalRefreshToken to reflect saved state
+		for (const account of this.accounts) {
+			account.originalRefreshToken = account.refreshToken;
+		}
 	}
 
 	getStorageSnapshot(): AccountStorageV3 {
