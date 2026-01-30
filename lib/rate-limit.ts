@@ -61,13 +61,8 @@ export function calculateBackoffMs(
 	options: Pick<RateLimitTrackerOptions, "defaultRetryMs" | "maxBackoffMs" | "jitterMaxMs">,
 ): number {
 	const base = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : options.defaultRetryMs;
-	let multiplier = 1;
-	if (reason === "capacity" || reason === "rate-limit") {
-		multiplier = Math.min(6, Math.max(1, attempt));
-	} else if (reason === "quota") {
-		multiplier = Math.min(12, Math.max(1, attempt));
-	}
-	let delay = base * multiplier;
+	const pow = Math.max(0, Math.floor(attempt) - 1);
+	let delay = base * Math.pow(2, pow);
 	if (options.maxBackoffMs > 0) delay = Math.min(delay, options.maxBackoffMs);
 	if (options.jitterMaxMs > 0) {
 		delay += Math.floor(Math.random() * options.jitterMaxMs);

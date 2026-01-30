@@ -4,6 +4,7 @@ export function findAccountMatchIndex(
 	accounts: AccountRecordV3[],
 	candidate: { accountId?: string; plan?: string; email?: string },
 ): number {
+	// Strict identity match: accountId + email + plan. Email alone is insufficient.
 	const accountId = candidate.accountId?.trim();
 	const plan = candidate.plan?.trim();
 	const email = candidate.email?.trim();

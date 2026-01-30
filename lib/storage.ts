@@ -541,6 +541,22 @@ export async function loadAccounts(): Promise<AccountStorageV3 | null> {
 	}
 }
 
+export function toggleAccountEnabled(
+	storage: AccountStorageV3,
+	index: number,
+): AccountStorageV3 | null {
+	if (!storage?.accounts) return null;
+	if (!Number.isFinite(index)) return null;
+	const targetIndex = Math.floor(index);
+	if (targetIndex < 0 || targetIndex >= storage.accounts.length) return null;
+	const accounts = storage.accounts.map((account, idx) => {
+		if (idx !== targetIndex) return account;
+		const enabled = account.enabled === false ? true : false;
+		return { ...account, enabled };
+	});
+	return { ...storage, accounts };
+}
+
 export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
 	const filePath = getStoragePath();
 	debug(`[SaveAccounts] Saving to ${filePath} with ${storage.accounts.length} accounts`);

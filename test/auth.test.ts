@@ -11,7 +11,7 @@ import {
 	REDIRECT_URI,
 	SCOPE,
 } from '../lib/auth/auth.js';
-import { ProactiveRefreshQueue } from '../lib/refresh-queue.js';
+import { ProactiveRefreshQueue, createRefreshScheduler } from '../lib/refresh-queue.js';
 import { createJwt } from './helpers/jwt.js';
 
 type CallbackFixture = {
@@ -118,16 +118,42 @@ describe('Auth Module', () => {
 		});
 	});
 
+	describe('fixture alignment', () => {
+		it('should align hydration entries to base accounts', () => {
+			const accounts = loadFixture<AccountsFixture>('openai-codex-accounts.json');
+			const hydration = loadFixture<HydrationFixture>('oauth-hydration.json');
+
+			const accountTokens = accounts.accounts.map((account) => account.refreshToken).sort();
+			const hydrationTokens = hydration.tokens.map((token) => token.refreshToken).sort();
+
+			expect(hydrationTokens).toEqual(accountTokens);
+		});
+	});
+
 	describe('decodeJWT', () => {
 		it('should decode valid JWT token', () => {
-			// Create a simple JWT token: header.payload.signature
-			const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64');
-			const payload = Buffer.from(JSON.stringify({ sub: '1234567890', name: 'Test User' })).toString('base64');
+			const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+			const payloadObject = { v: '">' };
+			const payload = Buffer.from(JSON.stringify(payloadObject)).toString('base64url');
 			const signature = 'fake-signature';
 			const token = `${header}.${payload}.${signature}`;
 
+			expect(payload).toMatch(/[-_]/);
+
 			const decoded = decodeJWT(token);
-			expect(decoded).toEqual({ sub: '1234567890', name: 'Test User' });
+			expect(decoded).toEqual(payloadObject);
+		});
+
+		it('should reject non-url-safe base64 payloads', () => {
+			const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64');
+			const payload = Buffer.from(JSON.stringify({ v: '">' })).toString('base64');
+			const signature = 'fake-signature';
+			const token = `${header}.${payload}.${signature}`;
+
+			expect(payload).toMatch(/[+/]/);
+
+			const decoded = decodeJWT(token);
+			expect(decoded).toBeNull();
 		});
 
 		it('should decode JWT with ChatGPT account info', () => {
@@ -263,6 +289,51 @@ describe('Auth Module', () => {
 			expect(maxActive).toBe(1);
 			expect(first.type).toBe('success');
 			expect(second.type).toBe('success');
+		});
+
+		it('refresh scheduler enqueues tasks on interval', async () => {
+			vi.useFakeTimers();
+			try {
+				const now = 1_000_000;
+				const queue = new ProactiveRefreshQueue({
+					bufferMs: 60_000,
+					intervalMs: 0,
+					now: () => now,
+				});
+				const refreshFn = vi.fn(async () => ({
+					type: 'success' as const,
+					access: 'access',
+					refresh: 'refresh',
+					expires: now + 60_000,
+				}));
+				const getTasks = vi.fn(() => [
+					{
+						key: 'account-1',
+						expires: now + 30_000,
+						refresh: () => refreshFn(),
+					},
+				]);
+				const enqueueSpy = vi.spyOn(queue, 'enqueue');
+				const scheduler = createRefreshScheduler({
+					intervalMs: 1000,
+					queue,
+					getTasks,
+				});
+
+				scheduler.start();
+				expect(enqueueSpy).toHaveBeenCalledTimes(1);
+				expect(getTasks).toHaveBeenCalledTimes(1);
+
+				vi.advanceTimersByTime(1000);
+				expect(enqueueSpy).toHaveBeenCalledTimes(2);
+				expect(getTasks).toHaveBeenCalledTimes(2);
+
+				scheduler.stop();
+				vi.advanceTimersByTime(2000);
+				expect(enqueueSpy).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });

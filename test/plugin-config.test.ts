@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadPluginConfig, getCodexMode } from '../lib/config.js';
+import {
+	loadPluginConfig,
+	getCodexMode,
+	getSchedulingMode,
+	getMaxCacheFirstWaitSeconds,
+} from '../lib/config.js';
 import type { PluginConfig } from '../lib/types.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -18,18 +23,28 @@ vi.mock('node:fs', async () => {
 describe('Plugin Configuration', () => {
 	const mockExistsSync = vi.mocked(fs.existsSync);
 	const mockReadFileSync = vi.mocked(fs.readFileSync);
-	let originalEnv: string | undefined;
+	const trackedEnvVars = [
+		'CODEX_MODE',
+		'CODEX_AUTH_SCHEDULING_MODE',
+		'CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS',
+	] as const;
+	let originalEnv: Record<string, string | undefined>;
 
 	beforeEach(() => {
-		originalEnv = process.env.CODEX_MODE;
+		originalEnv = Object.fromEntries(
+			trackedEnvVars.map((name) => [name, process.env[name]]),
+		) as Record<string, string | undefined>;
 		vi.clearAllMocks();
 	});
 
 	afterEach(() => {
-		if (originalEnv === undefined) {
-			delete process.env.CODEX_MODE;
-		} else {
-			process.env.CODEX_MODE = originalEnv;
+		for (const name of trackedEnvVars) {
+			const value = originalEnv[name];
+			if (value === undefined) {
+				delete process.env[name];
+			} else {
+				process.env[name] = value;
+			}
 		}
 	});
 
@@ -163,6 +178,63 @@ describe('Plugin Configuration', () => {
 			const result = getCodexMode(config);
 
 			expect(result).toBe(true);
+		});
+	});
+
+	describe('getSchedulingMode', () => {
+		it('should prioritize env var when valid', () => {
+			process.env.CODEX_AUTH_SCHEDULING_MODE = 'balance';
+			const config: PluginConfig = { schedulingMode: 'cache_first' };
+
+			const result = getSchedulingMode(config);
+
+			expect(result).toBe('balance');
+		});
+
+		it('should fall back to config when env var invalid', () => {
+			process.env.CODEX_AUTH_SCHEDULING_MODE = 'invalid';
+			const config: PluginConfig = { schedulingMode: 'performance_first' };
+
+			const result = getSchedulingMode(config);
+
+			expect(result).toBe('performance_first');
+		});
+
+		it('should default to cache_first when unset', () => {
+			delete process.env.CODEX_AUTH_SCHEDULING_MODE;
+			const config: PluginConfig = {};
+
+			const result = getSchedulingMode(config);
+
+			expect(result).toBe('cache_first');
+		});
+	});
+
+	describe('getMaxCacheFirstWaitSeconds', () => {
+		it('should clamp negative env value to zero', () => {
+			process.env.CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS = '-5';
+
+			const result = getMaxCacheFirstWaitSeconds({});
+
+			expect(result).toBe(0);
+		});
+
+		it('should clamp negative config value to zero', () => {
+			delete process.env.CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS;
+			const config: PluginConfig = { maxCacheFirstWaitSeconds: -1 };
+
+			const result = getMaxCacheFirstWaitSeconds(config);
+
+			expect(result).toBe(0);
+		});
+
+		it('should allow env override of config', () => {
+			process.env.CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS = '30';
+			const config: PluginConfig = { maxCacheFirstWaitSeconds: 10 };
+
+			const result = getMaxCacheFirstWaitSeconds(config);
+
+			expect(result).toBe(30);
 		});
 	});
 

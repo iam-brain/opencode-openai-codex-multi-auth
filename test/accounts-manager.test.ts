@@ -289,6 +289,36 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("hydrates missing emails with a backup", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const base = seedStorageFromBackup(root);
+			const legacy = {
+				...base.accounts[0]!,
+				email: undefined,
+			};
+			const storage: AccountStorageV3 = {
+				...base,
+				accounts: [legacy, ...base.accounts.slice(1)],
+			};
+			const refreshSpy = vi
+				.spyOn(authModule, "refreshAccessToken")
+				.mockResolvedValue({ type: "failed" });
+
+			const manager = new AccountManager(undefined, storage);
+			await manager.hydrateMissingEmails();
+
+			const backups = readdirSync(join(root, "opencode")).filter((name) =>
+				name.startsWith("openai-codex-accounts.json.bak-"),
+			);
+			expect(backups).toHaveLength(1);
+			expect(refreshSpy).toHaveBeenCalled();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("keeps legacy accounts but skips them for selection", () => {
 		const legacyStorage: AccountStorageV3 = {
 			...fixture,
@@ -340,6 +370,50 @@ describe("AccountManager", () => {
 		const manager = new AccountManager(undefined, storage);
 		const selected = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
 		expect(selected?.accountId).toBe(fixtureAccounts[1]!.accountId);
+	});
+
+	it("preserves enabled flag when saveToDisk falls back to snapshot", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const account = { ...fixtureAccounts[0]!, enabled: false };
+			const storage: AccountStorageV3 = {
+				version: 3,
+				accounts: [account],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			mkdirSync(join(root, "opencode"), { recursive: true });
+			writeFileSync(getStoragePath(), "{", "utf-8");
+			const manager = new AccountManager(createAuth(account.refreshToken), storage);
+			await manager.saveToDisk();
+			const saved = JSON.parse(readFileSync(getStoragePath(), "utf-8")) as AccountStorageV3;
+			expect(saved.accounts[0]?.enabled).toBe(false);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("defaults enabled to true when missing during saveToDisk", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const account = { ...fixtureAccounts[0]! };
+			const storage: AccountStorageV3 = {
+				version: 3,
+				accounts: [account],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			mkdirSync(join(root, "opencode"), { recursive: true });
+			writeFileSync(getStoragePath(), "{", "utf-8");
+			const manager = new AccountManager(createAuth(account.refreshToken), storage);
+			await manager.saveToDisk();
+			const saved = JSON.parse(readFileSync(getStoragePath(), "utf-8")) as AccountStorageV3;
+			expect(saved.accounts[0]?.enabled).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("preserves plan-specific entries when fallback matches accountId", async () => {
@@ -473,6 +547,15 @@ describe("AccountManager", () => {
 		const third = manager.getCurrentOrNextForFamily(family, null, "round-robin", true);
 
 		expect([first?.index, second?.index, third?.index]).toEqual([1, 2, 0]);
+	});
+
+	it("getAccountByIndex returns account references", () => {
+		const manager = new AccountManager(
+			createAuth(fixtureAccounts[0]!.refreshToken),
+			createStorage(2),
+		);
+		const account = manager.getAccountByIndex(1);
+		expect(account?.refreshToken).toBe(fixtureAccounts[1]!.refreshToken);
 	});
 
 	it("skips rate-limited current account in sticky mode", () => {

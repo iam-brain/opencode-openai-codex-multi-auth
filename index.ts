@@ -82,15 +82,24 @@ import {
 	isOAuthAuth,
 	sanitizeEmail,
 } from "./lib/accounts.js";
-import { promptAddAnotherAccount, promptLoginMode, promptOAuthCallbackValue } from "./lib/cli.js";
+import {
+	promptAddAnotherAccount,
+	promptLoginMode,
+	promptManageAccounts,
+	promptOAuthCallbackValue,
+} from "./lib/cli.js";
 import { withTerminalModeRestored } from "./lib/terminal.js";
-import { getStoragePath, loadAccounts, saveAccounts } from "./lib/storage.js";
+import { getStoragePath, loadAccounts, saveAccounts, toggleAccountEnabled } from "./lib/storage.js";
 import { findAccountMatchIndex } from "./lib/account-matching.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 import { RateLimitTracker, decideRateLimitAction, parseRateLimitReason } from "./lib/rate-limit.js";
-import { ProactiveRefreshQueue } from "./lib/refresh-queue.js";
+import {
+	ProactiveRefreshQueue,
+	createRefreshScheduler,
+	type RefreshScheduler,
+} from "./lib/refresh-queue.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
@@ -137,6 +146,7 @@ function parseRetryAfterMs(headers: Headers): number | null {
  */
 export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	let cachedAccountManager: AccountManager | null = null;
+	let proactiveRefreshScheduler: RefreshScheduler | null = null;
 
 	const showToast = async (
 		message: string,
@@ -205,6 +215,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				accountId,
 				email,
 				plan,
+				enabled: true,
 				addedAt: now,
 				lastUsed: now,
 			});
@@ -216,6 +227,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				existing.accountId = accountId ?? existing.accountId;
 				existing.email = email ?? existing.email;
 				existing.plan = plan ?? existing.plan;
+				if (typeof existing.enabled !== "boolean") existing.enabled = true;
 				existing.lastUsed = now;
 			}
 		}
@@ -302,6 +314,47 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const proactiveRefreshQueue = proactiveRefreshEnabled
 					? new ProactiveRefreshQueue({ bufferMs: tokenRefreshSkewMs, intervalMs: 250 })
 					: null;
+				if (proactiveRefreshScheduler) {
+					proactiveRefreshScheduler.stop();
+					proactiveRefreshScheduler = null;
+				}
+				if (proactiveRefreshQueue) {
+					proactiveRefreshScheduler = createRefreshScheduler({
+						intervalMs: 1000,
+						queue: proactiveRefreshQueue,
+						getTasks: () => {
+							const tasks = [] as Array<{
+								key: string;
+								expires: number;
+								refresh: () => Promise<TokenResult>;
+							}>;
+							for (const account of accountManager.getAccountsSnapshot()) {
+								if (!Number.isFinite(account.expires)) continue;
+								tasks.push({
+									key: `account-${account.index}`,
+									expires: account.expires ?? 0,
+									refresh: async () => {
+										const live = accountManager.getAccountByIndex(account.index);
+										if (!live) return { type: "failed" } as TokenResult;
+										const refreshed = await accountManager.refreshAccountWithFallback(live);
+										if (refreshed.type !== "success") return refreshed;
+										const refreshedAuth = {
+											type: "oauth" as const,
+											access: refreshed.access,
+											refresh: refreshed.refresh,
+											expires: refreshed.expires,
+										};
+										accountManager.updateFromAuth(live, refreshedAuth);
+										await accountManager.saveToDisk();
+										return refreshed;
+									},
+								});
+							}
+							return tasks;
+						},
+					});
+					proactiveRefreshScheduler.start();
+				}
 				const rateLimitTracker = new RateLimitTracker({
 					dedupWindowMs: rateLimitDedupWindowMs,
 					resetMs: rateLimitStateResetMs,
@@ -699,15 +752,44 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									}
 								}
 
-								const existingLabels = (existingStorage?.accounts ?? []).map((a, index) => ({
+						let existingLabels = (existingStorage?.accounts ?? []).map((a, index) => ({
+							index,
+							email: a.email,
+							plan: a.plan,
+							accountId: a.accountId,
+							enabled: a.enabled,
+						}));
+						let mode = await promptLoginMode(existingLabels);
+						while (mode === "manage") {
+							let updatedStorage = existingStorage;
+							while (updatedStorage) {
+								const labels = (updatedStorage?.accounts ?? []).map((a, index) => ({
 									index,
 									email: a.email,
 									plan: a.plan,
 									accountId: a.accountId,
+									enabled: a.enabled,
 								}));
-								const mode = await promptLoginMode(existingLabels);
-								startFresh = mode === "fresh";
+								const toggleIndex = await promptManageAccounts(labels);
+								if (toggleIndex === null) break;
+								const toggled = toggleAccountEnabled(updatedStorage, toggleIndex);
+								if (toggled) {
+									await saveAccounts(toggled);
+									updatedStorage = toggled;
+								}
 							}
+							existingStorage = await loadAccounts();
+							existingLabels = (existingStorage?.accounts ?? []).map((a, index) => ({
+								index,
+								email: a.email,
+								plan: a.plan,
+								accountId: a.accountId,
+								enabled: a.enabled,
+							}));
+							mode = await promptLoginMode(existingLabels);
+						}
+						startFresh = mode === "fresh";
+					}
 
 							if (startFresh) {
 								await saveAccounts({
@@ -919,13 +1001,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						" #  Label                                     Status",
 						"----------------------------------------------- ---------------------",
 					];
-					storage.accounts.forEach((account, index) => {
-						const label = formatAccountLabel(account, index);
-						const statuses: string[] = [];
-						if (index === activeIndex) statuses.push("active");
-						const rateLimited =
-							account.rateLimitResetTimes &&
-							Object.values(account.rateLimitResetTimes).some(
+						storage.accounts.forEach((account, index) => {
+							const label = formatAccountLabel(account, index);
+							const statuses: string[] = [];
+							if (index === activeIndex) statuses.push("active");
+							if (account.enabled === false) statuses.push("disabled");
+							const rateLimited =
+								account.rateLimitResetTimes &&
+								Object.values(account.rateLimitResetTimes).some(
 								(t) => typeof t === "number" && t > now,
 							);
 						if (rateLimited) statuses.push("rate-limited");

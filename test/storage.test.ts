@@ -13,7 +13,7 @@ import { promises as fsPromises } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { getStoragePath, loadAccounts, saveAccounts } from "../lib/storage.js";
+import { getStoragePath, loadAccounts, saveAccounts, toggleAccountEnabled } from "../lib/storage.js";
 import type { AccountStorageV3 } from "../lib/types.js";
 
 function loadFixture(fileName: string): AccountStorageV3 {
@@ -354,5 +354,24 @@ describe("storage", () => {
 		expect(lockSpy.mock.calls[0]?.[0]).toBe(storagePath);
 
 		lockSpy.mockRestore();
+	});
+
+	it("toggleAccountEnabled flips enabled state", () => {
+		const storage: AccountStorageV3 = {
+			version: 3,
+			accounts: [
+				{ ...accountOne },
+				{ ...accountTwo, enabled: true },
+			],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		const firstToggle = toggleAccountEnabled(storage, 0);
+		expect(firstToggle?.accounts[0]?.enabled).toBe(false);
+		const secondToggle = toggleAccountEnabled(firstToggle!, 0);
+		expect(secondToggle?.accounts[0]?.enabled).toBe(true);
+
+		const toggledSecond = toggleAccountEnabled(storage, 1);
+		expect(toggledSecond?.accounts[1]?.enabled).toBe(false);
 	});
 });

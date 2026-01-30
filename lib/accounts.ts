@@ -377,7 +377,7 @@ export class AccountManager {
 						accountId: matchesFallback ? fallbackAccountId ?? record.accountId : record.accountId,
 						email: matchesFallback ? fallbackEmail ?? record.email : sanitizeEmail(record.email),
 						plan: matchesFallback ? fallbackPlan ?? record.plan : record.plan,
-						enabled: record.enabled,
+					enabled: record.enabled !== false,
 						refreshToken: matchesFallback && authFallback ? authFallback.refresh : record.refreshToken,
 						access: matchesFallback && authFallback ? authFallback.access : undefined,
 						expires: matchesFallback && authFallback ? authFallback.expires : undefined,
@@ -400,6 +400,7 @@ export class AccountManager {
 					accountId: fallbackAccountId,
 					email: fallbackEmail,
 					plan: fallbackPlan,
+					enabled: true,
 					refreshToken: authFallback.refresh,
 					access: authFallback.access,
 					expires: authFallback.expires,
@@ -431,6 +432,7 @@ export class AccountManager {
 					accountId: fallbackAccountId,
 					email: fallbackEmail,
 					plan: fallbackPlan,
+					enabled: true,
 					refreshToken: authFallback.refresh,
 					access: authFallback.access,
 					expires: authFallback.expires,
@@ -455,6 +457,11 @@ export class AccountManager {
 
 	getAccountsSnapshot(): ManagedAccount[] {
 		return this.accounts.map((a) => ({ ...a, rateLimitResetTimes: { ...a.rateLimitResetTimes } }));
+	}
+
+	getAccountByIndex(index: number): ManagedAccount | null {
+		if (!Number.isFinite(index)) return null;
+		return this.accounts[index] ?? null;
 	}
 
 	getActiveIndexForFamily(family: ModelFamily): number {
@@ -667,7 +674,13 @@ export class AccountManager {
 
 	async hydrateMissingEmails(): Promise<void> {
 		// Best-effort: refresh tokens to decode emails/accountId.
+		try {
+			await backupAccountsFile();
+		} catch {
+			// ignore backup failures
+		}
 		for (const account of this.accounts) {
+			if (account.enabled === undefined) account.enabled = true;
 			if (account.email && account.accountId) continue;
 			try {
 				const refreshed = await this.refreshAccountWithLock(account);
@@ -773,6 +786,7 @@ export class AccountManager {
 			accountId: a.accountId,
 			email: a.email,
 			plan: a.plan,
+			enabled: a.enabled !== false,
 			addedAt: a.addedAt,
 			lastUsed: a.lastUsed,
 			lastSwitchReason: a.lastSwitchReason,

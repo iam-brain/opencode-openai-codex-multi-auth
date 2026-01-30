@@ -74,3 +74,40 @@ export class ProactiveRefreshQueue {
 		this.running = false;
 	}
 }
+
+export type RefreshSchedulerOptions = {
+	intervalMs: number;
+	queue: ProactiveRefreshQueue;
+	getTasks: () => RefreshQueueTask[];
+};
+
+export type RefreshScheduler = {
+	start: () => void;
+	stop: () => void;
+};
+
+export function createRefreshScheduler(options: RefreshSchedulerOptions): RefreshScheduler {
+	let timer: ReturnType<typeof setInterval> | null = null;
+
+	const tick = () => {
+		const tasks = options.getTasks();
+		for (const task of tasks) {
+			void options.queue.enqueue(task);
+		}
+	};
+
+	return {
+		start() {
+			if (timer) return;
+			tick();
+			if (options.intervalMs <= 0) return;
+			timer = setInterval(tick, options.intervalMs);
+			timer.unref?.();
+		},
+		stop() {
+			if (!timer) return;
+			clearInterval(timer);
+			timer = null;
+		},
+	};
+}

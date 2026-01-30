@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { RateLimitTracker, decideRateLimitAction } from "../lib/rate-limit.js";
+import { RateLimitTracker, decideRateLimitAction, calculateBackoffMs } from "../lib/rate-limit.js";
 
 describe("rate limit tracker", () => {
 	it("deduplicates within window", () => {
@@ -37,6 +37,20 @@ describe("rate limit tracker", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it("calculates exponential backoff for repeated rate limits", () => {
+		const options = {
+			defaultRetryMs: 1000,
+			maxBackoffMs: 120_000,
+			jitterMaxMs: 0,
+		};
+		const first = calculateBackoffMs("rate-limit", 1, null, options);
+		const second = calculateBackoffMs("rate-limit", 2, null, options);
+		const third = calculateBackoffMs("rate-limit", 3, null, options);
+		expect(first).toBe(1000);
+		expect(second).toBe(2000);
+		expect(third).toBe(4000);
 	});
 });
 
