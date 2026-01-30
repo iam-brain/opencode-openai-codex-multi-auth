@@ -2,12 +2,16 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
-## [4.5.8] - 2026-01-30
+## [4.5.9] - 2026-01-30
 
-**Republish + CI fix**: `v4.5.7` tag publish failed; this release publishes the same changes and fixes npm OIDC publishing.
+**CI publish fix**: use Node.js 24+ (npm 11.5.1+) so npm Trusted Publishing (OIDC) is supported in GitHub Actions.
 
 ### Fixed
-- **Release workflow**: publish uses npm Trusted Publishing (OIDC) and avoids token-based auth.
+- **Release workflow**: publish now uses npm Trusted Publishing (OIDC) instead of legacy tokens.
+
+## [4.5.8] - 2026-01-30
+
+**CI publish attempt**: `v4.5.8` tag publish failed because the GitHub runner npm CLI did not support Trusted Publishing.
 
 ## [4.5.7] - 2026-01-30
 
