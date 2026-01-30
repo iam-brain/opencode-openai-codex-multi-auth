@@ -632,6 +632,82 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("skips hydration for disabled legacy accounts", async () => {
+		vi.useFakeTimers();
+		try {
+			const storage = createStorage(2);
+			storage.accounts[0] = {
+				...storage.accounts[0]!,
+				enabled: false,
+				email: undefined,
+				accountId: undefined,
+				plan: undefined,
+			};
+			const now = Date.now();
+			storage.accounts[1] = {
+				...storage.accounts[1]!,
+				rateLimitResetTimes: { codex: now + 10_000 },
+			};
+			const manager = new AccountManager(
+				createAuth(storage.accounts[0]!.refreshToken),
+				storage,
+			);
+			const hydrateSpy = vi
+				.spyOn(manager, "hydrateMissingEmails")
+				.mockResolvedValue();
+			const saveSpy = vi.spyOn(manager, "saveToDisk").mockResolvedValue();
+
+			const waitMs = await manager.getMinWaitTimeForFamilyWithHydration(family, null);
+
+			expect(hydrateSpy).not.toHaveBeenCalled();
+			expect(saveSpy).not.toHaveBeenCalled();
+			expect(waitMs).toBe(10_000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("throttles repeated hydration attempts", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+			const storage = createStorage(2);
+			storage.accounts[0] = {
+				...storage.accounts[0]!,
+				email: undefined,
+				accountId: undefined,
+				plan: undefined,
+			};
+			const now = Date.now();
+			storage.accounts[1] = {
+				...storage.accounts[1]!,
+				rateLimitResetTimes: { codex: now + 10_000 },
+			};
+			const manager = new AccountManager(
+				createAuth(storage.accounts[0]!.refreshToken),
+				storage,
+			);
+			const hydrateSpy = vi
+				.spyOn(manager, "hydrateMissingEmails")
+				.mockResolvedValue();
+			const saveSpy = vi.spyOn(manager, "saveToDisk").mockResolvedValue();
+
+			await manager.getMinWaitTimeForFamilyWithHydration(family, null);
+			await manager.getMinWaitTimeForFamilyWithHydration(family, null);
+
+			expect(hydrateSpy).toHaveBeenCalledTimes(1);
+			expect(saveSpy).toHaveBeenCalledTimes(1);
+
+			vi.advanceTimersByTime(60_000);
+			await manager.getMinWaitTimeForFamilyWithHydration(family, null);
+
+			expect(hydrateSpy).toHaveBeenCalledTimes(2);
+			expect(saveSpy).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not duplicate rate-limit keys when model matches family", () => {
 		const manager = new AccountManager(
 			createAuth(fixtureAccounts[0]!.refreshToken),

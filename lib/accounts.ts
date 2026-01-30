@@ -72,6 +72,8 @@ const PLAN_TYPE_LABELS: Record<string, string> = {
 	edu: "Edu",
 };
 
+const HYDRATION_ATTEMPT_COOLDOWN_MS = 60_000;
+
 function normalizePlanType(planType: unknown): string | undefined {
 	if (typeof planType !== "string") return undefined;
 	const trimmed = planType.trim();
@@ -344,6 +346,7 @@ export class AccountManager {
 	private lastToastAccountIndex = -1;
 	private lastToastTime = 0;
 	private refreshInFlight = new Map<number, Promise<TokenResult>>();
+	private lastHydrationAttemptAt: number | null = null;
 
 	static async loadFromDisk(authFallback?: OAuthAuthDetails): Promise<AccountManager> {
 		const stored = await loadAccounts();
@@ -680,6 +683,7 @@ export class AccountManager {
 			// ignore backup failures
 		}
 		for (const account of this.accounts) {
+			if (account.enabled === false) continue;
 			if (account.enabled === undefined) account.enabled = true;
 			if (account.email && account.accountId) continue;
 			try {
@@ -700,8 +704,15 @@ export class AccountManager {
 		family: ModelFamily,
 		model?: string | null,
 	): Promise<number> {
-		const needsHydration = this.accounts.some((account) => !hasCompleteIdentity(account));
-		if (needsHydration) {
+		const now = nowMs();
+		const needsHydration = this.accounts.some(
+			(account) => account.enabled !== false && !hasCompleteIdentity(account),
+		);
+		const shouldAttemptHydration =
+			this.lastHydrationAttemptAt === null ||
+			now - this.lastHydrationAttemptAt >= HYDRATION_ATTEMPT_COOLDOWN_MS;
+		if (needsHydration && shouldAttemptHydration) {
+			this.lastHydrationAttemptAt = now;
 			try {
 				await this.hydrateMissingEmails();
 				await this.saveToDisk();
