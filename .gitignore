@@ -2,6 +2,7 @@ node_modules/
 bun.lockb
 pnpm-lock.yaml
 dist/
+.worktrees/
 .DS_Store
 .history/
 opencode.json
