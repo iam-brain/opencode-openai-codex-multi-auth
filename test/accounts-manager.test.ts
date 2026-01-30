@@ -441,10 +441,13 @@ describe("AccountManager", () => {
 			if (!tokenEntry) throw new Error("Missing hydration fixture");
 			const idPayload = {
 				...tokenEntry.idPayload,
+				email: undefined,
+				preferred_username: undefined,
 				[JWT_CLAIM_PATH]: {
 					...(tokenEntry.idPayload[JWT_CLAIM_PATH] as Record<string, unknown>),
 					chatgpt_account_id: undefined,
 					email: undefined,
+					chatgpt_user_email: undefined,
 				},
 			};
 			const idToken = createJwt(idPayload);
