@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 
 import { readFileSync } from "node:fs";
 
-import { extractAccountPlan, formatAccountLabel } from "../lib/accounts.js";
+import {
+	extractAccountPlan,
+	formatAccountLabel,
+	needsIdentityHydration,
+} from "../lib/accounts.js";
 
 function makeJwt(payload: Record<string, unknown>): string {
 	const header = { alg: "none", typ: "JWT" };
@@ -56,5 +60,22 @@ describe("accounts", () => {
 
 	it("formatAccountLabel falls back to numbered account", () => {
 		expect(formatAccountLabel(undefined, 0)).toBe("Account 1");
+	});
+
+	it("needsIdentityHydration ignores disabled accounts", () => {
+		const accounts = [
+			{ ...fixtureAccount, enabled: false, email: undefined },
+		];
+		expect(needsIdentityHydration(accounts)).toBe(false);
+	});
+
+	it("needsIdentityHydration returns true for enabled legacy accounts", () => {
+		const accounts = [{ ...fixtureAccount, email: undefined }];
+		expect(needsIdentityHydration(accounts)).toBe(true);
+	});
+
+	it("needsIdentityHydration returns false when all accounts complete", () => {
+		const accounts = [{ ...fixtureAccount }];
+		expect(needsIdentityHydration(accounts)).toBe(false);
 	});
 });

@@ -80,6 +80,7 @@ import {
 	formatAccountLabel,
 	formatWaitTime,
 	isOAuthAuth,
+	needsIdentityHydration,
 	sanitizeEmail,
 } from "./lib/accounts.js";
 import {
@@ -740,9 +741,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							let startFresh = true;
 							let existingStorage = await loadAccounts();
 							if (existingStorage && existingStorage.accounts.length > 0) {
-								const needsHydration = existingStorage.accounts.some(
-									(a) => !a.email,
-								);
+						const needsHydration = needsIdentityHydration(existingStorage.accounts);
 								if (needsHydration) {
 									try {
 										console.log("\nRefreshing saved accounts to fill missing emails...\n");

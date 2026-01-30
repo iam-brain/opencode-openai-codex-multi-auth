@@ -128,6 +128,12 @@ function isAccountEnabled(account: { enabled?: boolean }): boolean {
 	return account.enabled !== false;
 }
 
+export function needsIdentityHydration(
+	accounts: Array<{ accountId?: string; email?: string; plan?: string; enabled?: boolean }>,
+): boolean {
+	return accounts.some((account) => isAccountEnabled(account) && !hasCompleteIdentity(account));
+}
+
 export interface ManagedAccount {
 	index: number;
 	accountId?: string;
