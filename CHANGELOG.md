@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.6] - 2026-01-29
+
+**Multi-account parity release**: stricter identity, account management, and hydration/refresh reliability.
+
+### Added
+- **Account management**: `opencode auth login` now offers manage mode to enable/disable accounts; storage persists `enabled`.
+- **Background refresh**: proactive refresh scheduler can refresh tokens ahead of expiry (config-flagged).
+
+### Changed
+- **Strict identity matching**: accounts match on `accountId` + `email` + `plan`.
+- **Hydration behavior**: fills missing email/accountId/plan from id/access tokens, throttled and skips disabled accounts.
+- **Rate-limit backoff**: exponential backoff replaces linear retry scaling.
+- **Wait-time calculation**: ignores disabled/legacy accounts and hydrates legacy identities before wait-time checks.
+
+### Fixed
+- **Disabled account safety**: disabled accounts never auto re-enable and are excluded from hydration.
+- **Legacy plan hydration**: plan-only legacy records now hydrate via refresh tokens.
+
+### Documentation
+- **Multi-account docs**: updated manage flow, identity rules, and storage fields.
+
 ## [4.4.6] - 2026-01-25
 
 **Bugfix release**: make TUI login non-interactive; improve account migration reliability.
