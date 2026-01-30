@@ -16,6 +16,12 @@ describe("formatting", () => {
 		expect(truncated).toContain("openai-codex-accounts.json");
 	});
 
+	it("truncatePath clamps tiny max lengths", () => {
+		const truncated = truncatePath("/tmp/something.json", 2);
+		expect(truncated.length).toBeLessThanOrEqual(2);
+		expect(truncated).toContain("…");
+	});
+
 	it("formatToastMessage truncates long paths", () => {
 		const path =
 			"/Users/bryanfont/.config/opencode/openai-codex-accounts.json.quarantine-123.json";
