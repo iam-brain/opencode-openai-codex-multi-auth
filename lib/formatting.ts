@@ -6,8 +6,9 @@ const MAX_TOKEN_LENGTH = 48;
 const MAX_PATH_LENGTH = 48;
 
 function truncateMiddle(value: string, maxLength: number): string {
+	if (maxLength <= 0) return "";
 	if (value.length <= maxLength) return value;
-	if (maxLength <= 1) return "…";
+	if (maxLength === 1) return "…";
 	const head = Math.max(1, Math.floor(maxLength * 0.4));
 	const tail = Math.max(0, maxLength - head - 1);
 	if (tail === 0) return `${value.slice(0, head)}…`;
