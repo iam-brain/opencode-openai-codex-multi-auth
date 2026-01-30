@@ -14,6 +14,7 @@ type RateLimitState = Record<string, number | undefined>;
 
 const STORAGE_FILE = "openai-codex-accounts.json";
 const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
+const MAX_QUARANTINE_FILES = 20;
 
 function debug(...args: unknown[]): void {
 	if (!AUTH_DEBUG_ENABLED) return;
@@ -131,6 +132,48 @@ async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
 				// ignore lock release errors
 			}
 		}
+	}
+}
+
+async function ensurePrivateFileMode(path: string): Promise<void> {
+	try {
+		// Best-effort: make quarantine files readable only by the current user.
+		await fs.chmod(path, 0o600);
+	} catch {
+		// ignore (unsupported on some platforms/filesystems)
+	}
+}
+
+async function cleanupQuarantineFiles(storagePath: string): Promise<void> {
+	try {
+		const dir = dirname(storagePath);
+		const entries = await fs.readdir(dir);
+		const prefix = `${STORAGE_FILE}.quarantine-`;
+		const matches = entries
+			.filter((name) => name.startsWith(prefix) && name.endsWith(".json"))
+			.map((name) => {
+				const stampRaw = name.slice(prefix.length, name.length - ".json".length);
+				const stamp = Number.parseInt(stampRaw, 10);
+				return {
+					name,
+					stamp: Number.isFinite(stamp) ? stamp : 0,
+				};
+			})
+			.sort((a, b) => a.stamp - b.stamp);
+
+		if (matches.length <= MAX_QUARANTINE_FILES) return;
+		const toDelete = matches.slice(0, matches.length - MAX_QUARANTINE_FILES);
+		await Promise.all(
+			toDelete.map(async (entry) => {
+				try {
+					await fs.unlink(join(dir, entry.name));
+				} catch {
+					// ignore per-file deletion failures
+				}
+			}),
+		);
+	} catch {
+		// ignore cleanup failures
 	}
 }
 
@@ -655,10 +698,14 @@ export async function writeQuarantineFile(
 	if (existsSync(filePath)) {
 		await withFileLock(filePath, async () => {
 			await fs.writeFile(quarantinePath, JSON.stringify(payload, null, 2), "utf-8");
+			await ensurePrivateFileMode(quarantinePath);
+			await cleanupQuarantineFiles(filePath);
 		});
 		return quarantinePath;
 	}
 	await fs.writeFile(quarantinePath, JSON.stringify(payload, null, 2), "utf-8");
+	await ensurePrivateFileMode(quarantinePath);
+	await cleanupQuarantineFiles(filePath);
 	return quarantinePath;
 }
 
@@ -681,6 +728,12 @@ export async function quarantineCorruptFile(): Promise<string | null> {
 		activeIndexByFamily: {},
 	});
 	return quarantinePath;
+}
+
+export async function autoQuarantineCorruptAccountsFile(): Promise<string | null> {
+	const inspection = await inspectAccountsFile();
+	if (inspection.status !== "corrupt-file") return null;
+	return await quarantineCorruptFile();
 }
 
 export async function quarantineAccounts(

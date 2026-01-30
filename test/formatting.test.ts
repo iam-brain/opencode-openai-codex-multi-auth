@@ -50,7 +50,7 @@ describe("formatting", () => {
 			storagePath:
 				"/Users/bryanfont/.config/opencode/openai-codex-accounts.json.quarantine-123.json",
 		});
-		expect(message).toContain("rate-limited");
+		expect(message).toContain("temporarily unavailable");
 		expect(message.length).toBeLessThanOrEqual(120);
 		expect(message).toContain("…");
 	});

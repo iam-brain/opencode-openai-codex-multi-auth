@@ -27,7 +27,7 @@ import type { Auth } from "@opencode-ai/sdk";
 import {
 	createAuthorizationFlow,
 	exchangeAuthorizationCode,
-	parseAuthorizationInput,
+	parseAuthorizationInputForFlow,
 	REDIRECT_URI,
 	refreshAccessToken,
 } from "./lib/auth/auth.js";
@@ -93,6 +93,7 @@ import {
 import { withTerminalModeRestored } from "./lib/terminal.js";
 import {
 	getStoragePath,
+	autoQuarantineCorruptAccountsFile,
 	inspectAccountsFile,
 	loadAccounts,
 	quarantineAccounts,
@@ -176,6 +177,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 	const buildManualOAuthFlow = (
 		pkce: { verifier: string },
+		expectedState: string,
 		url: string,
 		onSuccess?: (tokens: TokenOk) => Promise<void>,
 	) => ({
@@ -183,7 +185,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		method: "code" as const,
 		instructions: AUTH_LABELS.INSTRUCTIONS_MANUAL,
 		callback: async (input: string) => {
-			const parsed = parseAuthorizationInput(input);
+			const parsed = parseAuthorizationInputForFlow(input, expectedState);
+			if (parsed.stateStatus === "mismatch") {
+				return { type: "failed" as const };
+			}
 			if (!parsed.code) {
 				return { type: "failed" as const };
 			}
@@ -282,9 +287,20 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					return {};
 				}
 
+				const pluginConfig = loadPluginConfig();
+				const quietMode = getQuietMode(pluginConfig);
+
 				const accountManager = await AccountManager.loadFromDisk(auth);
 				cachedAccountManager = accountManager;
 				if (accountManager.getAccountCount() === 0) {
+					const quarantinePath = await autoQuarantineCorruptAccountsFile();
+					if (quarantinePath) {
+						await showToast(
+							"Accounts file was corrupted and has been quarantined. Run `opencode auth login`.",
+							"warning",
+							quietMode,
+						);
+					}
 					logDebug(`[${PLUGIN_NAME}] No OAuth accounts available (run opencode auth login)`);
 					return {};
 				}
@@ -297,11 +313,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					models: providerConfig?.models || {},
 				};
 
-				const pluginConfig = loadPluginConfig();
 				const codexMode = getCodexMode(pluginConfig);
 				const accountSelectionStrategy = getAccountSelectionStrategy(pluginConfig);
 				const pidOffsetEnabled = getPidOffsetEnabled(pluginConfig);
-				const quietMode = getQuietMode(pluginConfig);
 				const tokenRefreshSkewMs = getTokenRefreshSkewMs(pluginConfig);
 				const proactiveRefreshEnabled = (() => {
 					const rawConfig = pluginConfig as Record<string, unknown>;
@@ -837,14 +851,25 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								const { pkce, state, url } = await createAuthorizationFlow();
 								console.log("\nOAuth URL:\n" + url + "\n");
 
-								if (noBrowser) {
-									const callbackInput = await promptOAuthCallbackValue(
-										"Paste the redirect URL (or just the code) here: ",
-									);
-									const parsed = parseAuthorizationInput(callbackInput);
-									if (!parsed.code) return { type: "failed" as const };
-									return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-								}
+										if (noBrowser) {
+											const callbackInput = await promptOAuthCallbackValue(
+												"Paste the full redirect URL (recommended). You can also paste code#state or just the code: ",
+											);
+											const parsed = parseAuthorizationInputForFlow(callbackInput, state);
+											if (parsed.stateStatus === "mismatch") {
+												console.log(
+													"\nOAuth state mismatch. Paste the redirect URL from this login session (the one shown above).\n",
+												);
+												return { type: "failed" as const };
+											}
+											if (parsed.stateStatus === "missing") {
+												console.log(
+													"\nWarning: redirect state not provided. For best security, paste the full redirect URL.\n",
+												);
+											}
+											if (!parsed.code) return { type: "failed" as const };
+											return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
+										}
 
 								let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
 								try {
@@ -854,15 +879,26 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								}
 								openBrowserUrl(url);
 
-								if (!serverInfo || !serverInfo.ready) {
-									serverInfo?.close();
-									const callbackInput = await promptOAuthCallbackValue(
-										"Paste the redirect URL (or just the code) here: ",
-									);
-									const parsed = parseAuthorizationInput(callbackInput);
-									if (!parsed.code) return { type: "failed" as const };
-									return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-								}
+										if (!serverInfo || !serverInfo.ready) {
+											serverInfo?.close();
+											const callbackInput = await promptOAuthCallbackValue(
+												"Paste the full redirect URL (recommended). You can also paste code#state or just the code: ",
+											);
+											const parsed = parseAuthorizationInputForFlow(callbackInput, state);
+											if (parsed.stateStatus === "mismatch") {
+												console.log(
+													"\nOAuth state mismatch. Paste the redirect URL from this login session (the one shown above).\n",
+												);
+												return { type: "failed" as const };
+											}
+											if (parsed.stateStatus === "missing") {
+												console.log(
+													"\nWarning: redirect state not provided. For best security, paste the full redirect URL.\n",
+												);
+											}
+											if (!parsed.code) return { type: "failed" as const };
+											return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
+										}
 
 								const result = await serverInfo.waitForCode(state);
 								serverInfo.close();
@@ -1054,19 +1090,27 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 					serverInfo?.close();
 
-					return {
-						url,
-						instructions:
-							"Visit the URL above, complete OAuth, then paste either the full redirect URL or the authorization code.",
-						method: "code" as const,
-						callback: async (input: string) => {
-							const parsed = parseAuthorizationInput(input);
-							if (!parsed.code) return { type: "failed" as const };
-							const tokens = await exchangeAuthorizationCode(
-								parsed.code,
-								pkce.verifier,
-								REDIRECT_URI,
-							);
+						return {
+							url,
+							instructions:
+								"Visit the URL above, complete OAuth, then paste the full redirect URL (recommended) or the authorization code.",
+							method: "code" as const,
+							callback: async (input: string) => {
+								const parsed = parseAuthorizationInputForFlow(input, state);
+								if (parsed.stateStatus === "mismatch") {
+									await showToast(
+										"OAuth state mismatch. Paste the redirect URL from this login session.",
+										"error",
+										quietMode,
+									);
+									return { type: "failed" as const };
+								}
+											if (!parsed.code) return { type: "failed" as const };
+											const tokens = await exchangeAuthorizationCode(
+												parsed.code,
+												pkce.verifier,
+												REDIRECT_URI,
+											);
 									if (tokens?.type === "success") {
 										await persistAccount(tokens);
 										const email = sanitizeEmail(
@@ -1095,8 +1139,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					label: AUTH_LABELS.OAUTH_MANUAL,
 					type: "oauth" as const,
 					authorize: async () => {
-						const { pkce, url } = await createAuthorizationFlow();
-						return buildManualOAuthFlow(pkce, url, async (tokens) => {
+						const { pkce, state, url } = await createAuthorizationFlow();
+						return buildManualOAuthFlow(pkce, state, url, async (tokens) => {
 							await persistAccount(tokens);
 						});
 					},
@@ -1193,6 +1237,35 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						await cachedAccountManager.saveToDisk();
 					}
 					return `Switched to ${formatAccountLabel(account, targetIndex)}`;
+				},
+			}),
+			"openai-accounts-toggle": tool({
+				description: "Enable or disable an OpenAI account by index (1-based).",
+				args: {
+					index: tool.schema.number().describe("Account number (1-based)"),
+				},
+				async execute({ index }) {
+					const storage = await loadAccounts();
+					if (!storage || storage.accounts.length === 0) {
+						return "No OpenAI accounts configured. Run: opencode auth login";
+					}
+					const targetIndex = Math.floor((index ?? 0) - 1);
+					if (targetIndex < 0 || targetIndex >= storage.accounts.length) {
+						return `Invalid account number: ${index}\nValid range: 1-${storage.accounts.length}`;
+					}
+					const updated = toggleAccountEnabled(storage, targetIndex);
+					if (!updated) {
+						return `Failed to toggle account number: ${index}`;
+					}
+					await saveAccounts(updated);
+					const account = updated.accounts[targetIndex];
+					if (cachedAccountManager) {
+						const live = cachedAccountManager.getAccountByIndex(targetIndex);
+						if (live) live.enabled = account?.enabled !== false;
+					}
+					const enabled = account?.enabled !== false;
+					const verb = enabled ? "Enabled" : "Disabled";
+					return `${verb} ${formatAccountLabel(account, targetIndex)} (${targetIndex + 1}/${updated.accounts.length})`;
 				},
 			}),
 		},

@@ -760,8 +760,12 @@ export class AccountManager {
 				}
 				const idToken = refreshed.idToken;
 				const accessToken = refreshed.access;
-				const accountId =
-					extractAccountId(idToken) ?? extractAccountId(accessToken) ?? account.accountId;
+				const extractedAccountId = extractAccountId(idToken) ?? extractAccountId(accessToken) ?? null;
+				if (account.accountId && extractedAccountId && account.accountId !== extractedAccountId) {
+					quarantined.push(account);
+					continue;
+				}
+				const accountId = extractedAccountId ?? account.accountId;
 				const email =
 					sanitizeEmail(extractAccountEmail(idToken)) ??
 					sanitizeEmail(extractAccountEmail(accessToken)) ??

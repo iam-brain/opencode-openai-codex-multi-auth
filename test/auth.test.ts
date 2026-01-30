@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
 	createState,
 	parseAuthorizationInput,
+	validateOAuthState,
 	decodeJWT,
 	createAuthorizationFlow,
 	CLIENT_ID,
@@ -115,6 +116,41 @@ describe('Auth Module', () => {
 		it('should handle whitespace', () => {
 			const result = parseAuthorizationInput('  ');
 			expect(result).toEqual({});
+		});
+	});
+
+	it('parseAuthorizationInputForFlow validates state when present', async () => {
+		const module = await import('../lib/auth/auth.js');
+		expect(typeof module.parseAuthorizationInputForFlow).toBe('function');
+		if (typeof module.parseAuthorizationInputForFlow !== 'function') return;
+		const parsed = module.parseAuthorizationInputForFlow(
+			'http://localhost:1455/auth/callback?code=abc123&state=bad',
+			'good',
+		);
+		expect(parsed.code).toBe('abc123');
+		expect(parsed.stateStatus).toBe('mismatch');
+	});
+
+	it('parseAuthorizationInputForFlow marks missing state for code-only input', async () => {
+		const module = await import('../lib/auth/auth.js');
+		expect(typeof module.parseAuthorizationInputForFlow).toBe('function');
+		if (typeof module.parseAuthorizationInputForFlow !== 'function') return;
+		const parsed = module.parseAuthorizationInputForFlow('abc123', 'good');
+		expect(parsed.code).toBe('abc123');
+		expect(parsed.stateStatus).toBe('missing');
+	});
+
+	describe('validateOAuthState', () => {
+		it('returns match when states are equal', () => {
+			expect(validateOAuthState('abc', 'abc')).toBe('match');
+		});
+
+		it('returns mismatch when provided state differs', () => {
+			expect(validateOAuthState('abc', 'def')).toBe('mismatch');
+		});
+
+		it('returns missing when state is not provided', () => {
+			expect(validateOAuthState('abc')).toBe('missing');
 		});
 	});
 

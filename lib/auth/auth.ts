@@ -48,6 +48,30 @@ export function parseAuthorizationInput(input: string): ParsedAuthInput {
 	return { code: value };
 }
 
+export type OAuthStateValidation = "match" | "missing" | "mismatch";
+
+export function validateOAuthState(
+	expectedState: string,
+	receivedState?: string,
+): OAuthStateValidation {
+	const expected = (expectedState || "").trim();
+	const received = (receivedState || "").trim();
+	if (!expected) return "missing";
+	if (!received) return "missing";
+	return received === expected ? "match" : "mismatch";
+}
+
+export function parseAuthorizationInputForFlow(
+	input: string,
+	expectedState: string,
+): ParsedAuthInput & { stateStatus: OAuthStateValidation } {
+	const parsed = parseAuthorizationInput(input);
+	return {
+		...parsed,
+		stateStatus: validateOAuthState(expectedState, parsed.state),
+	};
+}
+
 /**
  * Exchange authorization code for access and refresh tokens
  * @param code - Authorization code from OAuth flow

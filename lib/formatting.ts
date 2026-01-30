@@ -71,6 +71,6 @@ export function formatRateLimitStatusMessage(options: {
 	}
 	const waitLabel = options.waitMs > 0 ? formatWaitTime(options.waitMs) : "a bit";
 	const storagePath = truncatePath(options.storagePath, MAX_PATH_LENGTH);
-	const message = `All ${options.accountCount} account(s) are rate-limited. Try again in ${waitLabel} or add another account with \`opencode auth login\`. (Storage: ${storagePath})`;
+	const message = `All ${options.accountCount} account(s) are temporarily unavailable. Try again in ${waitLabel} or add another account with \`opencode auth login\`. (Storage: ${storagePath})`;
 	return formatStatusMessage(message);
 }
