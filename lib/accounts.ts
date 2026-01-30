@@ -318,7 +318,11 @@ function mergeAccountRecords(
 						typeof currentValue === "number" ? Math.max(currentValue, value) : value;
 				}
 			}
-			updated.rateLimitResetTimes = mergedRateLimits;
+			if (Object.keys(mergedRateLimits).length > 0) {
+				updated.rateLimitResetTimes = mergedRateLimits;
+			} else {
+				updated.rateLimitResetTimes = undefined;
+			}
 		}
 		if (
 			typeof candidate.coolingDownUntil === "number" &&
@@ -897,6 +901,7 @@ export class AccountManager {
 		}
 
 		account.refreshToken = latestRecord.refreshToken;
+		account.originalRefreshToken = latestRecord.refreshToken;
 		if (!account.accountId && latestRecord.accountId) account.accountId = latestRecord.accountId;
 		if (!account.email && latestRecord.email) account.email = latestRecord.email;
 		if (!account.plan && latestRecord.plan) account.plan = latestRecord.plan;
