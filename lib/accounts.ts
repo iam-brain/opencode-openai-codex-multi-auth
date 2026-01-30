@@ -691,7 +691,7 @@ export class AccountManager {
 		for (const account of this.accounts) {
 			if (account.enabled === false) continue;
 			if (account.enabled === undefined) account.enabled = true;
-			if (account.email && account.accountId) continue;
+			if (hasCompleteIdentity(account)) continue;
 			try {
 				const refreshed = await this.refreshAccountWithLock(account);
 				if (refreshed.type !== "success") continue;
