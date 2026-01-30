@@ -714,6 +714,7 @@ export class AccountManager {
 
 	updateFromAuth(account: ManagedAccount, auth: OAuthAuthDetails): void {
 		account.refreshToken = auth.refresh;
+		account.originalRefreshToken = auth.refresh;
 		account.access = auth.access;
 		account.expires = auth.expires;
 		account.accountId = extractAccountId(auth.access) ?? account.accountId;
@@ -755,6 +756,7 @@ export class AccountManager {
 				account.plan =
 					extractAccountPlan(idToken) ?? extractAccountPlan(accessToken) ?? account.plan;
 				account.refreshToken = refreshed.refresh;
+				account.originalRefreshToken = refreshed.refresh;
 			} catch {
 				// ignore
 			}
@@ -798,6 +800,7 @@ export class AccountManager {
 				account.email = email;
 				account.plan = plan;
 				account.refreshToken = refreshed.refresh;
+				account.originalRefreshToken = refreshed.refresh;
 				repaired.push(account);
 			} catch {
 				quarantined.push(account);
