@@ -205,8 +205,9 @@ export class CodexStatusManager {
 
 		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null) => {
 			const width = 20;
-			const usedPercent = data?.usedPercent ?? 0;
-			const filled = Math.round((usedPercent / 100) * width);
+			const usedPercent = data?.usedPercent ?? 100;
+			const leftPercent = Math.max(0, 100 - usedPercent);
+			const filled = Math.round((leftPercent / 100) * width);
 			const bar = "█".repeat(filled) + "░".repeat(width - filled);
 
 			let resetStr = "";
@@ -214,30 +215,34 @@ export class CodexStatusManager {
 				const resetDate = new Date(data.resetAt);
 				const now = Date.now();
 				const isMoreThan24h = data.resetAt - now > 24 * 60 * 60 * 1000;
+				const timeStr = `${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")}`;
+				
 				if (isMoreThan24h) {
-					resetStr = ` (reset ${resetDate.getMonth() + 1}/${resetDate.getDate()} ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`;
+					const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+					const dateStr = `${resetDate.getDate()} ${monthNames[resetDate.getMonth()]}`;
+					resetStr = ` (resets ${timeStr} on ${dateStr})`;
 				} else {
-					resetStr = ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`;
+					resetStr = ` (resets ${timeStr})`;
 				}
 			} else if (!data) {
-				return `  ${label.padEnd(8)} [${"░".repeat(width)}] unknown`.padEnd(52);
+				return `  ${label.padEnd(14)} [${"░".repeat(width)}] unknown`.padEnd(65);
 			}
 
-			const statusStr = `${usedPercent.toFixed(1)}%`.padEnd(7);
-			return `  ${label.padEnd(8)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(52);
+			const statusStr = `${leftPercent.toFixed(0)}% left`.padEnd(9);
+			return `  ${label.padEnd(14)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(65);
 		};
 
 		if (!snapshot) {
-			lines.push(renderBar("Primary", null)!);
-			lines.push(renderBar("Weekly", null)!);
+			lines.push(renderBar("5h limit", null)!);
+			lines.push(renderBar("Weekly limit", null)!);
 			return lines;
 		}
 
-		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0) || "Primary";
-		lines.push(renderBar(primaryLabel, snapshot.primary)!);
+		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0) || "5h";
+		lines.push(renderBar(`${primaryLabel} limit`, snapshot.primary)!);
 
 		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0) || "Weekly";
-		lines.push(renderBar(secondaryLabel, snapshot.secondary)!);
+		lines.push(renderBar(`${secondaryLabel} limit`, snapshot.secondary)!);
 
 		if (snapshot.credits) {
 			const { unlimited, balance } = snapshot.credits;

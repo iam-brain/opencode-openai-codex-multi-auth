@@ -643,6 +643,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 											const decoder = new TextDecoder();
 											let sseBuffer = "";
 
+											const processLine = (line: string) => {
+												if (line.startsWith("data: ")) {
+													try {
+														const data = JSON.parse(line.substring(6));
+														if (data.type === "token_count" && data.rate_limits) {
+															codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
+														}
+													} catch {
+														// Skip malformed JSON
+													}
+												}
+											};
+
 											const transformStream = new ReadableStream({
 												async pull(controller) {
 													const { done, value } = await reader.read();
@@ -651,47 +664,31 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 															// Process any remaining buffer content
 															const lines = sseBuffer.split("\n");
 															for (const line of lines) {
-																if (line.startsWith("data: ")) {
-																	try {
-																		const data = JSON.parse(line.substring(6));
-																		if (data.type === "token_count" && data.rate_limits) {
-																			codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
-																		}
-																	} catch {}
-																}
+																processLine(line);
 															}
 														}
 														controller.close();
 														return;
 													}
-													
+
 													const chunk = decoder.decode(value, { stream: true });
 													sseBuffer += chunk;
-													
+
 													const lines = sseBuffer.split("\n");
 													// Keep the last incomplete line in the buffer
 													sseBuffer = lines.pop() || "";
-													
+
 													for (const line of lines) {
-														if (line.startsWith("data: ")) {
-															try {
-																const data = JSON.parse(line.substring(6));
-																if (data.type === "token_count" && data.rate_limits) {
-																	codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
-																}
-															} catch {
-																// Skip malformed JSON
-															}
-														}
+														processLine(line);
 													}
-													
+
 													controller.enqueue(value);
 												},
 												cancel() {
 													reader.cancel();
-												}
+												},
 											});
-											
+
 											res = new Response(transformStream, {
 												status: res.status,
 												statusText: res.statusText,

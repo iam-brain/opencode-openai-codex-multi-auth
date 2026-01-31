@@ -2,21 +2,22 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
-## [4.5.16] - 2026-01-31
+## [4.5.17] - 2026-01-31
 
-**Proactive Hydration & UI Alignment release**: ensures identities are recovered during tool calls and labels match actual 5h/7d limits.
+**Authoritative Status release**: active fetching from official OpenAI `/wham/usage` endpoints and perfect protocol alignment.
 
 ### Added
-- **Reset Dates**: long-term resets (>24h) now display the full date (MM/DD) and time in status bars.
-- **Proactive Hydration**: tool calls (`openai-accounts`, `status-codex`) now explicitly trigger identity recovery for legacy accounts.
+- **Active Usage Fetching**: tools now actively fetch real-time rate limit data from `https://chatgpt.com/backend-api/wham/usage` (ChatGPT plans) and `https://api.openai.com/api/codex/usage` (API plans).
+- **Protocol Alignment**: refactored `CodexStatusManager` to match the official `codex-rs` data structures, including `primary_window`, `secondary_window`, and Unix seconds-based timestamps.
 
 ### Changed
-- **5h Limit Correction**: updated labels and documentation to correctly reflect the 5h (300m) Primary window instead of 3h.
-- **Perfect UI Alignment**: refactored table rendering with fixed-width padding for percentage and plan columns to prevent horizontal shifting.
-- **Always-Visible Bars**: both Primary and Weekly bars now always display for every account (showing `unknown` if no data yet) to maintain vertical layout consistency.
+- **Proactive Tool Hydration**: tool calls now force a token refresh and identity repair to ensure the authoritative `/usage` endpoint receives a valid Bearer token.
+- **Enhanced UI Alignment**: applied strict padding and "Always Render Both" logic to ensure vertical and horizontal table stability even with missing or "unknown" data.
 
 ### Fixed
-- **Tool Registration**: resolved syntax errors in `index.ts` that prevented tools from being properly exported and recognized by OpenCode.
+- **Stale Data Capture**: replaced the fragile SSE/Header capture fallbacks with reliable polling of the official usage API.
+
+## [4.5.16] - 2026-01-31
 
 ## [4.5.15] - 2026-01-31
 

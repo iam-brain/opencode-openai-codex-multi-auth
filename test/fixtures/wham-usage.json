@@ -1,0 +1,27 @@
+{
+  "user_id": "user-wham-test-id",
+  "account_id": "user-wham-test-id",
+  "email": "user.one@example.com",
+  "plan_type": "plus",
+  "rate_limit": {
+    "allowed": true,
+    "limit_reached": false,
+    "primary_window": {
+      "used_percent": 25.0,
+      "limit_window_seconds": 18000,
+      "reset_after_seconds": 7200,
+      "reset_at": 1700000000
+    },
+    "secondary_window": {
+      "used_percent": 10.0,
+      "limit_window_seconds": 604800,
+      "reset_after_seconds": 300000,
+      "reset_at": 1700600000
+    }
+  },
+  "credits": {
+    "has_credits": true,
+    "unlimited": false,
+    "balance": "123.45"
+  }
+}
