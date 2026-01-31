@@ -169,7 +169,7 @@ describe("AccountManager", () => {
 
 			const finalStorage = await loadAccounts();
 			const stored = finalStorage?.accounts.find(
-				(entry) => entry.accountId === accountOne.accountId,
+				(entry) => entry.accountId === accountOne.accountId && entry.email === accountOne.email && entry.plan === accountOne.plan,
 			);
 			expect(stored?.refreshToken).toBe(updatedToken);
 		} finally {
@@ -298,7 +298,7 @@ describe("AccountManager", () => {
 
 			await saveAccounts({
 				...fixture,
-				accounts: [{ ...accountOne, refreshToken: updatedToken }],
+				accounts: [{ ...accountOne, refreshToken: updatedToken, lastUsed: Date.now() + 1000 }],
 			});
 
 			const refreshFn = vi.fn(async (token: string) => {

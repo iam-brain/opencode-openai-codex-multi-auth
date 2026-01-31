@@ -486,7 +486,9 @@ function mergeAccounts(
 
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
 			const shouldPreserve = options?.preserveRefreshTokens === true;
-			if (!shouldPreserve || !updated.refreshToken) {
+			// Token Rotation Arbitration: Only update token if incoming state is newer than disk state.
+			const isNewer = (candidate.lastUsed || 0) > (updated.lastUsed || 0);
+			if (!shouldPreserve && isNewer) {
 				updated.refreshToken = candidate.refreshToken;
 				didUpdate = true;
 			}

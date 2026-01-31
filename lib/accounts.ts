@@ -226,8 +226,10 @@ function mergeAccountRecords(
 		if (!current) continue;
 		const updated = { ...current };
 
+		// Token Rotation Arbitration: Only update token if memory state is newer than disk state.
+		// Higher lastUsed timestamp wins.
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
-			if (candidate.refreshToken !== candidate.originalRefreshToken) {
+			if (candidate.refreshToken !== candidate.originalRefreshToken && candidate.lastUsed > (updated.lastUsed || 0)) {
 				updated.refreshToken = candidate.refreshToken;
 			}
 		}
@@ -674,6 +676,7 @@ export class AccountManager {
 		// so that mergeAccountRecords can detect that we have a pending change.
 		account.access = auth.access;
 		account.expires = auth.expires;
+		account.lastUsed = nowMs();
 		account.accountId = extractAccountId(auth.access) ?? account.accountId;
 		account.email = sanitizeEmail(extractAccountEmail(auth.access)) ?? account.email;
 		account.plan = extractAccountPlan(auth.access) ?? account.plan;

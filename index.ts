@@ -435,6 +435,24 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									return await handleSuccessResponse(res, isStreaming);
 								}
 
+								// Handle Unauthorized (401) - potentially a stale token due to parallel rotation
+								if (res.status === HTTP_STATUS.UNAUTHORIZED) {
+									debugAuth(`[Fetch] 401 Unauthorized for ${account.email}. Attempting recovery...`);
+									const recovery = await runRefresh();
+									if (recovery.type === "success") {
+										// Update headers with new token and retry the loop
+										accountAuth = { type: "oauth", access: recovery.access, refresh: recovery.refresh, expires: recovery.expires };
+										const newHeaders = createCodexHeaders(requestInit, accountId, accountAuth.access, { model, promptCacheKey: transformation?.body?.prompt_cache_key });
+										// Update headers for the retry
+										newHeaders.forEach((v, k) => headers.set(k, v));
+										continue;
+									}
+									// If refresh/reload failed, mark as cooling down and try next account
+									accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
+									await accountManager.saveToDisk();
+									break;
+								}
+
 								const handled = await handleErrorResponse(res);
 								if (handled.status !== HTTP_STATUS.TOO_MANY_REQUESTS) {
 									if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordFailure(account);
@@ -572,30 +590,41 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const { scope, storagePath } = getStorageScope();
 				if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
 
-				// Fetch status from backend using EXISTING tokens only (no refresh)
-				// The /wham/usage endpoint should work even when rate-limited for sending messages
+				// Fetch status from backend - requires access token, so we may need to refresh
+				// This is best-effort: if refresh fails (e.g., rate-limited), we fall back to cached data
 				await Promise.all(accounts.map(async (acc, index) => {
 					if (acc.enabled === false) return;
 					const live = accountManager.getAccountByIndex(index);
-					if (live) {
-						const auth = accountManager.toAuthDetails(live);
-						// Only fetch if we have a non-expired token - don't force refresh
+					if (!live) return;
+
+					try {
+						let auth = accountManager.toAuthDetails(live);
 						const hasValidToken = auth.access && auth.expires > Date.now();
-						if (hasValidToken) {
-							try {
-								await codexStatus.fetchFromBackend(live, auth.access);
-							} catch {
-								// Silently fall back to cached snapshot if fetch fails
+
+						// If no valid access token in memory, try to refresh (best effort)
+						if (!hasValidToken) {
+							const refreshResult = await accountManager.refreshAccountWithFallback(live);
+							if (refreshResult.type === "success") {
+								auth = { type: "oauth", access: refreshResult.access, refresh: refreshResult.refresh, expires: refreshResult.expires };
+								// Update in-memory state AND save to disk (rotation occurred)
+								accountManager.updateFromAuth(live, auth);
+								await accountManager.saveToDisk();
 							}
 						}
-						// If no valid token, we'll use the cached snapshot (which may be stale)
+
+						// If we now have a valid token, fetch status
+						if (auth.access && auth.expires > Date.now()) {
+							await codexStatus.fetchFromBackend(live, auth.access);
+						}
+					} catch {
+						// Silently fall back to cached snapshot if anything fails
 					}
 				}));
 
 					const now = Date.now();
 					const enabledCount = accounts.filter(a => a.enabled !== false).length;
 					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
-					const lines: string[] = [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: ${enabledCount}/${accounts.length} enabled`, ``, ` #   Account                                   Plan       Status`, `---  ----------------------------------------- ---------- ---------------------` ];
+					const lines: string[] = [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: ${enabledCount}/${accounts.length} enabled`, ``, `  #   Account                                   Plan       Status`, ` ---  ----------------------------------------- ---------- ---------------------` ];
 					for (let index = 0; index < accounts.length; index++) {
 						const account = accounts[index];
 						if (!account) continue;
@@ -605,11 +634,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						const isRateLimited = account.rateLimitResetTimes && Object.values(account.rateLimitResetTimes).some(t => typeof t === "number" && t > now);
 						if (isRateLimited) statuses.push("rate-limited");
 						if (typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now) statuses.push("cooldown");
-						lines.push(`${String(index + 1).padStart(2)}   ${(account.email || "unknown").padEnd(41)} ${(account.plan || "Free").padEnd(10)} ${statuses.length > 0 ? statuses.join(", ") : "ok"}`);
+						lines.push(`  ${String(index + 1).padStart(2)}   ${(account.email || "unknown").padEnd(41)} ${(account.plan || "Free").padEnd(10)} ${statuses.length > 0 ? statuses.join(", ") : "ok"}`);
 						const codexLines = await codexStatus.renderStatus(account);
-						lines.push(...codexLines.map(l => "     " + l.trim()));
-						lines.push("");
+						lines.push(...codexLines.map(l => "       " + l.trim()));
 					}
+					lines.push(``);
 					lines.push(`Storage: ${storagePath}`);
 					return lines.join("\n");
 				},
