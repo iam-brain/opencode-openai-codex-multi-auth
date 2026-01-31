@@ -104,7 +104,8 @@ import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 import { RateLimitTracker, decideRateLimitAction, parseRateLimitReason } from "./lib/rate-limit.js";
-import { codexStatus } from "./lib/codex-status.js";
+import { codexStatus, type CodexRateLimitSnapshot } from "./lib/codex-status.js";
+import { renderObsidianDashboard } from "./lib/codex-status-ui.js";
 import {
 	ProactiveRefreshQueue,
 	createRefreshScheduler,
@@ -621,23 +622,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					}
 				}));
 
-					const now = Date.now();
 					const enabledCount = accounts.filter(a => a.enabled !== false).length;
 					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
-					const lines: string[] = [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: ${enabledCount}/${accounts.length} enabled`, ``, `  #   Account                                   Plan       Status`, ` ---  ----------------------------------------- ---------- ---------------------` ];
-					for (let index = 0; index < accounts.length; index++) {
-						const account = accounts[index];
-						if (!account) continue;
-						const statuses: string[] = [];
-						if (index === activeIndex) statuses.push("active");
-						if (account.enabled === false) statuses.push("disabled");
-						const isRateLimited = account.rateLimitResetTimes && Object.values(account.rateLimitResetTimes).some(t => typeof t === "number" && t > now);
-						if (isRateLimited) statuses.push("rate-limited");
-						if (typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now) statuses.push("cooldown");
-						lines.push(`  ${String(index + 1).padStart(2)}   ${(account.email || "unknown").padEnd(41)} ${(account.plan || "Free").padEnd(10)} ${statuses.length > 0 ? statuses.join(", ") : "ok"}`);
-						const codexLines = await codexStatus.renderStatus(account);
-						lines.push(...codexLines.map(l => "       " + l.trim()));
-					}
+					const snapshots = await codexStatus.getAllSnapshots();
+
+					const lines: string[] = [
+						`OpenAI Codex Status`, 
+						``, 
+						`  Scope: ${scope}`, 
+						`  Accounts: ${enabledCount}/${accounts.length} enabled`, 
+						``,
+						...renderObsidianDashboard(accounts, activeIndex, snapshots)
+					];
+
 					lines.push(``);
 					lines.push(`Storage: ${storagePath}`);
 					return lines.join("\n");
