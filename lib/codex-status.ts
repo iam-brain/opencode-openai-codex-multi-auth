@@ -28,6 +28,7 @@ export interface CodexRateLimitSnapshot {
 }
 
 const STALENESS_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SNAPSHOTS_FILE = "codex-snapshots.json";
 
 const LOCK_OPTIONS = {
@@ -52,17 +53,27 @@ export class CodexStatusManager {
 	}
 
 	private getSnapshotKey(account: Partial<AccountRecordV3>): string {
+		let key: string;
 		if (account.accountId && account.email && account.plan) {
-			return `${account.accountId}|${account.email}|${account.plan}`;
+			key = `${account.accountId}|${account.email}|${account.plan}`;
+		} else {
+			// Use refresh token as stable key for legacy accounts (standard in this codebase)
+			key = account.refreshToken || "unknown";
 		}
-		// Use refresh token as stable key for legacy accounts (standard in this codebase)
-		return account.refreshToken || "unknown";
+		
+		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			console.log(`[CodexStatus] Generated key: ${key}`);
+		}
+		return key;
 	}
 
 	async updateFromHeaders(
 		account: AccountRecordV3,
 		headers: Record<string, string | string[] | undefined>,
 	): Promise<void> {
+		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			console.log(`[CodexStatus] Updating from headers for ${account.email}:`, JSON.stringify(headers));
+		}
 		await this.ensureInitialized();
 		const getHeader = (name: string): string | undefined => {
 			const val = headers[name] || headers[name.toLowerCase()];
@@ -171,10 +182,16 @@ export class CodexStatusManager {
 			const filled = Math.round((data.usedPercent / 100) * width);
 			const bar = "█".repeat(filled) + "░".repeat(width - filled);
 			const resetDate = new Date(data.resetAt);
-			const resetStr =
-				data.resetAt > 0
-					? ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`
-					: "";
+			let resetStr = "";
+			if (data.resetAt > 0) {
+				const now = Date.now();
+				const isMoreThan24h = data.resetAt - now > 24 * 60 * 60 * 1000;
+				if (isMoreThan24h) {
+					resetStr = ` (reset ${resetDate.getMonth() + 1}/${resetDate.getDate()} ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`;
+				} else {
+					resetStr = ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`;
+				}
+			}
 			return `  ${label.padEnd(8)} [${bar}] ${data.usedPercent.toFixed(1)}%${resetStr}${staleLabel}`;
 		};
 
@@ -233,6 +250,8 @@ export class CodexStatusManager {
 					const diskData = JSON.parse(await fs.readFile(path, "utf-8"));
 					if (Array.isArray(diskData)) {
 						const diskMap = new Map<string, CodexRateLimitSnapshot>(diskData);
+						const now = Date.now();
+
 						// Merge memory into disk data (newer updatedAt wins)
 						for (const [key, memoryValue] of this.snapshots) {
 							const diskValue = diskMap.get(key);
@@ -240,6 +259,14 @@ export class CodexStatusManager {
 								diskMap.set(key, memoryValue);
 							}
 						}
+
+						// Prune extremely stale data (retention cleanup)
+						for (const [key, value] of diskMap) {
+							if (now - value.updatedAt > SNAPSHOT_RETENTION_MS) {
+								diskMap.delete(key);
+							}
+						}
+
 						// Update local cache to reflect current authoritative state
 						this.snapshots = diskMap;
 					}
