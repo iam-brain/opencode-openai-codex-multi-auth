@@ -59,12 +59,11 @@ export function renderObsidianDashboard(
 	const now = Date.now();
 	const lines: string[] = [];
 
-	// Column Widths (Restored to perfect alignment values)
+	// Column Widths & Grid
 	const W_NUM = 4;
-	const W_STATUS = 10;
+	const W_STATUS = 12;
 	const W_EMAIL = 42;
-	const W_PLAN = 11;
-	// No W_QUOTA needed for right wall anymore, just extend PLAN
+	const GAP = "  "; // Reduced to 2 spaces to keep it compact
 
 	// Helper to find snapshot
 	const findSnapshot = (acc: ManagedAccount) => {
@@ -77,24 +76,23 @@ export function renderObsidianDashboard(
 	};
 
 	// Header
-	// Shift STATUS header +2 spaces relative to data column (which has 1 space padding)
-	// Original: " STATUS" (1 space)
-	// New:      "   STATUS" (3 spaces)
 	const hRow =
 		padVisible(`  #`, W_NUM) +
-		padVisible(`   STATUS`, W_STATUS) + 
-		` ` + // +1 Shift for ACCOUNT column
+		GAP +
+		padVisible(`  STATUS`, W_STATUS) + 
+		GAP +
 		padVisible(`ACCOUNT`, W_EMAIL) +
-		` ` + // +1 Shift for PLAN column
+		GAP +
 		`PLAN`;
 	lines.push(`${clr.bold}${hRow}${clr.reset}`);
 
 	const divider =
-		padVisible(`  ${"-".repeat(W_NUM - 2)}`, W_NUM) +
-		padVisible("   " + "-".repeat(W_STATUS - 4), W_STATUS) + // Match header shift (3 spaces indent)
-		` ` + // +1 Shift for divider
-		padVisible("-".repeat(W_EMAIL - 1), W_EMAIL) +
-		` ` + // +1 Shift for divider
+		padVisible(`  --`, W_NUM) +
+		GAP +
+		padVisible(`  ` + "-".repeat(W_STATUS - 2), W_STATUS) + 
+		GAP +
+		padVisible("-".repeat(W_EMAIL), W_EMAIL) +
+		GAP +
 		"-".repeat(50); // Extended underline for PLAN + Usage
 	lines.push(`${clr.gray}${divider}${clr.reset}`);
 
@@ -125,20 +123,24 @@ export function renderObsidianDashboard(
 
 		const num = `  ${i + 1}`;
 		const status = `${statusStyle}${statusLabel}${clr.reset}`;
-		const email = `${clr.bold}${padVisible(acc.email || "unknown", W_EMAIL - 1)}${clr.reset}`;
-		const plan = `${clr.magenta}${padVisible(acc.plan || "Free", W_PLAN - 1)}${clr.reset}`;
+		const email = `${clr.bold}${acc.email || "unknown"}${clr.reset}`;
+		const plan = `${clr.magenta}${acc.plan || "Free"}${clr.reset}`;
 
 		// Main Row
-		// Keep data column aligned to original grid (1 space padding)
-		// Add +1 space before email and plan to match headers
-		// Add +1 space before plan
 		const mainRowContent =
-			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + " " + email + "  " + plan;
+			padVisible(num, W_NUM) + 
+			GAP + 
+			padVisible(status, W_STATUS) + 
+			GAP +
+			padVisible(email, W_EMAIL) + 
+			GAP +
+			plan;
 		lines.push(mainRowContent);
 
 		// Snapshot Data
 		const snapshot = findSnapshot(acc);
-		const indent = " ".repeat(W_NUM + W_STATUS + 1); // Indent +1 to match shift
+		// Indent to match ACCOUNT column (W_NUM + GAP.length + W_STATUS + GAP.length) = 20
+		const indent = " ".repeat(W_NUM + GAP.length + W_STATUS + GAP.length); 
 
 		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null | undefined) => {
 			const barWidth = 20;
@@ -158,9 +160,9 @@ export function renderObsidianDashboard(
 		lines.push(indent + renderBar("Weekly", snapshot?.secondary));
 
 		// Credits Row
-		if (snapshot?.credits) {
-			const { unlimited, balance } = snapshot.credits;
-			const creditStr = unlimited ? "unlimited" : `${balance} credits`;
+		if (snapshot) {
+			const creditInfo = snapshot.credits;
+			const creditStr = creditInfo ? (creditInfo.unlimited ? "unlimited" : `${creditInfo.balance} credits`) : "0 credits";
 			const creditRow = `${indent}${clr.gray}${"Credits".padEnd(9)}${clr.reset}${creditStr}`;
 			lines.push(creditRow);
 		}
