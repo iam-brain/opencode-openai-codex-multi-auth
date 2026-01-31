@@ -175,8 +175,8 @@ opencode auth login
 
 In the OpenCode TUI, you can run:
 
-- `openai-accounts`
-- `openai-accounts-switch` (pass a 1-based index)
+- `codex-status`
+- `codex-switch-accounts` (pass a 1-based index)
 
 See [Multi-Account](multi-account.md) for details.
 

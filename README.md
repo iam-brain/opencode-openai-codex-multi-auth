@@ -86,7 +86,7 @@ Minimal configs are not supported for GPT‑5.x; use the full configs above.
 - Strict account identity matching (`accountId` + `email` + `plan`)
 - Hybrid account selection strategy (health score + token bucket + LRU bias)
 - Optional round-robin account rotation (maximum throughput)
-- OpenCode TUI toasts + `openai-accounts` / `status-codex` / `openai-accounts-switch` tools
+- OpenCode TUI toasts + `codex-status` / `codex-switch-accounts` tools
 - **Authoritative Codex Status**: Real-time rate limit monitoring (5h/Weekly) with ASCII status bars
 ---
 ## 📚 Docs

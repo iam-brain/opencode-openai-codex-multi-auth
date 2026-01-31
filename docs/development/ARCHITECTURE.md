@@ -451,7 +451,7 @@ The plugin is designed to operate safely across multiple concurrent processes (e
 
 ## Codex Status Tool Implementation
 
-The `status-codex` and `openai-accounts` tools provide real-time visibility into OpenAI's backend rate limits, perfectly mimicking the behavior of `codex-rs v0.92.0`.
+The `codex-status` tool provides real-time visibility into OpenAI's backend rate limits, perfectly mimicking the behavior of `codex-rs v0.92.0`.
 
 ### Data Capture
 The plugin retrieves usage data from the authoritative `/wham/usage` endpoint:

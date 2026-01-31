@@ -63,9 +63,9 @@ You can disable most toasts with `quietMode: true`.
 
 The plugin exposes a few OpenCode tools to inspect or switch accounts:
 
-- `openai-accounts` - list accounts and status
-- `openai-accounts-switch` - switch active account by index (1-based)
-- `openai-accounts-toggle` - enable/disable account by index (1-based)
+- `codex-status` - list accounts and status
+- `codex-switch-accounts` - switch active account by index (1-based)
+- `codex-toggle-account` - enable/disable account by index (1-based)
 
 These are primarily useful in the OpenCode TUI.
 To enable or disable accounts, re-run `opencode auth login` and choose **manage**.
