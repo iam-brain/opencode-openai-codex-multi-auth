@@ -512,7 +512,12 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 														return;
 													}
 													const chunk = decoder.decode(value, { stream: true });
-													sseBuffer += chunk;
+													if (sseBuffer.length + chunk.length > 1024 * 1024) {
+														// Guard against memory leaks from malformed SSE streams
+														sseBuffer = chunk;
+													} else {
+														sseBuffer += chunk;
+													}
 													const lines = sseBuffer.split("\n");
 													sseBuffer = lines.pop() || "";
 													for (const line of lines) processLine(line);
