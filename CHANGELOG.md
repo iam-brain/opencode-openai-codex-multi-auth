@@ -26,6 +26,21 @@ All notable changes to this project are documented here. Dates use the ISO forma
 - **Snapshot Retention**: implemented automatic pruning for snapshots older than 7 days to prevent accumulation of stale or contaminated data.
 - **Diagnostic Logging**: added `OPENCODE_OPENAI_AUTH_DEBUG=1` support for troubleshooting identity key generation and header parsing.
 
+## [4.5.14] - 2026-01-30
+
+**Global Cache path release**: ensure cross-process visibility.
+
+### Fixed
+- **Global Snapshot Path**: corrected `getCachePath` to always use the system configuration directory (`~/.config/opencode/cache`), ensuring that rate limit data captured by the proxy is visible to CLI tools regardless of project scope.
+- **Table Alignment**: refactored `openai-accounts` and `status-codex` into a strict ASCII table format to prevent horizontal shifting.
+
+## [4.5.13] - 2026-01-30
+
+**Storage Hardening release**: restrictive permissions for account files.
+
+### Changed
+- **Security Hardening**: primary account storage now uses restrictive `0600` permissions on creation/update, matching the hardening applied to snapshots.
+
 ## [4.5.12] - 2026-01-30
 
 **Final Hardening & Concurrency Safety release**: async status manager, promise-based initialization, and cross-process safety.
