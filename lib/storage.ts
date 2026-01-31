@@ -304,6 +304,10 @@ export function getStoragePath(): string {
 	return join(getOpencodeConfigDir(), STORAGE_FILE);
 }
 
+export function getCachePath(filename: string): string {
+	return join(getOpencodeConfigDir(), "cache", filename);
+}
+
 export type AccountsInspection = {
 	status: "missing" | "corrupt-file" | "ok" | "needs-repair";
 	corruptEntries: unknown[];

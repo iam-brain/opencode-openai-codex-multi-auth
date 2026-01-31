@@ -1,4 +1,8 @@
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { dirname } from "node:path";
+import { randomBytes } from "node:crypto";
 import { type AccountRecordV3 } from "./types.js";
+import { getCachePath } from "./storage.js";
 
 export interface CodexRateLimitSnapshot {
 	accountId: string;
@@ -23,9 +27,17 @@ export interface CodexRateLimitSnapshot {
 }
 
 const STALENESS_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const SNAPSHOTS_FILE = "codex-snapshots.json";
 
 export class CodexStatusManager {
-	private readonly snapshots = new Map<string, CodexRateLimitSnapshot>();
+	private snapshots = new Map<string, CodexRateLimitSnapshot>();
+	private initialized = false;
+
+	private ensureInitialized(): void {
+		if (this.initialized) return;
+		this.initialized = true;
+		this.loadFromDisk();
+	}
 
 	private getSnapshotKey(account: Partial<AccountRecordV3>): string {
 		if (account.accountId && account.email && account.plan) {
@@ -36,6 +48,7 @@ export class CodexStatusManager {
 	}
 
 	updateFromHeaders(account: AccountRecordV3, headers: Record<string, string | string[] | undefined>): void {
+		this.ensureInitialized();
 		const getHeader = (name: string): string | undefined => {
 			const val = headers[name] || headers[name.toLowerCase()];
 			return Array.isArray(val) ? val[0] : val;
@@ -99,9 +112,11 @@ export class CodexStatusManager {
 		};
 
 		this.snapshots.set(key, snapshot);
+		this.saveToDisk();
 	}
 
 	getSnapshot(account: AccountRecordV3): (CodexRateLimitSnapshot & { isStale: boolean }) | null {
+		this.ensureInitialized();
 		const key = this.getSnapshotKey(account);
 		const snapshot = this.snapshots.get(key);
 		if (!snapshot) return null;
@@ -113,6 +128,7 @@ export class CodexStatusManager {
 	}
 
 	getAllSnapshots(): CodexRateLimitSnapshot[] {
+		this.ensureInitialized();
 		return Array.from(this.snapshots.values());
 	}
 
@@ -160,6 +176,35 @@ export class CodexStatusManager {
 		}
 
 		return lines;
+	}
+
+	private loadFromDisk(): void {
+		const path = getCachePath(SNAPSHOTS_FILE);
+		if (!existsSync(path)) return;
+		try {
+			const data = JSON.parse(readFileSync(path, "utf-8"));
+			if (Array.isArray(data)) {
+				this.snapshots = new Map(data);
+			}
+		} catch {
+			// ignore load errors
+		}
+	}
+
+	private saveToDisk(): void {
+		const path = getCachePath(SNAPSHOTS_FILE);
+		try {
+			const dir = dirname(path);
+			if (!existsSync(dir)) {
+				mkdirSync(dir, { recursive: true });
+			}
+			const data = JSON.stringify(Array.from(this.snapshots.entries()), null, 2);
+			const tmpPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
+			writeFileSync(tmpPath, data, "utf-8");
+			renameSync(tmpPath, path);
+		} catch {
+			// ignore save errors
+		}
 	}
 }
 
