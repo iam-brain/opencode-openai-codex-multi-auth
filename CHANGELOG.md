@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.21] - 2026-01-31
+
+**Parallel Rotation Resilience release**: atomic sync across multiple machine sessions.
+
+### Fixed
+- **Unauthorized Recovery**: main request loop now recovers from `401 Unauthorized` by re-syncing with disk and retrying, matching the official Codex CLI's robustness.
+- **Ghost Rotations**: `codex-status` tool now persists rotated tokens to disk immediately, preventing drift that previously invalidated other active sessions.
+- **Token Overwrite Race**: implemented **Timestamp Arbitration** in storage merges; the most recently active session (`lastUsed`) now always wins, preventing stale sessions from corrupting the authoritative machine state.
+
+### Changed
+- **Strict Identity Uniqueness**: all account matching now strictly uses the `accountId + email + plan` composite key to ensure global uniqueness across different workspaces and subscriptions.
+
 ## [4.5.20] - 2026-01-31
 
 **Reliability & Identity Hardening release**: codex-status stability, memory safety, and identity-based tracking.
