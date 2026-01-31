@@ -2,27 +2,47 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
-## [4.6.0] - 2026-01-30
+## [4.5.12] - 2026-01-30
+
+**Final Hardening & Concurrency Safety release**: async status manager, promise-based initialization, and cross-process safety.
+
+### Added
+- **Detailed Inline Errors**: 429 rate-limit responses now return structured inline account status summaries showing which accounts are exhausted and their reset times.
+
+### Changed
+- **Async Status Hardening**: refactored `CodexStatusManager` to use non-blocking async I/O (`fs.promises`) and promise-based initialization gates to prevent concurrency races.
+- **Lost Updates Prevention**: implemented timestamp-based (`updatedAt`) merge arbitration under lock (`proper-lockfile`) to ensure newest state wins across concurrent processes.
+- **Security Hardening**: snapshots cache file now uses restrictive `0600` permissions.
+
+### Fixed
+- **Initialization Race**: resolved a race condition where concurrent calls to the status manager could result in stale or partial data during the initial disk load.
+
+### Tests
+- **Test Fixture Alignment**: refactored all unit tests to strictly use repository fixtures for identities and snapshots, removing all hardcoded mocks.
+
+## [4.5.11] - 2026-01-30
+
+**Persistence fix release**: cross-process snapshot visibility.
+
+### Changed
+- **Persistent Snapshots**: rate limit data is now persisted to `~/.config/opencode/cache/codex-snapshots.json` for cross-process visibility between the proxy and CLI tools.
+
+### Tests
+- **Status Fixtures**: added `codex-status-snapshots.json` and `codex-headers.json` for deterministic testing of rate limit parsing and rendering.
+
+## [4.5.10] - 2026-01-30
 
 **Per-project storage & Codex status release**: isolated account storage and real-time rate limit monitoring.
 
 ### Added
 - **Codex Status Tool**: added `status-codex` and `openai-accounts` tools to display real-time ASCII status bars for rate limits and credits.
 - **Per-Project Storage**: added `perProjectAccounts` config flag to isolate OpenAI accounts within `.opencode/` for specific projects.
-- **Detailed Inline Errors**: 429 rate-limit responses now return structured inline account status summaries showing which accounts are exhausted and their reset times.
 
 ### Changed
-- **Async Status Hardening**: refactored `CodexStatusManager` to use non-blocking async I/O and promise-based initialization gates to prevent concurrency races.
-- **Persistent Snapshots**: rate limit data is now persisted to `~/.config/opencode/cache/codex-snapshots.json` for cross-process visibility.
-- **Security Hardening**: cache files now use restrictive `0600` permissions.
 - **Identity Matching**: standardized plan casing (e.g., "plus" -> "Plus") at the storage level to ensure reliable matching.
 
 ### Fixed
 - **Concurrent Session Safety**: implemented `originalRefreshToken` tracking and disk-fallback lazy loading to prevent token drift and rollbacks in multi-process environments.
-- **Lost Updates Prevention**: implemented lock-reload-merge-write strategy for status snapshots using `proper-lockfile` and timestamp-based arbitration.
-
-### Tests
-- **Status Fixtures**: added `codex-status-snapshots.json` and `codex-headers.json` for deterministic testing of rate limit parsing and rendering.
 
 ## [4.5.9] - 2026-01-30
 

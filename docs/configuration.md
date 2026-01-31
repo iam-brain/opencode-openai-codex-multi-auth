@@ -395,6 +395,19 @@ Multi-account settings live in the same plugin config file:
 
 - `~/.config/opencode/openai-codex-auth-config.json`
 
+Add `$schema` for editor autocompletion:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/main/assets/openai-codex-auth-config.schema.json",
+  "codexMode": true,
+  "accountSelectionStrategy": "sticky",
+  "pidOffsetEnabled": true,
+  "quietMode": false,
+  "perProjectAccounts": false
+}
+```
+
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `accountSelectionStrategy` | `string` | `"sticky"` | Strategy for selecting accounts (`sticky`, `round-robin`, `hybrid`). |
