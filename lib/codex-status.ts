@@ -31,6 +31,9 @@ const STALENESS_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SNAPSHOTS_FILE = "codex-snapshots.json";
 
+const WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_USAGE_URL = "https://api.openai.com/api/codex/usage";
+
 function normalizePlanType(planType: unknown): string {
 	const PLAN_TYPE_LABELS: Record<string, string> = {
 		free: "Free",
@@ -375,6 +378,60 @@ export class CodexStatusManager {
 
 		this.snapshots.set(key, updated);
 		await this.saveToDisk();
+	}
+
+	async fetchFromBackend(account: AccountRecordV3, accessToken: string): Promise<void> {
+		const isChatGPT = accessToken.split(".").length === 3; // Simple JWT check
+		const url = isChatGPT ? WHAM_USAGE_URL : CODEX_USAGE_URL;
+
+		try {
+			const res = await fetch(url, {
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					"OpenAI-Account-Id": account.accountId || "",
+					Accept: "application/json",
+					"User-Agent": "codex_cli_rs",
+					Origin: "https://chatgpt.com",
+				},
+			});
+
+			if (res.ok) {
+				const json = (await res.json()) as any;
+				
+				// Standardize the /wham/usage structure into our internal snapshot
+				const data: any = {};
+				if (json.rate_limit) {
+					if (json.rate_limit.primary_window) {
+						data.primary = {
+							used_percent: json.rate_limit.primary_window.used_percent,
+							window_minutes: json.rate_limit.primary_window.limit_window_seconds / 60,
+							resets_at: json.rate_limit.primary_window.reset_at,
+						};
+					}
+					if (json.rate_limit.secondary_window) {
+						data.secondary = {
+							used_percent: json.rate_limit.secondary_window.used_percent,
+							window_minutes: json.rate_limit.secondary_window.limit_window_seconds / 60,
+							resets_at: json.rate_limit.secondary_window.reset_at,
+						};
+					}
+				}
+				
+				if (json.credits) {
+					data.credits = {
+						has_credits: json.credits.has_credits,
+						unlimited: json.credits.unlimited,
+						balance: json.credits.balance,
+					};
+				}
+				
+				await this.updateFromSnapshot(account, data);
+			}
+		} catch (err) {
+			if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+				console.error(`[CodexStatus] Fetch failed for ${account.email}:`, err);
+			}
+		}
 	}
 }
 

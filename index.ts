@@ -641,13 +641,26 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 											const originalBody = res.body;
 											const reader = originalBody.getReader();
 											const decoder = new TextDecoder();
-											const encoder = new TextEncoder();
 											let sseBuffer = "";
 
 											const transformStream = new ReadableStream({
 												async pull(controller) {
 													const { done, value } = await reader.read();
 													if (done) {
+														if (sseBuffer.trim()) {
+															// Process any remaining buffer content
+															const lines = sseBuffer.split("\n");
+															for (const line of lines) {
+																if (line.startsWith("data: ")) {
+																	try {
+																		const data = JSON.parse(line.substring(6));
+																		if (data.type === "token_count" && data.rate_limits) {
+																			codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
+																		}
+																	} catch {}
+																}
+															}
+														}
 														controller.close();
 														return;
 													}
@@ -655,7 +668,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 													const chunk = decoder.decode(value, { stream: true });
 													sseBuffer += chunk;
 													
-													// Look for token_count events in the buffer
 													const lines = sseBuffer.split("\n");
 													// Keep the last incomplete line in the buffer
 													sseBuffer = lines.pop() || "";
@@ -665,7 +677,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 															try {
 																const data = JSON.parse(line.substring(6));
 																if (data.type === "token_count" && data.rate_limits) {
-																	// Update status snapshot in the background
 																	codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
 																}
 															} catch {
@@ -1342,13 +1353,25 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						`  Accounts: ${enabledCount}/${accounts.length} enabled`,
 						...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
 						``,
-						` #   Account                                   Plan       Status`,
-						`---  ----------------------------------------- ---------- ---------------------`,
-					];
-					for (let index = 0; index < accounts.length; index++) {
-						const account = accounts[index];
-						if (!account) continue;
-						const email = account.email || "unknown";
+					` #   Account                                   Plan       Status`,
+					`---  ----------------------------------------- ---------- ---------------------`,
+				];
+				for (let index = 0; index < accounts.length; index++) {
+					const account = accounts[index];
+					if (!account) continue;
+
+					// Actively fetch the latest status from OpenAI
+					const live = accountManager.getAccountByIndex(index);
+					if (live) {
+						// Ensure we have a fresh token for the status fetch
+						const refreshResult = await accountManager.refreshAccountWithFallback(live);
+						if (refreshResult.type === "success") {
+							await codexStatus.fetchFromBackend(live, refreshResult.access);
+						}
+					}
+
+					const email = account.email || "unknown";
+
 						const plan = account.plan || "Free";
 						const statuses: string[] = [];
 						if (index === activeIndex) statuses.push("active");
@@ -1396,6 +1419,17 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					for (let index = 0; index < accounts.length; index++) {
 						const account = accounts[index];
 						if (!account) continue;
+
+						// Actively fetch the latest status from OpenAI
+						const live = accountManager.getAccountByIndex(index);
+						if (live) {
+							// Ensure we have a fresh token for the status fetch
+							const refreshResult = await accountManager.refreshAccountWithFallback(live);
+							if (refreshResult.type === "success") {
+								await codexStatus.fetchFromBackend(live, refreshResult.access);
+							}
+						}
+
 						const email = account.email || "unknown";
 						const plan = account.plan || "Free";
 						const rateLimited =
