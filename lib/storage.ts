@@ -322,8 +322,8 @@ export async function backupAccountsFile(): Promise<string | null> {
 	const backupPath = `${filePath}.bak-${Date.now()}`;
 	await withFileLock(filePath, async () => {
 		if (!existsSync(filePath)) return;
-		await fs.copyFile(filePath, backupPath);
-		await ensurePrivateFileMode(backupPath);
+		const content = await fs.readFile(filePath);
+		await fs.writeFile(backupPath, content, { mode: 0o600 });
 		await cleanupBackupFiles(filePath);
 	});
 	return backupPath;
@@ -873,24 +873,7 @@ export async function inspectAccountsFile(): Promise<AccountsInspection> {
 }
 
 async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
-	const filePath = getStoragePath();
-	await withFileLock(filePath, async () => {
-		const jsonContent = JSON.stringify(storage, null, 2);
-			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
-			try {
-				await fs.writeFile(tmpPath, jsonContent, "utf-8");
-				await fs.chmod(tmpPath, 0o600);
-				await fs.rename(tmpPath, filePath);
-			} catch (error) {
-
-			try {
-				await fs.unlink(tmpPath);
-			} catch {
-				// ignore cleanup errors
-			}
-			throw error;
-		}
-	});
+	await saveAccountsWithLock(() => storage);
 }
 
 export async function writeQuarantineFile(
@@ -905,16 +888,17 @@ export async function writeQuarantineFile(
 		quarantinedAt: new Date().toISOString(),
 		records,
 	};
-	if (existsSync(filePath)) {
-		await withFileLock(filePath, async () => {
-			await fs.writeFile(quarantinePath, JSON.stringify(payload, null, 2), "utf-8");
-			await ensurePrivateFileMode(quarantinePath);
-			await cleanupQuarantineFiles(filePath);
-		});
-		return quarantinePath;
+	const content = JSON.stringify(payload, null, 2);
+	const tmpPath = `${quarantinePath}.${randomBytes(6).toString("hex")}.tmp`;
+
+	try {
+		await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
+		await fs.rename(tmpPath, quarantinePath);
+	} catch (error) {
+		await fs.unlink(tmpPath).catch(() => undefined);
+		throw error;
 	}
-	await fs.writeFile(quarantinePath, JSON.stringify(payload, null, 2), "utf-8");
-	await ensurePrivateFileMode(quarantinePath);
+
 	await cleanupQuarantineFiles(filePath);
 	return quarantinePath;
 }
@@ -929,8 +913,8 @@ export async function quarantineCorruptFile(): Promise<string | null> {
 	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
 	await withFileLock(filePath, async () => {
 		if (!existsSync(filePath)) return;
-		await fs.copyFile(filePath, quarantinePath);
-		await ensurePrivateFileMode(quarantinePath);
+		const content = await fs.readFile(filePath);
+		await fs.writeFile(quarantinePath, content, { mode: 0o600 });
 		await cleanupQuarantineFiles(filePath);
 	});
 	await writeAccountsFile({
@@ -1012,47 +996,9 @@ export async function saveAccounts(
 	storage: AccountStorageV3,
 	options?: SaveAccountsOptions,
 ): Promise<void> {
-	const filePath = getStoragePath();
-	debug(`[SaveAccounts] Saving to ${filePath} with ${storage.accounts.length} accounts`);
-
-	try {
-		await withFileLock(filePath, async () => {
-			await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
-			const existing = await loadAccountsUnsafe(filePath);
-			const mergedStorage =
-				existing && !options?.replace
-					? mergeAccountStorage(existing, storage, options)
-					: storage;
-			const jsonContent = JSON.stringify(mergedStorage, null, 2);
-			debug(`[SaveAccounts] Writing ${jsonContent.length} bytes`);
-			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
-			try {
-				await fs.writeFile(tmpPath, jsonContent, "utf-8");
-				await fs.chmod(tmpPath, 0o600);
-				await fs.rename(tmpPath, filePath);
-			} catch (error) {
-				try {
-					await fs.unlink(tmpPath);
-				} catch {
-					// ignore cleanup errors
-				}
-				throw error;
-			}
-
-			if (AUTH_DEBUG_ENABLED) {
-				const verifyContent = await fs.readFile(filePath, "utf-8");
-				const verifyStorage = normalizeStorage(JSON.parse(verifyContent));
-				if (verifyStorage) {
-					debug(
-						`[SaveAccounts] Verification successful - ${verifyStorage.accounts.length} accounts in file`,
-					);
-				} else {
-					debug("[SaveAccounts] Verification failed - invalid storage format");
-				}
-			}
-		});
-	} catch (error) {
-		console.error("[SaveAccounts] Error saving accounts:", error);
-		throw error;
-	}
+	await saveAccountsWithLock((existing) => {
+		return existing && !options?.replace
+			? mergeAccountStorage(existing, storage, options)
+			: storage;
+	});
 }

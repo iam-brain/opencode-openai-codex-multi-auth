@@ -51,7 +51,7 @@ export function logRequest(stage: string, data: Record<string, unknown>): void {
 				null,
 				2,
 			),
-			"utf8",
+			{ encoding: "utf8", mode: 0o600 },
 		);
 		console.log(`[${PLUGIN_NAME}] Logged ${stage} to ${filename}`);
 	} catch (e) {
