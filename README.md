@@ -75,6 +75,16 @@ opencode auth login
 
 Minimal configs are not supported for GPT‑5.x; use the full configs above.
 ---
+## ⌨️ Slash Commands (TUI)
+In the OpenCode TUI, you can use these commands to manage your accounts and monitor usage:
+
+| Command | Description |
+|---------|-------------|
+| `/codex-status` | Shows current rate limits (5h/Weekly), credits, and account status (percent left). |
+| `/codex-switch-accounts <index>` | Switch the active account by its 1-based index from the status list. |
+| `/codex-toggle-account <index>` | Enable or disable an account by its 1-based index (prevents auto-selection). |
+
+---
 ## ✅ Features
 - ChatGPT Plus/Pro OAuth authentication (official flow)
 - 22 model presets across GPT‑5.2 / GPT‑5.2 Codex / GPT‑5.1 families
