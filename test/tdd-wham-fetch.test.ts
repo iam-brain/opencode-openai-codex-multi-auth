@@ -46,10 +46,10 @@ describe("TDD: Codex Status Backend Fetching", () => {
 
 		// 100 - 25 = 75% left
 		expect(lines[0]).toContain("75% left");
-		expect(lines[0]).toContain("5h limit");
+		expect(lines[0]).toContain("5 hour limit:");
 		// 100 - 10 = 90% left
 		expect(lines[1]).toContain("90% left");
-		expect(lines[1]).toContain("7d limit");
+		expect(lines[1]).toContain("Weekly limit:");
 	});
 
 	it("handles missing limits in /wham/usage gracefully", async () => {
@@ -73,7 +73,7 @@ describe("TDD: Codex Status Backend Fetching", () => {
 		const lines = await manager.renderStatus(mockAccount);
 		// It should always render both lines, even if data is missing
 		expect(lines.length).toBeGreaterThanOrEqual(2);
-		expect(lines[0]).toContain("5h limit"); 
+		expect(lines[0]).toContain("5 hour limit:"); 
 		expect(lines[0]).toContain("unknown");
 	});
 });

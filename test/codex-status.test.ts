@@ -151,15 +151,15 @@ describe("CodexStatusManager", () => {
 		const manager = new CodexStatusManager();
 		await manager.updateFromHeaders(testAccount, {
 			"x-codex-primary-used-percent": "50",
-			"x-codex-primary-window-minutes": "0", // Force 5h label fallback
+			"x-codex-primary-window-minutes": "0", // Force 5 hour label fallback
 			"x-codex-secondary-used-percent": "25",
 			"x-codex-credits-unlimited": "true",
 		});
 
 		const lines = await manager.renderStatus(testAccount);
 		// Check for key components (100 - 50 = 50% left, 100 - 25 = 75% left)
-		expect(lines.some(l => l.includes("5h limit:") && l.includes("50% left"))).toBe(true);
-		expect(lines.some(l => l.includes("7d limit:") && l.includes("75% left"))).toBe(true);
+		expect(lines.some(l => l.includes("5 hour limit:") && l.includes("50% left"))).toBe(true);
+		expect(lines.some(l => l.includes("Weekly limit:") && l.includes("75% left"))).toBe(true);
 		expect(lines.some(l => l.includes("Credits") && l.includes("unlimited"))).toBe(true);
 	});
 
