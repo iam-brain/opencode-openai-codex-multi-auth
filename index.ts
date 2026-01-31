@@ -82,6 +82,7 @@ import {
 	isOAuthAuth,
 	needsIdentityHydration,
 	sanitizeEmail,
+	type ManagedAccount,
 } from "./lib/accounts.js";
 import {
 	promptAddAnotherAccount,
@@ -151,18 +152,6 @@ function parseRetryAfterMs(headers: Headers): number | null {
 
 /**
  * OpenAI Codex OAuth authentication plugin for opencode
- *
- * This plugin enables opencode to use OpenAI's Codex backend via ChatGPT Plus/Pro
- * OAuth authentication, allowing users to leverage their ChatGPT subscription
- * instead of OpenAI Platform API credits.
- *
- * @example
- * ```json
- * {
- *   "plugin": ["opencode-openai-codex-auth"],
- *   "model": "openai/gpt-5-codex"
- * }
- * ```
  */
 export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	let cachedAccountManager: AccountManager | null = null;
@@ -222,20 +211,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		const accountId = extractAccountId(token.access);
 		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
 		const plan = extractAccountPlan(token.idToken ?? token.access);
-		if (!accountId || !email || !plan) {
-			debugAuth("[PersistAccount] Missing account identity fields; persisting legacy entry");
-		}
-
-		debugAuth(
-			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, plan: ${plan}, existing accounts: ${accounts.length}`,
-		);
-
+		
 		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
 
-		debugAuth(`[PersistAccount] Match index: ${existingIndex}`);
-
 		if (existingIndex === -1) {
-			debugAuth("[PersistAccount] Adding new account");
 			accounts.push({
 				refreshToken: token.refresh,
 				accountId,
@@ -246,7 +225,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				lastUsed: now,
 			});
 		} else {
-			debugAuth(`[PersistAccount] Updating existing account at index ${existingIndex}`);
 			const existing = accounts[existingIndex];
 			if (existing) {
 				existing.refreshToken = token.refresh;
@@ -266,28 +244,12 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			activeIndexByFamily: stored?.activeIndexByFamily ?? {},
 		};
 
-		debugAuth(`[PersistAccount] Saving storage with ${accounts.length} accounts`);
 		await saveAccounts(storageToSave);
-		debugAuth("[PersistAccount] Account persistence completed");
 	};
 
 	return {
 		auth: {
 			provider: PROVIDER_ID,
-			/**
-			 * Loader function that configures OAuth authentication and request handling
-			 *
-			 * This function:
-			 * 1. Validates OAuth authentication
-			 * 2. Extracts ChatGPT account ID from access token
-			 * 3. Loads user configuration from opencode.json
-			 * 4. Fetches Codex system instructions from GitHub (cached)
-			 * 5. Returns SDK configuration with custom fetch implementation
-			 *
-			 * @param getAuth - Function to retrieve current auth state
-			 * @param provider - Provider configuration from opencode.json
-			 * @returns SDK configuration object or empty object for non-OAuth auth
-			 */
 			async loader(getAuth: () => Promise<Auth>, provider: unknown) {
 				const auth = await getAuth();
 
@@ -302,18 +264,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const accountManager = await AccountManager.loadFromDisk(auth);
 				cachedAccountManager = accountManager;
 				if (accountManager.getAccountCount() === 0) {
-					const quarantinePath = await autoQuarantineCorruptAccountsFile();
-					if (quarantinePath) {
-						await showToast(
-							"Accounts file was corrupted and has been quarantined. Run `opencode auth login`.",
-							"warning",
-							quietMode,
-						);
-					}
 					logDebug(`[${PLUGIN_NAME}] No OAuth accounts available (run opencode auth login)`);
 					return {};
 				}
-				// Extract user configuration (global + per-model options)
+				
 				const providerConfig = provider as
 					| { options?: Record<string, unknown>; models?: UserConfig["models"] }
 					| undefined;
@@ -334,6 +288,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					if (envFlag === "0" || envFlag === "false") return false;
 					return Boolean(configFlag);
 				})();
+				
 				const toastDebounceMs = getRateLimitToastDebounceMs(pluginConfig);
 				const retryAllAccountsRateLimited = getRetryAllAccountsRateLimited(pluginConfig);
 				const retryAllAccountsMaxWaitMs = getRetryAllAccountsMaxWaitMs(pluginConfig);
@@ -347,13 +302,16 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const maxBackoffMs = getMaxBackoffMs(pluginConfig);
 				const requestJitterMaxMs = getRequestJitterMaxMs(pluginConfig);
 				const maxCacheFirstWaitMs = Math.max(0, Math.floor(maxCacheFirstWaitSeconds * 1000));
+				
 				const proactiveRefreshQueue = proactiveRefreshEnabled
 					? new ProactiveRefreshQueue({ bufferMs: tokenRefreshSkewMs, intervalMs: 250 })
 					: null;
+					
 				if (proactiveRefreshScheduler) {
 					proactiveRefreshScheduler.stop();
 					proactiveRefreshScheduler = null;
 				}
+				
 				if (proactiveRefreshQueue) {
 					proactiveRefreshScheduler = createRefreshScheduler({
 						intervalMs: 1000,
@@ -398,6 +356,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					});
 					proactiveRefreshScheduler.start();
 				}
+				
 				const rateLimitTracker = new RateLimitTracker({
 					dedupWindowMs: rateLimitDedupWindowMs,
 					resetMs: rateLimitStateResetMs,
@@ -406,46 +365,16 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					jitterMaxMs: requestJitterMaxMs,
 				});
 
-				// Return SDK configuration
 				return {
 					apiKey: DUMMY_API_KEY,
 					baseURL: CODEX_BASE_URL,
-					/**
-					 * Custom fetch implementation for Codex API
-					 *
-					 * Handles:
-					 * - Token refresh when expired
-					 * - URL rewriting for Codex backend
-					 * - Request body transformation
-					 * - OAuth header injection
-					 * - SSE to JSON conversion for non-tool requests
-					 * - Error handling and logging
-					 *
-					 * @param input - Request URL or Request object
-					 * @param init - Request options
-					 * @returns Response from Codex API
-					 */
-					async fetch(
-						input: Request | string | URL,
-						init?: RequestInit,
-					): Promise<Response> {
-						// Step 2: Extract and rewrite URL for Codex backend
+					async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response> {
 						const originalUrl = extractRequestUrl(input);
 						const url = rewriteUrlForCodex(originalUrl);
-
-						// Step 3: Transform request body with model-specific Codex instructions
-						// Instructions are fetched per model family (codex-max, codex, gpt-5.1)
-						// Capture original stream value before transformation
-						// generateText() sends no stream field, streamText() sends stream=true
 						const originalBody = init?.body ? JSON.parse(init.body as string) : {};
 						const isStreaming = originalBody.stream === true;
 
-						const transformation = await transformRequestForCodex(
-							init,
-							url,
-							userConfig,
-							codexMode,
-						);
+						const transformation = await transformRequestForCodex(init, url, userConfig, codexMode);
 						const requestInit = transformation?.updatedInit ?? init;
 						const model = transformation?.body.model;
 						const modelFamily: ModelFamily = model ? getModelFamily(model) : "gpt-5.1";
@@ -454,22 +383,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						const abortSignal = requestInit?.signal ?? init?.signal ?? null;
 						const sleep = (ms: number): Promise<void> =>
 							new Promise((resolve, reject) => {
-								if (abortSignal?.aborted) {
-									reject(new Error("Aborted"));
-									return;
-								}
-								const timeout = setTimeout(() => {
-									cleanup();
-									resolve();
-								}, ms);
-								const onAbort = () => {
-									cleanup();
-									reject(new Error("Aborted"));
-								};
-								const cleanup = () => {
-									clearTimeout(timeout);
-									abortSignal?.removeEventListener("abort", onAbort);
-								};
+								if (abortSignal?.aborted) return reject(new Error("Aborted"));
+								const timeout = setTimeout(() => { cleanup(); resolve(); }, ms);
+								const onAbort = () => { cleanup(); reject(new Error("Aborted")); };
+								const cleanup = () => { clearTimeout(timeout); abortSignal?.removeEventListener("abort", onAbort); };
 								abortSignal?.addEventListener("abort", onAbort, { once: true });
 							});
 
@@ -484,57 +401,28 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									autoRepairAttempted = true;
 									const repair = await accountManager.repairLegacyAccounts();
 									const snapshot = accountManager.getStorageSnapshot();
-									let quarantinePath: string | null = null;
 									if (repair.quarantined.length > 0) {
-										const quarantinedTokens = new Set(
-											repair.quarantined.map((account) => account.refreshToken),
-										);
-										const quarantineEntries = snapshot.accounts.filter((account) =>
-											quarantinedTokens.has(account.refreshToken),
-										);
-										const quarantineResult = await quarantineAccounts(
-											snapshot,
-											quarantineEntries,
-											"legacy-auto-repair-failed",
-										);
-										quarantinePath = quarantineResult.quarantinePath;
+										const quarantinedTokens = new Set(repair.quarantined.map(a => a.refreshToken));
+										const quarantineEntries = snapshot.accounts.filter(a => quarantinedTokens.has(a.refreshToken));
+										await quarantineAccounts(snapshot, quarantineEntries, "legacy-auto-repair-failed");
 										accountManager.removeAccountsByRefreshToken(quarantinedTokens);
 									} else {
 										await replaceAccountsFile(snapshot);
 									}
-								if (repair.quarantined.length > 0 && quarantinePath) {
-									logDebug(
-										`[${PLUGIN_NAME}] Auto-repair quarantined: ${quarantinePath}`,
-									);
-									await showToast(
-										`Auto-repair failed for ${repair.quarantined.length} account(s).`,
-										"warning",
-										quietMode,
-									);
-								} else if (repair.repaired.length > 0) {
-										await showToast(
-											`Auto-repaired ${repair.repaired.length} account(s).`,
-											"success",
-											quietMode,
-										);
-									}
 									continue;
 								}
 							}
+							
 							const attempted = new Set<number>();
 
 							while (attempted.size < Math.max(1, accountCount)) {
-								const account = accountManager.getCurrentOrNextForFamily(
-									modelFamily,
-									model,
-									accountSelectionStrategy,
-									usePidOffset,
-								);
+								const account = accountManager.getCurrentOrNextForFamily(modelFamily, model, accountSelectionStrategy, usePidOffset);
 								if (!account || attempted.has(account.index)) break;
 								attempted.add(account.index);
 
 								let accountAuth = accountManager.toAuthDetails(account);
 								const tokenExpired = !accountAuth.access || accountAuth.expires <= Date.now();
+								
 								const runRefresh = async (): Promise<TokenResult> => {
 									const refreshed = await accountManager.refreshAccountWithFallback(account);
 									if (refreshed.type === "success") {
@@ -551,70 +439,32 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										};
 										accountManager.updateFromAuth(account, refreshedAuth);
 										await accountManager.saveToDisk();
-										await client.auth.set({
-											path: { id: PROVIDER_ID },
-											body: refreshedAuth,
-										});
+										await client.auth.set({ path: { id: PROVIDER_ID }, body: refreshedAuth });
 									}
 									return refreshed;
 								};
 
 								if (shouldRefreshToken(accountAuth, tokenRefreshSkewMs)) {
 									if (proactiveRefreshQueue && !tokenExpired) {
-										void proactiveRefreshQueue.enqueue({
-											key: `account-${account.index}`,
-											expires: accountAuth.expires,
-											refresh: runRefresh,
-										});
+										void proactiveRefreshQueue.enqueue({ key: `account-${account.index}`, expires: accountAuth.expires, refresh: runRefresh });
 									} else {
 										const refreshed = await runRefresh();
 										if (refreshed.type !== "success") {
-											accountManager.markAccountCoolingDown(
-												account,
-												AUTH_FAILURE_COOLDOWN_MS,
-												"auth-failure",
-											);
+											accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
 											await accountManager.saveToDisk();
-											await showToast(
-												`Auth refresh failed. Cooling down ${formatAccountLabel(account, account.index)}.`,
-												"warning",
-												quietMode,
-											);
 											continue;
 										}
-
-										accountAuth = {
-											type: "oauth",
-											access: refreshed.access,
-											refresh: refreshed.refresh,
-											expires: refreshed.expires,
-										};
+										accountAuth = { type: "oauth", access: refreshed.access, refresh: refreshed.refresh, expires: refreshed.expires };
 									}
 								}
 
 								const accountId = account.accountId ?? extractAccountId(accountAuth.access);
 								if (!accountId) {
-									accountManager.markAccountCoolingDown(
-										account,
-										AUTH_FAILURE_COOLDOWN_MS,
-										"auth-failure",
-									);
+									accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
 									await accountManager.saveToDisk();
 									continue;
 								}
 								account.accountId = accountId;
-
-								if (
-									accountCount > 1 &&
-									accountManager.shouldShowAccountToast(account.index, toastDebounceMs)
-								) {
-									await showToast(
-										`Using ${formatAccountLabel(account, account.index)} (${account.index + 1}/${accountCount})`,
-										"info",
-										quietMode,
-									);
-									accountManager.markToastShown(account.index);
-								}
 
 								const headers = createCodexHeaders(requestInit, accountId, accountAuth.access, {
 									model,
@@ -624,10 +474,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								let tokenConsumed = false;
 								if (accountSelectionStrategy === "hybrid") {
 									tokenConsumed = getTokenTracker().consume(account.index);
-									if (!tokenConsumed) {
-										// Token bucket says "rest this account"; try another.
-										continue;
-									}
+									if (!tokenConsumed) continue;
 								}
 
 								while (true) {
@@ -635,7 +482,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									try {
 										res = await fetch(url, { ...requestInit, headers });
 										
-										// Wrap the stream to intercept token_count events for real-time status updates
 										if (res.body) {
 											const accountRef = account;
 											const originalBody = res.body;
@@ -650,9 +496,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 														if (data.type === "token_count" && data.rate_limits) {
 															codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
 														}
-													} catch {
-														// Skip malformed JSON
-													}
+													} catch {}
 												}
 											};
 
@@ -661,34 +505,22 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 													const { done, value } = await reader.read();
 													if (done) {
 														if (sseBuffer.trim()) {
-															// Process any remaining buffer content
 															const lines = sseBuffer.split("\n");
-															for (const line of lines) {
-																processLine(line);
-															}
+															for (const line of lines) processLine(line);
 														}
 														controller.close();
 														return;
 													}
-
 													const chunk = decoder.decode(value, { stream: true });
 													sseBuffer += chunk;
-
 													const lines = sseBuffer.split("\n");
-													// Keep the last incomplete line in the buffer
 													sseBuffer = lines.pop() || "";
-
-													for (const line of lines) {
-														processLine(line);
-													}
-
+													for (const line of lines) processLine(line);
 													controller.enqueue(value);
 												},
-												cancel() {
-													reader.cancel();
-												},
+												cancel() { reader.cancel(); }
 											});
-
+											
 											res = new Response(transformStream, {
 												status: res.status,
 												statusText: res.statusText,
@@ -696,37 +528,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 											});
 										}
 
-										// Update Codex rate limit snapshot from response headers (legacy fallback)
 										const codexHeaders: Record<string, string> = {};
 										try {
 											res.headers.forEach((val, key) => {
-												if (key.toLowerCase().startsWith("x-codex-")) {
-													codexHeaders[key.toLowerCase()] = val;
-												}
+												if (key.toLowerCase().startsWith("x-codex-")) codexHeaders[key.toLowerCase()] = val;
 											});
-											// Fallback for environments where forEach is restricted
-											if (Object.keys(codexHeaders).length === 0) {
-												for (const [key, val] of res.headers.entries()) {
-													if (key.toLowerCase().startsWith("x-codex-")) {
-														codexHeaders[key.toLowerCase()] = val;
-													}
-												}
-											}
-										} catch (hErr) {
-											debugAuth("[CodexStatus] Error reading headers:", hErr);
-										}
+										} catch {}
 
 										if (Object.keys(codexHeaders).length > 0) {
 											await codexStatus.updateFromHeaders(account, codexHeaders);
 										}
 									} catch (err) {
-										if (tokenConsumed) {
-											getTokenTracker().refund(account.index);
-											tokenConsumed = false;
-										}
-										if (accountSelectionStrategy === "hybrid") {
-											getHealthTracker().recordFailure(account.index);
-										}
+										if (tokenConsumed) getTokenTracker().refund(account.index);
+										if (accountSelectionStrategy === "hybrid") getHealthTracker().recordFailure(account.index);
 										throw err;
 									}
 
@@ -734,105 +548,66 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										status: res.status,
 										ok: res.ok,
 										statusText: res.statusText,
-										headers: Object.fromEntries(res.headers.entries()),
 										accountIndex: account.index,
 										accountCount,
 									});
 
-							if (res.ok) {
-								if (accountSelectionStrategy === "hybrid") {
-									getHealthTracker().recordSuccess(account.index);
-								}
-								accountManager.markAccountUsed(account.index);
-								return await handleSuccessResponse(res, isStreaming);
-							}
+									if (res.ok) {
+										if (accountSelectionStrategy === "hybrid") getHealthTracker().recordSuccess(account.index);
+										accountManager.markAccountUsed(account.index);
+										return await handleSuccessResponse(res, isStreaming);
+									}
 
 									const handled = await handleErrorResponse(res);
 									if (handled.status !== HTTP_STATUS.TOO_MANY_REQUESTS) {
-										if (accountSelectionStrategy === "hybrid") {
-											getHealthTracker().recordFailure(account.index);
-										}
+										if (accountSelectionStrategy === "hybrid") getHealthTracker().recordFailure(account.index);
 										return handled;
 									}
 
-							const retryAfterMs = parseRetryAfterMs(handled.headers);
-							let responseText = "";
-							try {
-								responseText = await handled.clone().text();
-							} catch {
-								responseText = "";
-							}
-							const reason = parseRateLimitReason(handled.status, responseText);
-							const trackerKey = `${account.index}:${modelFamily}:${model ?? ""}`;
-							const backoff = rateLimitTracker.getBackoff(trackerKey, reason, retryAfterMs);
-							const decision = decideRateLimitAction({
-								schedulingMode,
-								accountCount,
-								maxCacheFirstWaitMs,
-								switchOnFirstRateLimit,
-								shortRetryThresholdMs: RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS,
-								backoff,
-							});
-							if (tokenConsumed) {
-								getTokenTracker().refund(account.index);
-								tokenConsumed = false;
-							}
-							if (accountSelectionStrategy === "hybrid") {
-								getHealthTracker().recordRateLimit(account.index);
-							}
-							accountManager.markRateLimited(account, backoff.delayMs, modelFamily, model);
-							const shouldPersistRateLimit = !backoff.isDuplicate;
+									const retryAfterMs = parseRetryAfterMs(handled.headers);
+									let responseText = "";
+									try { responseText = await handled.clone().text(); } catch {}
+									const reason = parseRateLimitReason(handled.status, responseText);
+									const trackerKey = `${account.index}:${modelFamily}:${model ?? ""}`;
+									const backoff = rateLimitTracker.getBackoff(trackerKey, reason, retryAfterMs);
+									const decision = decideRateLimitAction({
+										schedulingMode,
+										accountCount,
+										maxCacheFirstWaitMs,
+										switchOnFirstRateLimit,
+										shortRetryThresholdMs: RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS,
+										backoff,
+									});
+									if (tokenConsumed) getTokenTracker().refund(account.index);
+									if (accountSelectionStrategy === "hybrid") getHealthTracker().recordRateLimit(account.index);
+									accountManager.markRateLimited(account, backoff.delayMs, modelFamily, model);
 
-							if (decision.action === "wait") {
-								if (shouldPersistRateLimit) {
-									await accountManager.saveToDisk();
-									await showToast(
-										`Rate limited. Retrying in ${formatWaitTime(decision.delayMs)}...`,
-										"warning",
-										quietMode,
-									);
+									if (decision.action === "wait") {
+										if (!backoff.isDuplicate) {
+											await accountManager.saveToDisk();
+											await showToast(`Rate limited. Retrying in ${formatWaitTime(decision.delayMs)}...`, "warning", quietMode);
+										}
+										if (decision.delayMs > 0) await sleep(decision.delayMs);
+										continue;
+									}
+
+									accountManager.markSwitched(account, "rate-limit", modelFamily);
+									if (!backoff.isDuplicate) {
+										await accountManager.saveToDisk();
+										await showToast(`Rate limited. Switching accounts (retry in ${formatWaitTime(decision.delayMs)}).`, "warning", quietMode);
+									}
+									break;
 								}
-								if (decision.delayMs > 0) {
-									await sleep(decision.delayMs);
-								}
-								continue;
 							}
 
-							accountManager.markSwitched(account, "rate-limit", modelFamily);
-							if (shouldPersistRateLimit) {
-								await accountManager.saveToDisk();
-								await showToast(
-									`Rate limited. Switching accounts (retry in ${formatWaitTime(decision.delayMs)}).`,
-									"warning",
-									quietMode,
-								);
-							}
-							break;
-						}
-					}
-
-							const waitMs = await accountManager.getMinWaitTimeForFamilyWithHydration(
-								modelFamily,
-								model,
-							);
-							if (
-								retryAllAccountsRateLimited &&
-								accountManager.getAccountCount() > 0 &&
-								waitMs > 0 &&
-								(retryAllAccountsMaxWaitMs === 0 || waitMs <= retryAllAccountsMaxWaitMs) &&
-								allRateLimitedRetries < retryAllAccountsMaxRetries
-							) {
+							const waitMs = await accountManager.getMinWaitTimeForFamilyWithHydration(modelFamily, model);
+							if (retryAllAccountsRateLimited && accountManager.getAccountCount() > 0 && waitMs > 0 && (retryAllAccountsMaxWaitMs === 0 || waitMs <= retryAllAccountsMaxWaitMs) && allRateLimitedRetries < retryAllAccountsMaxRetries) {
 								allRateLimitedRetries += 1;
-								await showToast(
-									`All ${accountManager.getAccountCount()} account(s) are rate-limited. Waiting ${formatWaitTime(waitMs)}...`,
-									"warning",
-									quietMode,
-								);
+								await showToast(`All ${accountManager.getAccountCount()} account(s) are rate-limited. Waiting ${formatWaitTime(waitMs)}...`, "warning", quietMode);
 								await sleep(waitMs);
 								continue;
 							}
 
-							// Build detailed inline error message
 							const now = Date.now();
 							const accounts = accountManager.getAccountsSnapshot();
 							const statusLines: string[] = [
@@ -846,36 +621,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								const acc = accounts[idx];
 								if (!acc || acc.enabled === false) continue;
 								const label = formatAccountLabel(acc, idx);
-								const rateLimited =
-									acc.rateLimitResetTimes &&
-									Object.values(acc.rateLimitResetTimes).some(
-										(t) => typeof t === "number" && t > now,
-									);
-								const coolingDown =
-									typeof acc.coolingDownUntil === "number" && acc.coolingDownUntil > now;
-
+								const rateLimited = acc.rateLimitResetTimes && Object.values(acc.rateLimitResetTimes).some(t => typeof t === "number" && t > now);
+								const coolingDown = typeof acc.coolingDownUntil === "number" && acc.coolingDownUntil > now;
 								let status = "ok";
 								if (rateLimited) status = "rate-limited";
 								else if (coolingDown) status = "cooldown";
-
 								statusLines.push(`- ${label} [${status}]`);
 								const codexLines = await codexStatus.renderStatus(acc);
-								if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
-									statusLines.push(...codexLines.map((l) => "  " + l.trim()));
-								}
+								statusLines.push(...codexLines.map(l => "  " + l.trim()));
 							}
 
 							statusLines.push("", "Run `opencode auth login` to add more accounts.");
-
-							return new Response(
-								JSON.stringify({ error: { message: statusLines.join("\n") } }),
-								{
-									status: 429,
-									headers: { "content-type": "application/json; charset=utf-8" },
-								},
-							);
+							return new Response(JSON.stringify({ error: { message: statusLines.join("\n") } }), { status: 429, headers: { "content-type": "application/json; charset=utf-8" } });
 						}
-
 					},
 				};
 			},
@@ -883,418 +641,66 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				{
 					label: AUTH_LABELS.OAUTH,
 					type: "oauth" as const,
-					/**
-					 * OAuth authorization flow
-					 *
-					 * Steps:
-					 * 1. Generate PKCE challenge and state for security
-					 * 2. Start local OAuth callback server on port 1455
-					 * 3. Open browser to OpenAI authorization page
-					 * 4. Wait for user to complete login
-					 * 5. Exchange authorization code for tokens
-					 *
-					 * @returns Authorization flow configuration
-					 */
-						authorize: async (inputs?: Record<string, string>) => {
-					const pluginConfig = loadPluginConfig();
-					configureStorageForPluginConfig(pluginConfig, process.cwd());
-					const quietMode = getQuietMode(pluginConfig);
-					const isCliFlow = Boolean(inputs);
-					const notifyRepairResult = async (message: string) => {
-						if (isCliFlow) {
-							console.log(`\n${message}\n`);
-							return;
-						}
-						await showToast(message, "info", quietMode);
-					};
-					const maybeRepairAccounts = async (): Promise<AccountStorageV3 | null> => {
-						const inspection = await inspectAccountsFile();
-						if (inspection.status === "missing" || inspection.status === "ok") {
-							return null;
-						}
-						const corruptCount =
-							inspection.status === "corrupt-file"
-								? 1
-								: inspection.corruptEntries.length;
-						const legacyCount =
-							inspection.status === "needs-repair" ? inspection.legacyEntries.length : 0;
-						const shouldRepair = await promptRepairAccounts({
-							legacyCount,
-							corruptCount,
-						});
-						if (!shouldRepair) return null;
-
-						const quarantinePaths: string[] = [];
-						if (inspection.status === "corrupt-file") {
-							const quarantinePath = await quarantineCorruptFile();
-							if (quarantinePath) {
-								quarantinePaths.push(quarantinePath);
-								logDebug(
-									`[${PLUGIN_NAME}] Accounts file quarantined: ${quarantinePath}`,
-								);
-								await notifyRepairResult("Accounts file was corrupted and quarantined.");
-							}
-							return await loadAccounts();
-						}
-
-						if (inspection.corruptEntries.length > 0) {
-							const quarantinePath = await writeQuarantineFile(
-								inspection.corruptEntries,
-								"corrupt-entry",
-							);
-							quarantinePaths.push(quarantinePath);
-						}
-
-						const storage = await loadAccounts();
-						if (!storage) {
-							await notifyRepairResult("Repair skipped: no valid accounts found.");
-							return null;
-						}
-						const manager = new AccountManager(undefined, storage);
-						const repair = await manager.repairLegacyAccounts();
-						const snapshot = manager.getStorageSnapshot();
-						let updatedStorage = snapshot;
-						if (repair.quarantined.length > 0) {
-							const quarantinedTokens = new Set(
-								repair.quarantined.map((account) => account.refreshToken),
-							);
-							const quarantineEntries = snapshot.accounts.filter((account) =>
-								quarantinedTokens.has(account.refreshToken),
-							);
-							const quarantineResult = await quarantineAccounts(
-								snapshot,
-								quarantineEntries,
-								"legacy-repair-failed",
-							);
-							updatedStorage = quarantineResult.storage;
-							quarantinePaths.push(quarantineResult.quarantinePath);
-						} else {
-							await replaceAccountsFile(snapshot);
-						}
-						const summaryParts = [
-							`Repaired ${repair.repaired.length}`,
-							`quarantined ${repair.quarantined.length}`,
-						];
-						if (quarantinePaths.length > 0) {
-							logDebug(
-								`[${PLUGIN_NAME}] Repair quarantine paths: ${quarantinePaths.join(", ")}`,
-							);
-						}
-						await notifyRepairResult(
-							`Account repair complete. ${summaryParts.join(", ")}.`,
-						);
-						return updatedStorage;
-					};
-					const repairedStorage = await maybeRepairAccounts();
-
-					// CLI flow (`opencode auth login`) passes inputs; TUI does not.
-					if (isCliFlow) {
-						debugAuth("[OAuthAuthorize] Starting OAuth flow in CLI mode");
-						return await withTerminalModeRestored(async () => {
-							const noBrowser =
-								inputs?.noBrowser === "true" ||
-								inputs?.["no-browser"] === "true" ||
-								process.env.OPENCODE_NO_BROWSER === "1";
-
-							const runOAuthFlow = async (): Promise<TokenResult> => {
-								const { pkce, state, url } = await createAuthorizationFlow();
-								console.log("\nOAuth URL:\n" + url + "\n");
-
-										if (noBrowser) {
-											const callbackInput = await promptOAuthCallbackValue(
-												"Paste the full redirect URL (recommended). You can also paste code#state or just the code: ",
-											);
-											const parsed = parseAuthorizationInputForFlow(callbackInput, state);
-											if (parsed.stateStatus === "mismatch") {
-												console.log(
-													"\nOAuth state mismatch. Paste the redirect URL from this login session (the one shown above).\n",
-												);
-												return { type: "failed" as const };
-											}
-											if (parsed.stateStatus === "missing") {
-												console.log(
-													"\nWarning: redirect state not provided. For best security, paste the full redirect URL.\n",
-												);
-											}
-											if (!parsed.code) return { type: "failed" as const };
-											return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-										}
-
-								let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
-								try {
-									serverInfo = await startLocalOAuthServer({ state });
-								} catch {
-									serverInfo = null;
-								}
-								openBrowserUrl(url);
-
-										if (!serverInfo || !serverInfo.ready) {
-											serverInfo?.close();
-											const callbackInput = await promptOAuthCallbackValue(
-												"Paste the full redirect URL (recommended). You can also paste code#state or just the code: ",
-											);
-											const parsed = parseAuthorizationInputForFlow(callbackInput, state);
-											if (parsed.stateStatus === "mismatch") {
-												console.log(
-													"\nOAuth state mismatch. Paste the redirect URL from this login session (the one shown above).\n",
-												);
-												return { type: "failed" as const };
-											}
-											if (parsed.stateStatus === "missing") {
-												console.log(
-													"\nWarning: redirect state not provided. For best security, paste the full redirect URL.\n",
-												);
-											}
-											if (!parsed.code) return { type: "failed" as const };
-											return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-										}
-
-								const result = await serverInfo.waitForCode(state);
-								serverInfo.close();
-								if (!result) return { type: "failed" as const };
-								return await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
-							};
-
-						const authenticated: TokenOk[] = [];
-						let startFresh = true;
-						let existingStorage = repairedStorage ?? (await loadAccounts());
-							if (existingStorage && existingStorage.accounts.length > 0) {
-						const needsHydration = needsIdentityHydration(existingStorage.accounts);
-								if (needsHydration) {
-									try {
-										console.log("\nRefreshing saved accounts to fill missing emails...\n");
-										const manager = new AccountManager(undefined, existingStorage);
-										await manager.hydrateMissingEmails();
-										await manager.saveToDisk();
-										existingStorage = await loadAccounts();
-									} catch {
-										// Best-effort; ignore.
-									}
-								}
-
-						let existingLabels = (existingStorage?.accounts ?? []).map((a, index) => ({
-							index,
-							email: a.email,
-							plan: a.plan,
-							accountId: a.accountId,
-							enabled: a.enabled,
-						}));
-						let mode = await promptLoginMode(existingLabels);
-						while (mode === "manage") {
-							let updatedStorage = existingStorage;
-							while (updatedStorage) {
-								const labels = (updatedStorage?.accounts ?? []).map((a, index) => ({
-									index,
-									email: a.email,
-									plan: a.plan,
-									accountId: a.accountId,
-									enabled: a.enabled,
-								}));
-								const toggleIndex = await promptManageAccounts(labels);
-								if (toggleIndex === null) break;
-								const toggled = toggleAccountEnabled(updatedStorage, toggleIndex);
-								if (toggled) {
-								await saveAccounts(toggled, { preserveRefreshTokens: true });
-									updatedStorage = toggled;
-								}
-							}
-							existingStorage = await loadAccounts();
-							existingLabels = (existingStorage?.accounts ?? []).map((a, index) => ({
-								index,
-								email: a.email,
-								plan: a.plan,
-								accountId: a.accountId,
-								enabled: a.enabled,
-							}));
-							mode = await promptLoginMode(existingLabels);
-						}
-						startFresh = mode === "fresh";
-					}
-
-						if (startFresh) {
-							await saveAccounts(
-								{
-									version: 3,
-									accounts: [],
-									activeIndex: 0,
-									activeIndexByFamily: {},
-								},
-								{ replace: true },
-							);
-						}
-
-							while (authenticated.length < MAX_ACCOUNTS) {
-								console.log(`\n=== OpenAI OAuth (Account ${authenticated.length + 1}) ===`);
-								const result = await runOAuthFlow();
-								if (result.type !== "success") {
-									if (authenticated.length === 0) {
-										return {
-											url: "",
-											instructions: "Authentication failed.",
-											method: "auto" as const,
-											callback: async () => ({ type: "failed" as const }),
-										};
-									}
-									break;
-								}
-
-							authenticated.push(result);
-							await persistAccount(result);
-							const email = sanitizeEmail(extractAccountEmail(result.idToken ?? result.access));
-							const plan = extractAccountPlan(result.idToken ?? result.access);
-							const label = formatAccountLabel(
-								{ email, plan, accountId: extractAccountId(result.access) },
-								authenticated.length - 1,
-							);
-							await showToast(`Authenticated: ${label}`, "success", quietMode);
-
-								const currentStorage = await loadAccounts();
-								const count = currentStorage?.accounts.length ?? authenticated.length;
-								if (!(await promptAddAnotherAccount(count, MAX_ACCOUNTS))) break;
-							}
-
-							const primary = authenticated[0];
-							if (!primary) {
-								return {
-									url: "",
-									instructions: "Authentication cancelled",
-									method: "auto" as const,
-									callback: async () => ({ type: "failed" as const }),
-								};
-							}
-
-							const finalStorage = await loadAccounts();
-							const finalCount = finalStorage?.accounts.length ?? authenticated.length;
-							debugAuth(
-								`[OAuthAuthorize] OAuth flow completed with ${finalCount} accounts`,
-							);
+					authorize: async () => {
+						const isHeadless = Boolean(process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY || process.env.OPENCODE_HEADLESS);
+						const useManualFlow = isHeadless || process.env.OPENCODE_NO_BROWSER === "1";
+						const existingStorage = await loadAccounts();
+						const existingCount = existingStorage?.accounts.length ?? 0;
+						const { pkce, state, url } = await createAuthorizationFlow();
+						let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
+						if (!useManualFlow) { try { serverInfo = await startLocalOAuthServer({ state }); } catch { serverInfo = null; } }
+						if (!useManualFlow) openBrowserUrl(url);
+						if (serverInfo && serverInfo.ready) {
 							return {
-								url: "",
-								instructions: `Multi-account setup complete (${finalCount} account(s)).\nStorage: ${getStoragePath()}`,
+								url,
+								instructions: "Complete sign-in in your browser. We'll automatically detect the redirect back to localhost.",
 								method: "auto" as const,
-								callback: async () => primary,
-							};
-						});
-					}
-
-					debugAuth("[OAuthAuthorize] Starting OAuth flow in TUI mode");
-					const isHeadless = Boolean(
-						process.env.SSH_CONNECTION ||
-							process.env.SSH_CLIENT ||
-							process.env.SSH_TTY ||
-							process.env.OPENCODE_HEADLESS,
-					);
-					const useManualFlow = isHeadless || process.env.OPENCODE_NO_BROWSER === "1";
-					const existingStorage = repairedStorage ?? (await loadAccounts());
-					const existingCount = existingStorage?.accounts.length ?? 0;
-
-					const { pkce, state, url } = await createAuthorizationFlow();
-					let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
-					if (!useManualFlow) {
-						try {
-							serverInfo = await startLocalOAuthServer({ state });
-						} catch {
-							serverInfo = null;
-						}
-					}
-					if (!useManualFlow) {
-						openBrowserUrl(url);
-					}
-
-					if (serverInfo && serverInfo.ready) {
-						return {
-							url,
-							instructions:
-								"Complete sign-in in your browser. We'll automatically detect the redirect back to localhost.",
-							method: "auto" as const,
-							callback: async () => {
-								const result = await serverInfo.waitForCode(state);
-								serverInfo.close();
-								if (!result) return { type: "failed" as const };
-								const tokens = await exchangeAuthorizationCode(
-									result.code,
-									pkce.verifier,
-									REDIRECT_URI,
-								);
+								callback: async () => {
+									const result = await serverInfo.waitForCode(state);
+									serverInfo.close();
+									if (!result) return { type: "failed" as const };
+									const tokens = await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
 									if (tokens?.type === "success") {
 										await persistAccount(tokens);
-										const email = sanitizeEmail(
-											extractAccountEmail(tokens.idToken ?? tokens.access),
-										);
+										const email = sanitizeEmail(extractAccountEmail(tokens.idToken ?? tokens.access));
 										const plan = extractAccountPlan(tokens.idToken ?? tokens.access);
-										const label = formatAccountLabel(
-											{ email, plan, accountId: extractAccountId(tokens.access) },
-											0,
-										);
-										const newTotal = existingCount + 1;
-										const toastMessage =
-											existingCount > 0
-												? `Added account: ${label} - ${newTotal} total`
-												: `Authenticated: ${label}`;
-										await showToast(toastMessage, "success", quietMode);
+										const label = formatAccountLabel({ email, plan, accountId: extractAccountId(tokens.access) }, 0);
+										const toastMessage = existingCount > 0 ? `Added account: ${label}` : `Authenticated: ${label}`;
+										await showToast(toastMessage, "success", getQuietMode(loadPluginConfig()));
 									}
-								return tokens?.type === "success"
-									? tokens
-									: { type: "failed" as const };
-							},
-						};
-					}
-
-					serverInfo?.close();
-
+									return tokens?.type === "success" ? tokens : { type: "failed" as const };
+								},
+							};
+						}
+						serverInfo?.close();
 						return {
 							url,
-							instructions:
-								"Visit the URL above, complete OAuth, then paste the full redirect URL (recommended) or the authorization code.",
+							instructions: "Visit the URL above, complete OAuth, then paste the full redirect URL (recommended) or the authorization code.",
 							method: "code" as const,
 							callback: async (input: string) => {
 								const parsed = parseAuthorizationInputForFlow(input, state);
-								if (parsed.stateStatus === "mismatch") {
-									await showToast(
-										"OAuth state mismatch. Paste the redirect URL from this login session.",
-										"error",
-										quietMode,
-									);
-									return { type: "failed" as const };
+								if (parsed.stateStatus === "mismatch") return { type: "failed" as const };
+								if (!parsed.code) return { type: "failed" as const };
+								const tokens = await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
+								if (tokens?.type === "success") {
+									await persistAccount(tokens);
+									const email = sanitizeEmail(extractAccountEmail(tokens.idToken ?? tokens.access));
+									const plan = extractAccountPlan(tokens.idToken ?? tokens.access);
+									const label = formatAccountLabel({ email, plan, accountId: extractAccountId(tokens.access) }, 0);
+									const toastMessage = existingCount > 0 ? `Added account: ${label}` : `Authenticated: ${label}`;
+									await showToast(toastMessage, "success", getQuietMode(loadPluginConfig()));
 								}
-											if (!parsed.code) return { type: "failed" as const };
-											const tokens = await exchangeAuthorizationCode(
-												parsed.code,
-												pkce.verifier,
-												REDIRECT_URI,
-											);
-									if (tokens?.type === "success") {
-										await persistAccount(tokens);
-										const email = sanitizeEmail(
-											extractAccountEmail(tokens.idToken ?? tokens.access),
-										);
-										const plan = extractAccountPlan(tokens.idToken ?? tokens.access);
-										const label = formatAccountLabel(
-											{ email, plan, accountId: extractAccountId(tokens.access) },
-											0,
-										);
-										const newTotal = existingCount + 1;
-										const toastMessage =
-											existingCount > 0
-												? `Added account: ${label} - ${newTotal} total`
-												: `Authenticated: ${label}`;
-										await showToast(toastMessage, "success", quietMode);
-									}
-							return tokens?.type === "success"
-								? tokens
-								: { type: "failed" as const };
-						},
-					};
-				},
+								return tokens?.type === "success" ? tokens : { type: "failed" as const };
+							},
+						};
+					},
 				},
 				{
 					label: AUTH_LABELS.OAUTH_MANUAL,
 					type: "oauth" as const,
 					authorize: async () => {
 						const { pkce, state, url } = await createAuthorizationFlow();
-						return buildManualOAuthFlow(pkce, state, url, async (tokens) => {
-							await persistAccount(tokens);
-						});
+						return buildManualOAuthFlow(pkce, state, url, async (tokens) => { await persistAccount(tokens); });
 					},
 				},
 				{
@@ -1310,88 +716,42 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				async execute() {
 					configureStorageForCurrentCwd();
 					const accountManager = await AccountManager.loadFromDisk();
-					// Ensure accounts are hydrated (refreshes tokens if identity is missing)
 					await accountManager.hydrateMissingEmails();
 					await accountManager.saveToDisk();
-
 					const accounts = accountManager.getAccountsSnapshot();
 					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
 					const { scope, storagePath } = getStorageScope();
 					const scopeLabel = scope === "project" ? "project" : "global";
-
 					if (accounts.length === 0) {
-						return [
-							`OpenAI Codex Status`,
-							``,
-							`  Scope: ${scopeLabel}`,
-							`  Accounts: 0`,
-							``,
-							`Add accounts:`,
-							`  opencode auth login`,
-							``,
-							`Storage: ${storagePath}`,
-						].join("\n");
+						return [`OpenAI Codex Status`, ``, `  Scope: ${scopeLabel}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
 					}
-
-					const now = Date.now();
-					const enabledCount = accounts.filter((a) => a.enabled !== false).length;
-					const rateLimitedCount = accounts.filter(
-						(a) =>
-							a.rateLimitResetTimes &&
-							Object.values(a.rateLimitResetTimes).some(
-								(t) => typeof t === "number" && t > now,
-							),
-					).length;
-
-					const lines: string[] = [
-						`OpenAI Codex Status`,
-						``,
-						`  Scope: ${scopeLabel}`,
-						`  Accounts: ${enabledCount}/${accounts.length} enabled`,
-						...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
-						``,
-					` #   Account                                   Plan       Status`,
-					`---  ----------------------------------------- ---------- ---------------------`,
-				];
-				for (let index = 0; index < accounts.length; index++) {
-					const account = accounts[index];
-					if (!account) continue;
-
-					// Actively fetch the latest status from OpenAI
-					const live = accountManager.getAccountByIndex(index);
-					if (live) {
-						// Ensure we have a fresh token for the status fetch
-						const refreshResult = await accountManager.refreshAccountWithFallback(live);
-						if (refreshResult.type === "success") {
-							await codexStatus.fetchFromBackend(live, refreshResult.access);
+					await Promise.all(accounts.map(async (acc, index) => {
+						if (acc.enabled === false) return;
+						const live = accountManager.getAccountByIndex(index);
+						if (live) {
+							const refreshResult = await accountManager.refreshAccountWithFallback(live);
+							if (refreshResult.type === "success") await codexStatus.fetchFromBackend(live, refreshResult.access);
 						}
-					}
-
-					const email = account.email || "unknown";
-
+					}));
+					const now = Date.now();
+					const enabledCount = accounts.filter(a => a.enabled !== false).length;
+					const rateLimitedCount = accounts.filter(a => a.rateLimitResetTimes && Object.values(a.rateLimitResetTimes).some(t => typeof t === "number" && t > now)).length;
+					const lines: string[] = [`OpenAI Codex Status`, ``, `  Scope: ${scopeLabel}`, `  Accounts: ${enabledCount}/${accounts.length} enabled`, ...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []), ``, ` #   Account                                   Plan       Status`, `---  ----------------------------------------- ---------- ---------------------` ];
+					for (let index = 0; index < accounts.length; index++) {
+						const account = accounts[index];
+						if (!account) continue;
+						const email = account.email || "unknown";
 						const plan = account.plan || "Free";
 						const statuses: string[] = [];
 						if (index === activeIndex) statuses.push("active");
 						if (account.enabled === false) statuses.push("disabled");
-						const rateLimited =
-							account.rateLimitResetTimes &&
-							Object.values(account.rateLimitResetTimes).some(
-								(t) => typeof t === "number" && t > now,
-							);
+						const rateLimited = account.rateLimitResetTimes && Object.values(account.rateLimitResetTimes).some(t => typeof t === "number" && t > now);
 						if (rateLimited) statuses.push("rate-limited");
-						if (typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now) {
-							statuses.push("cooldown");
-						}
-						lines.push(
-							`${String(index + 1).padStart(2)}   ${email.padEnd(41)} ${plan.padEnd(10)} ${
-								statuses.length > 0 ? statuses.join(", ") : "ok"
-							}`,
-						);
-
-						// Add Codex status details
+						if (typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now) statuses.push("cooldown");
+						lines.push(`${String(index + 1).padStart(2)}   ${email.padEnd(41)} ${plan.padEnd(10)} ${statuses.length > 0 ? statuses.join(", ") : "ok"}`);
 						const codexLines = await codexStatus.renderStatus(account);
-						lines.push(...codexLines.map((l) => "     " + l.trim()));
-						lines.push(""); // Spacer between accounts
+						lines.push(...codexLines.map(l => "     " + l.trim()));
+						lines.push("");
 					}
 					lines.push(`Storage: ${storagePath}`);
 					return lines.join("\n");
@@ -1405,118 +765,75 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					const accountManager = await AccountManager.loadFromDisk();
 					await accountManager.hydrateMissingEmails();
 					await accountManager.saveToDisk();
-
 					const accounts = accountManager.getAccountsSnapshot();
-					if (accounts.length === 0) {
-						return "No OpenAI accounts configured. Run `opencode auth login`.";
-					}
+					if (accounts.length === 0) return "No OpenAI accounts configured. Run `opencode auth login`.";
 					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
+					await Promise.all(accounts.map(async (acc, index) => {
+						if (acc.enabled === false) return;
+						const live = accountManager.getAccountByIndex(index);
+						if (live) {
+							const refreshResult = await accountManager.refreshAccountWithFallback(live);
+							if (refreshResult.type === "success") await codexStatus.fetchFromBackend(live, refreshResult.access);
+						}
+					}));
 					const now = Date.now();
 					const lines: string[] = ["OpenAI Codex Accounts Status:"];
 					for (let index = 0; index < accounts.length; index++) {
 						const account = accounts[index];
 						if (!account) continue;
-
-						// Actively fetch the latest status from OpenAI
-						const live = accountManager.getAccountByIndex(index);
-						if (live) {
-							// Ensure we have a fresh token for the status fetch
-							const refreshResult = await accountManager.refreshAccountWithFallback(live);
-							if (refreshResult.type === "success") {
-								await codexStatus.fetchFromBackend(live, refreshResult.access);
-							}
-						}
-
 						const email = account.email || "unknown";
 						const plan = account.plan || "Free";
-						const rateLimited =
-							account.rateLimitResetTimes &&
-							Object.values(account.rateLimitResetTimes).some(
-								(t) => typeof t === "number" && t > now,
-							);
-						const coolingDown =
-							typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now;
+						const rateLimited = account.rateLimitResetTimes && Object.values(account.rateLimitResetTimes).some(t => typeof t === "number" && t > now);
+						const coolingDown = typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now;
 						const disabled = account.enabled === false;
-
 						let status = "ok";
 						if (disabled) status = "disabled";
 						else if (rateLimited) status = "rate-limited";
 						else if (coolingDown) status = "cooldown";
-
-						lines.push(
-							`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(10)}) [${status}]`,
-						);
+						lines.push(`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(10)}) [${status}]`);
 						const codexLines = await codexStatus.renderStatus(account);
-						lines.push(...codexLines.map((l) => "  " + l.trim()));
+						lines.push(...codexLines.map(l => "  " + l.trim()));
 					}
 					return lines.join("\n");
 				},
 			}),
 			"openai-accounts-switch": tool({
 				description: "Switch active OpenAI account by index (1-based).",
-				args: {
-					index: tool.schema.number().describe("Account number (1-based)"),
-				},
+				args: { index: tool.schema.number().describe("Account number (1-based)") },
 				async execute({ index }) {
 					configureStorageForCurrentCwd();
 					const storage = await loadAccounts();
-					if (!storage || storage.accounts.length === 0) {
-						return "No OpenAI accounts configured. Run: opencode auth login";
-					}
+					if (!storage || storage.accounts.length === 0) return "No OpenAI accounts configured. Run: opencode auth login";
 					const targetIndex = Math.floor((index ?? 0) - 1);
-					if (targetIndex < 0 || targetIndex >= storage.accounts.length) {
-						return `Invalid account number: ${index}\nValid range: 1-${storage.accounts.length}`;
-					}
+					if (targetIndex < 0 || targetIndex >= storage.accounts.length) return `Invalid account number: ${index}\nValid range: 1-${storage.accounts.length}`;
 					storage.activeIndex = targetIndex;
 					storage.activeIndexByFamily = storage.activeIndexByFamily ?? {};
-					for (const family of MODEL_FAMILIES) {
-						storage.activeIndexByFamily[family] = targetIndex;
-					}
+					for (const family of MODEL_FAMILIES) storage.activeIndexByFamily[family] = targetIndex;
 					const account = storage.accounts[targetIndex];
-					if (account) {
-						account.lastUsed = Date.now();
-						account.lastSwitchReason = "rotation";
-					}
+					if (account) { account.lastUsed = Date.now(); account.lastSwitchReason = "rotation"; }
 					await saveAccounts(storage, { preserveRefreshTokens: true });
-					if (cachedAccountManager) {
-						cachedAccountManager.setActiveIndex(targetIndex);
-						await cachedAccountManager.saveToDisk();
-					}
+					if (cachedAccountManager) { cachedAccountManager.setActiveIndex(targetIndex); await cachedAccountManager.saveToDisk(); }
 					return `Switched to ${formatAccountLabel(account, targetIndex)}`;
 				},
 			}),
 			"openai-accounts-toggle": tool({
 				description: "Enable or disable an OpenAI account by index (1-based).",
-				args: {
-					index: tool.schema.number().describe("Account number (1-based)"),
-				},
+				args: { index: tool.schema.number().describe("Account number (1-based)") },
 				async execute({ index }) {
 					configureStorageForCurrentCwd();
 					const storage = await loadAccounts();
-					if (!storage || storage.accounts.length === 0) {
-						return "No OpenAI accounts configured. Run: opencode auth login";
-					}
+					if (!storage || storage.accounts.length === 0) return "No OpenAI accounts configured. Run: opencode auth login";
 					const targetIndex = Math.floor((index ?? 0) - 1);
-					if (targetIndex < 0 || targetIndex >= storage.accounts.length) {
-						return `Invalid account number: ${index}\nValid range: 1-${storage.accounts.length}`;
-					}
+					if (targetIndex < 0 || targetIndex >= storage.accounts.length) return `Invalid account number: ${index}\nValid range: 1-${storage.accounts.length}`;
 					const updated = toggleAccountEnabled(storage, targetIndex);
-					if (!updated) {
-						return `Failed to toggle account number: ${index}`;
-					}
+					if (!updated) return `Failed to toggle account number: ${index}`;
 					await saveAccounts(updated, { preserveRefreshTokens: true });
 					const account = updated.accounts[targetIndex];
 					if (cachedAccountManager) {
 						const live = cachedAccountManager.getAccountByIndex(targetIndex);
-						if (live) {
-							live.enabled = account?.enabled !== false;
-							await cachedAccountManager.saveToDisk();
-						}
+						if (live) { live.enabled = account?.enabled !== false; await cachedAccountManager.saveToDisk(); }
 					}
-					return `${account?.enabled !== false ? "Enabled" : "Disabled"} ${formatAccountLabel(
-						account,
-						targetIndex,
-					)}`;
+					return `${account?.enabled !== false ? "Enabled" : "Disabled"} ${formatAccountLabel(account, targetIndex)}`;
 				},
 			}),
 		},

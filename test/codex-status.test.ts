@@ -158,8 +158,8 @@ describe("CodexStatusManager", () => {
 
 		const lines = await manager.renderStatus(testAccount);
 		// Check for key components (100 - 50 = 50% left, 100 - 25 = 75% left)
-		expect(lines.some(l => l.includes("5h limit") && l.includes("50% left"))).toBe(true);
-		expect(lines.some(l => l.includes("Weekly limit") && l.includes("75% left"))).toBe(true);
+		expect(lines.some(l => l.includes("5h limit:") && l.includes("50% left"))).toBe(true);
+		expect(lines.some(l => l.includes("7d limit:") && l.includes("75% left"))).toBe(true);
 		expect(lines.some(l => l.includes("Credits") && l.includes("unlimited"))).toBe(true);
 	});
 

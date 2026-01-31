@@ -215,8 +215,8 @@ export class CodexStatusManager {
 				const resetDate = new Date(data.resetAt);
 				const now = Date.now();
 				const isMoreThan24h = data.resetAt - now > 24 * 60 * 60 * 1000;
-				const timeStr = `${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")}`;
-				
+				const timeStr = `${String(resetDate.getHours()).padStart(2, "0")}:${String(resetDate.getMinutes()).padStart(2, "0")}`;
+
 				if (isMoreThan24h) {
 					const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 					const dateStr = `${resetDate.getDate()} ${monthNames[resetDate.getMonth()]}`;
@@ -225,23 +225,23 @@ export class CodexStatusManager {
 					resetStr = ` (resets ${timeStr})`;
 				}
 			} else if (!data) {
-				return `  ${label.padEnd(14)} [${"░".repeat(width)}] unknown`.padEnd(65);
+				return `  ${(label + ":").padEnd(15)} [${"░".repeat(width)}] unknown`.padEnd(65);
 			}
 
 			const statusStr = `${leftPercent.toFixed(0)}% left`.padEnd(9);
-			return `  ${label.padEnd(14)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(65);
+			return `  ${(label + ":").padEnd(15)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(65);
 		};
 
 		if (!snapshot) {
 			lines.push(renderBar("5h limit", null)!);
-			lines.push(renderBar("Weekly limit", null)!);
+			lines.push(renderBar("7d limit", null)!);
 			return lines;
 		}
 
 		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0) || "5h";
 		lines.push(renderBar(`${primaryLabel} limit`, snapshot.primary)!);
 
-		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0) || "Weekly";
+		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0) || "7d";
 		lines.push(renderBar(`${secondaryLabel} limit`, snapshot.secondary)!);
 
 		if (snapshot.credits) {
