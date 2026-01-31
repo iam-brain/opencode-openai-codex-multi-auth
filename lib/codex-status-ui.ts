@@ -129,15 +129,16 @@ export function renderObsidianDashboard(
 		const plan = `${clr.magenta}${padVisible(acc.plan || "Free", W_PLAN - 1)}${clr.reset}`;
 
 		// Main Row
-		// Keep data column at original alignment (1 space padding)
+		// Keep data column aligned to original grid (1 space padding)
 		// Add +1 space before email and plan to match headers
+		// Add +1 space before plan
 		const mainRowContent =
-			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + " " + email + " " + plan;
+			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + " " + email + "  " + plan;
 		lines.push(mainRowContent);
 
 		// Snapshot Data
 		const snapshot = findSnapshot(acc);
-		const indent = " ".repeat(W_NUM + W_STATUS);
+		const indent = " ".repeat(W_NUM + W_STATUS + 1); // Indent +1 to match shift
 
 		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null | undefined) => {
 			const barWidth = 20;

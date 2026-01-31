@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.24] - 2026-01-31
+
+**UI Polish release**: Final alignment tweaks for `codex-status`.
+
+### Fixed
+- **Dashboard Padding**: fine-tuned padding for Plan column and Usage bars to perfectly match the grid alignment.
+
 ## [4.5.23] - 2026-01-31
 
 **UI Polish release**: New "Obsidian Dashboard" theme for `codex-status`.
