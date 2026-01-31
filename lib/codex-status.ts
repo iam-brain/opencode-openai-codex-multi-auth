@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { type AccountRecordV3 } from "./types.js";
 
 export interface CodexRateLimitSnapshot {
@@ -31,8 +32,11 @@ export class CodexStatusManager {
 		if (account.accountId && account.email && account.plan) {
 			return `${account.accountId}|${account.email}|${account.plan}`;
 		}
-		// Fallback to refresh token (hashed) if identity is missing
-		return account.refreshToken || "unknown";
+		// Fallback to a hash of the refresh token if identity is missing (security hardening)
+		if (account.refreshToken) {
+			return createHash("sha256").update(account.refreshToken).digest("hex");
+		}
+		return "unknown";
 	}
 
 	updateFromHeaders(account: AccountRecordV3, headers: Record<string, string | string[] | undefined>): void {
@@ -125,20 +129,32 @@ export class CodexStatusManager {
 		const lines: string[] = [];
 		const staleLabel = snapshot.isStale ? " (stale)" : "";
 
+		const formatWindow = (mins: number) => {
+			if (mins <= 0) return null;
+			if (mins % (24 * 60) === 0) return `${mins / (24 * 60)}d`;
+			if (mins % 60 === 0) return `${mins / 60}h`;
+			return `${mins}m`;
+		};
+
 		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null) => {
 			if (!data) return null;
 			const width = 20;
 			const filled = Math.round((data.usedPercent / 100) * width);
 			const bar = "█".repeat(filled) + "░".repeat(width - filled);
 			const resetDate = new Date(data.resetAt);
-			const resetStr = data.resetAt > 0 ? ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})` : "";
+			const resetStr =
+				data.resetAt > 0
+					? ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`
+					: "";
 			return `  ${label.padEnd(8)} [${bar}] ${data.usedPercent.toFixed(1)}%${resetStr}${staleLabel}`;
 		};
 
-		const primaryLine = renderBar("Primary", snapshot.primary);
+		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0) || "Primary";
+		const primaryLine = renderBar(primaryLabel, snapshot.primary);
 		if (primaryLine) lines.push(primaryLine);
 
-		const secondaryLine = renderBar("Weekly", snapshot.secondary);
+		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0) || "Weekly";
+		const secondaryLine = renderBar(secondaryLabel, snapshot.secondary);
 		if (secondaryLine) lines.push(secondaryLine);
 
 		if (snapshot.credits) {

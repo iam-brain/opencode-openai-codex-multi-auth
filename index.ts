@@ -623,10 +623,13 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									try {
 										res = await fetch(url, { ...requestInit, headers });
 										// Update Codex rate limit snapshot from response headers
-										codexStatus.updateFromHeaders(
-											account,
-											Object.fromEntries(res.headers.entries()),
-										);
+										const codexHeaders: Record<string, string> = {};
+										res.headers.forEach((val, key) => {
+											if (key.toLowerCase().startsWith("x-codex-")) {
+												codexHeaders[key] = val;
+											}
+										});
+										codexStatus.updateFromHeaders(account, codexHeaders);
 									} catch (err) {
 										if (tokenConsumed) {
 											getTokenTracker().refund(account.index);
