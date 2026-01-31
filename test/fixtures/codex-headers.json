@@ -1,0 +1,49 @@
+{
+  "headers": [
+    {
+      "account": {
+        "accountId": "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708",
+        "email": "user.one@example.com",
+        "plan": "Plus"
+      },
+      "raw": {
+        "x-codex-primary-used-percent": "45.5",
+        "x-codex-primary-window-minutes": "180",
+        "x-codex-primary-reset-at": "1769562800000",
+        "x-codex-secondary-used-percent": "10.2",
+        "x-codex-secondary-window-minutes": "10080",
+        "x-codex-secondary-reset-at": "1770156800000"
+      }
+    },
+    {
+      "account": {
+        "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+        "email": "user.one@example.com",
+        "plan": "Team"
+      },
+      "raw": {
+        "x-codex-primary-used-percent": "0",
+        "x-codex-primary-window-minutes": "180",
+        "x-codex-primary-reset-at": "1769562900000",
+        "x-codex-credits-has-credits": "true",
+        "x-codex-credits-unlimited": "false",
+        "x-codex-credits-balance": "15.5"
+      }
+    },
+    {
+      "account": {
+        "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+        "email": "user.two@example.com",
+        "plan": "Team"
+      },
+      "raw": {
+        "x-codex-primary-used-percent": "100",
+        "x-codex-primary-window-minutes": "180",
+        "x-codex-primary-reset-at": "1769563000000",
+        "x-codex-credits-has-credits": "true",
+        "x-codex-credits-unlimited": "true",
+        "x-codex-credits-balance": "0"
+      }
+    }
+  ]
+}

@@ -5,7 +5,8 @@ import { CodexStatusManager } from "../lib/codex-status.js";
 import { getCachePath } from "../lib/storage.js";
 import type { AccountRecordV3 } from "../lib/types.js";
 
-const FIXTURE_PATH = join(__dirname, "fixtures", "codex-status-snapshots.json");
+const SNAPSHOT_FIXTURE_PATH = join(__dirname, "fixtures", "codex-status-snapshots.json");
+const HEADERS_FIXTURE_PATH = join(__dirname, "fixtures", "codex-headers.json");
 
 describe("CodexStatusManager", () => {
 	const mockAccount: AccountRecordV3 = {
@@ -122,7 +123,7 @@ describe("CodexStatusManager", () => {
 	});
 
 	it("loads data from fixture and matches snapshots", () => {
-		const fixtureData = JSON.parse(readFileSync(FIXTURE_PATH, "utf-8"));
+		const fixtureData = JSON.parse(readFileSync(SNAPSHOT_FIXTURE_PATH, "utf-8"));
 		const cachePath = getCachePath("codex-snapshots.json");
 		
 		// Seed the cache with fixture data
@@ -168,5 +169,24 @@ describe("CodexStatusManager", () => {
 		const snap3 = manager.getSnapshot(account3);
 		expect(snap3?.primary?.usedPercent).toBe(100);
 		expect(snap3?.credits?.unlimited).toBe(true);
+	});
+
+	it("updates snapshots correctly from raw header fixture", () => {
+		const fixture = JSON.parse(readFileSync(HEADERS_FIXTURE_PATH, "utf-8"));
+		const manager = new CodexStatusManager();
+
+		for (const item of fixture.headers) {
+			const account: AccountRecordV3 = {
+				refreshToken: "mock-token",
+				...item.account,
+				addedAt: 0,
+				lastUsed: 0,
+			};
+			manager.updateFromHeaders(account, item.raw);
+			
+			const snapshot = manager.getSnapshot(account);
+			expect(snapshot).not.toBeNull();
+			expect(snapshot?.primary?.usedPercent).toBe(Number(item.raw["x-codex-primary-used-percent"]));
+		}
 	});
 });
