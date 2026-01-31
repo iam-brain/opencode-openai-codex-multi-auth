@@ -455,12 +455,12 @@ The `status-codex` and `openai-accounts` tools provide real-time visibility into
 ### Data Capture
 The plugin intercepts `x-codex-*` headers from the OpenAI response stream:
 - `x-codex-primary-used-percent`: Usage for the current window.
-- `x-codex-primary-window-minutes`: Duration of the window (e.g., 180 for 3h).
+- `x-codex-primary-window-minutes`: Duration of the window (e.g., 300 for 5h).
 - `x-codex-primary-reset-at`: Epoch timestamp for the next reset.
 - `x-codex-credits-*`: Team/Enterprise credit balance and unlimited status.
 
 ### Rendering
-- **Dynamic Labels**: Labels (e.g., `3h`, `7d`) are derived from the `windowMinutes` header.
+- **Dynamic Labels**: Labels (e.g., `5h`, `7d`) are derived from the `windowMinutes` header.
 - **ASCII Bars**: Usage is rendered as a 20-character ASCII progress bar (`████░░░░`).
 - **Staleness Tracking**: Data older than 15 minutes is marked as `(stale)` to avoid misleading the user with outdated limits.
 

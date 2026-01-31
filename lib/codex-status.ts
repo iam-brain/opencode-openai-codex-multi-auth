@@ -31,6 +31,23 @@ const STALENESS_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SNAPSHOTS_FILE = "codex-snapshots.json";
 
+function normalizePlanType(planType: unknown): string {
+	const PLAN_TYPE_LABELS: Record<string, string> = {
+		free: "Free",
+		plus: "Plus",
+		pro: "Pro",
+		team: "Team",
+		business: "Business",
+		enterprise: "Enterprise",
+		edu: "Edu",
+	};
+	if (typeof planType !== "string") return "Free";
+	const trimmed = planType.trim();
+	if (!trimmed) return "Free";
+	const mapped = PLAN_TYPE_LABELS[trimmed.toLowerCase()];
+	return mapped ?? trimmed;
+}
+
 const LOCK_OPTIONS = {
 	stale: 10_000,
 	retries: {
@@ -55,7 +72,8 @@ export class CodexStatusManager {
 	private getSnapshotKey(account: Partial<AccountRecordV3>): string {
 		let key: string;
 		if (account.accountId && account.email && account.plan) {
-			key = `${account.accountId}|${account.email}|${account.plan}`;
+			const plan = normalizePlanType(account.plan);
+			key = `${account.accountId}|${account.email.toLowerCase()}|${plan}`;
 		} else {
 			// Use refresh token as stable key for legacy accounts (standard in this codebase)
 			key = account.refreshToken || "unknown";

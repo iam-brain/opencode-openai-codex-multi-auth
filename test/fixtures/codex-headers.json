@@ -8,7 +8,7 @@
       },
       "raw": {
         "x-codex-primary-used-percent": "45.5",
-        "x-codex-primary-window-minutes": "180",
+        "x-codex-primary-window-minutes": "300",
         "x-codex-primary-reset-at": "1769562800000",
         "x-codex-secondary-used-percent": "10.2",
         "x-codex-secondary-window-minutes": "10080",
@@ -23,7 +23,7 @@
       },
       "raw": {
         "x-codex-primary-used-percent": "0",
-        "x-codex-primary-window-minutes": "180",
+        "x-codex-primary-window-minutes": "300",
         "x-codex-primary-reset-at": "1769562900000",
         "x-codex-credits-has-credits": "true",
         "x-codex-credits-unlimited": "false",
@@ -38,7 +38,7 @@
       },
       "raw": {
         "x-codex-primary-used-percent": "100",
-        "x-codex-primary-window-minutes": "180",
+        "x-codex-primary-window-minutes": "300",
         "x-codex-primary-reset-at": "1769563000000",
         "x-codex-credits-has-credits": "true",
         "x-codex-credits-unlimited": "true",

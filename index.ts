@@ -1290,9 +1290,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 					// Add Codex status details
 					const codexLines = await codexStatus.renderStatus(account);
-					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
-						lines.push(...codexLines.map(l => "     " + l.trim()));
-					}
+					lines.push(...codexLines.map(l => "     " + l.trim()));
 					lines.push(""); // Spacer between accounts
 				}
 				lines.push(`Storage: ${storagePath}`);
@@ -1332,9 +1330,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 					lines.push(`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(10)}) [${status}]`);
 					const codexLines = await codexStatus.renderStatus(account);
-					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
-						lines.push(...codexLines.map(l => "  " + l.trim()));
-					}
+					lines.push(...codexLines.map(l => "  " + l.trim()));
 				}
 				return lines.join("\n");
 			},

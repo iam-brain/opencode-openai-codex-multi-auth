@@ -8,7 +8,7 @@
       "updatedAt": 1769552000000,
       "primary": {
         "usedPercent": 45.5,
-        "windowMinutes": 180,
+        "windowMinutes": 300,
         "resetAt": 1769562800000
       },
       "secondary": {
@@ -28,7 +28,7 @@
       "updatedAt": 1769552100000,
       "primary": {
         "usedPercent": 0,
-        "windowMinutes": 180,
+        "windowMinutes": 300,
         "resetAt": 1769562900000
       },
       "secondary": null,
@@ -48,7 +48,7 @@
       "updatedAt": 1769552200000,
       "primary": {
         "usedPercent": 100,
-        "windowMinutes": 180,
+        "windowMinutes": 300,
         "resetAt": 1769563000000
       },
       "secondary": null,
