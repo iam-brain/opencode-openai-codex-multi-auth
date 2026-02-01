@@ -3,6 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CacheMetadata, GitHubRelease } from "../types.js";
 import { getOpencodeCacheDir, migrateLegacyCacheFiles } from "../paths.js";
+import { MODEL_FAMILIES, type ModelFamily } from "../constants.js";
+
+export { MODEL_FAMILIES, type ModelFamily };
 
 const GITHUB_API_RELEASES =
 	"https://api.github.com/repos/openai/codex/releases/latest";
@@ -12,25 +15,6 @@ const CACHE_DIR = getOpencodeCacheDir();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-/**
- * Model family type for prompt selection
- * Maps to different system prompts in the Codex CLI
- */
-export type ModelFamily =
-	| "gpt-5.2-codex"
-	| "codex-max"
-	| "codex"
-	| "gpt-5.2"
-	| "gpt-5.1";
-
-export const MODEL_FAMILIES: ModelFamily[] = [
-	"gpt-5.2-codex",
-	"codex-max",
-	"codex",
-	"gpt-5.2",
-	"gpt-5.1",
-];
 
 /**
  * Prompt file mapping for each model family

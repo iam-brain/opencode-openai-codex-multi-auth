@@ -1,7 +1,7 @@
 import type { Auth } from "@opencode-ai/sdk";
 
 import { decodeJWT, refreshAccessToken } from "./auth/auth.js";
-import { JWT_CLAIM_PATH } from "./constants.js";
+import { JWT_CLAIM_PATH, MODEL_FAMILIES, type ModelFamily } from "./constants.js";
 import type {
 	AccountSelectionStrategy,
 	AccountStorageV3,
@@ -11,7 +11,6 @@ import type {
 	TokenResult,
 } from "./types.js";
 import { backupAccountsFile, loadAccounts, saveAccounts, saveAccountsWithLock } from "./storage.js";
-import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
 import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
 import { findAccountMatchIndex } from "./account-matching.js";
 import { normalizePlanType } from "./plan-utils.js";

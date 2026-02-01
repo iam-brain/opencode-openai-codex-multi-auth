@@ -59,6 +59,8 @@ import {
 	DUMMY_API_KEY,
 	HTTP_STATUS,
 	LOG_STAGES,
+	MODEL_FAMILIES,
+	type ModelFamily,
 	PLUGIN_NAME,
 	PROVIDER_ID,
 } from "./lib/constants.js";
@@ -100,7 +102,7 @@ import {
 	toggleAccountEnabled,
 } from "./lib/storage.js";
 import { findAccountMatchIndex } from "./lib/account-matching.js";
-import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
+import { getModelFamily } from "./lib/prompts/codex.js";
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 import { RateLimitTracker, decideRateLimitAction, parseRateLimitReason } from "./lib/rate-limit.js";

@@ -79,3 +79,14 @@ export const AUTH_LABELS = {
 	INSTRUCTIONS_MANUAL:
 		"After logging in, copy the full redirect URL and paste it here.",
 } as const;
+
+/** Model family identifiers for account selection */
+export const MODEL_FAMILIES = [
+	"gpt-5.2-codex",
+	"codex-max",
+	"codex",
+	"gpt-5.2",
+	"gpt-5.1",
+] as const;
+
+export type ModelFamily = (typeof MODEL_FAMILIES)[number];
