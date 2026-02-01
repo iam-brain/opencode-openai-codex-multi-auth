@@ -61,6 +61,7 @@ describe('Plugin Configuration', () => {
 			retryAllAccountsMaxWaitMs: 30_000,
 			retryAllAccountsMaxRetries: 1,
 			tokenRefreshSkewMs: 60_000,
+			proactiveTokenRefresh: false,
 			rateLimitToastDebounceMs: 60_000,
 			schedulingMode: 'cache_first',
 			maxCacheFirstWaitSeconds: 60,

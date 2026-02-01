@@ -40,6 +40,7 @@ import {
 	getMaxBackoffMs,
 	getMaxCacheFirstWaitSeconds,
 	getPidOffsetEnabled,
+	getProactiveTokenRefresh,
 	getQuietMode,
 	getRateLimitDedupWindowMs,
 	getRateLimitStateResetMs,
@@ -232,14 +233,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 				const pidOffsetEnabled = getPidOffsetEnabled(pluginConfig);
 				const tokenRefreshSkewMs = getTokenRefreshSkewMs(pluginConfig);
-				const proactiveRefreshEnabled = (() => {
-					const rawConfig = pluginConfig as Record<string, unknown>;
-					const configFlag = rawConfig["proactive_token_refresh"] ?? rawConfig["proactiveTokenRefresh"];
-					const envFlag = process.env.CODEX_AUTH_PROACTIVE_TOKEN_REFRESH;
-					if (envFlag === "1" || envFlag === "true") return true;
-					if (envFlag === "0" || envFlag === "false") return false;
-					return Boolean(configFlag);
-				})();
+				const proactiveRefreshEnabled = getProactiveTokenRefresh(pluginConfig);
 
 				const proactiveRefreshQueue = proactiveRefreshEnabled
 					? new ProactiveRefreshQueue({ bufferMs: tokenRefreshSkewMs, intervalMs: 250 })
