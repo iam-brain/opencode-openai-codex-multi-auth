@@ -81,7 +81,7 @@ export const DEFAULT_HEALTH_SCORE_CONFIG: HealthScoreConfig = {
 	staleAfterMs: 24 * 60 * 60 * 1000, // 24 hours
 };
 
-interface HealthScoreState {
+export interface HealthScoreState {
 	score: number;
 	lastUpdated: number;
 	consecutiveFailures: number;
@@ -93,8 +93,16 @@ export class HealthScoreTracker {
 	private lastCleanup = 0;
 	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
 
-	constructor(config: Partial<HealthScoreConfig> = {}) {
+	constructor(config: Partial<HealthScoreConfig> = {}, initialScores: Record<string, HealthScoreState> = {}) {
 		this.config = { ...DEFAULT_HEALTH_SCORE_CONFIG, ...config };
+		for (const [key, state] of Object.entries(initialScores)) {
+			this.scores.set(key, state);
+		}
+	}
+
+	getScores(): Record<string, HealthScoreState> {
+		this.cleanup();
+		return Object.fromEntries(this.scores.entries());
 	}
 
 	private cleanup(): void {
@@ -192,7 +200,7 @@ export const DEFAULT_TOKEN_BUCKET_CONFIG: TokenBucketConfig = {
 	staleAfterMs: 60 * 60 * 1000, // 1 hour
 };
 
-interface TokenBucketState {
+export interface TokenBucketState {
 	tokens: number;
 	lastUpdated: number;
 }
@@ -203,8 +211,16 @@ export class TokenBucketTracker {
 	private lastCleanup = 0;
 	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
 
-	constructor(config: Partial<TokenBucketConfig> = {}) {
+	constructor(config: Partial<TokenBucketConfig> = {}, initialBuckets: Record<string, TokenBucketState> = {}) {
 		this.config = { ...DEFAULT_TOKEN_BUCKET_CONFIG, ...config };
+		for (const [key, state] of Object.entries(initialBuckets)) {
+			this.buckets.set(key, state);
+		}
+	}
+
+	getBuckets(): Record<string, TokenBucketState> {
+		this.cleanup();
+		return Object.fromEntries(this.buckets.entries());
 	}
 
 	private cleanup(): void {
