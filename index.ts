@@ -316,10 +316,14 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 				template: "Run the codex-toggle-account tool with index $ARGUMENTS and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
 				description: "Enable or disable an OpenAI account by index (1-based).",
 			};
+			cfg.command["codex-remove-account"] = {
+				template: "Run the codex-remove-account tool with index $ARGUMENTS and confirm: true.",
+				description: "Remove an OpenAI account by index (1-based).",
+			};
 
 			cfg.experimental = cfg.experimental || {};
 			cfg.experimental.primary_tools = cfg.experimental.primary_tools || [];
-			for (const t of ["codex-status", "codex-switch-accounts", "codex-toggle-account"]) {
+			for (const t of ["codex-status", "codex-switch-accounts", "codex-toggle-account", "codex-remove-account"]) {
 				if (!cfg.experimental.primary_tools.includes(t)) {
 					cfg.experimental.primary_tools.push(t);
 				}
@@ -421,6 +425,31 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 						if (live) { live.enabled = updated.accounts[targetIndex]?.enabled !== false; await cachedAccountManager.saveToDisk(); }
 					}
 					return `${updated.accounts[targetIndex]?.enabled !== false ? "Enabled" : "Disabled"} ${formatAccountLabel(updated.accounts[targetIndex], targetIndex)}`;
+				},
+			}),
+			"codex-remove-account": tool({
+				description: "Remove an OpenAI account by index (1-based). This is permanent.",
+				args: {
+					index: tool.schema.number().describe("Account number (1-based)"),
+					confirm: tool.schema.boolean().optional().describe("Confirm removal (required)"),
+				},
+				async execute({ index, confirm }) {
+					if (!confirm) {
+						return "To remove account, call with confirm: true";
+					}
+					configureStorageForCurrentCwd();
+					const accountManager = await AccountManager.loadFromDisk();
+					if (accountManager.getAccountCount() === 0) return "No OpenAI accounts configured.";
+
+					const targetIndex = Math.floor((index ?? 0) - 1);
+					const account = accountManager.getAccountByIndex(targetIndex);
+					if (!account) return `Invalid account number: ${index}.`;
+
+					const label = formatAccountLabel(account, targetIndex);
+					const success = await accountManager.removeAccountByIndex(targetIndex);
+
+					if (!success) return `Failed to remove account ${index}.`;
+					return `Removed ${label}.`;
 				},
 			}),
 		},

@@ -449,6 +449,37 @@ export class AccountManager {
 		return removedCount;
 	}
 
+	async removeAccountByIndex(index: number): Promise<boolean> {
+		if (index < 0 || index >= this.accounts.length) return false;
+		const accountToRemove = this.accounts[index];
+		if (!accountToRemove) return false;
+
+		const indexMap = new Map<number, number>();
+		const remaining: ManagedAccount[] = [];
+		for (let i = 0; i < this.accounts.length; i++) {
+			if (i === index) continue;
+			const account = this.accounts[i];
+			if (!account) continue;
+			const newIndex = remaining.length;
+			indexMap.set(account.index, newIndex);
+			remaining.push({ ...account, index: newIndex });
+		}
+
+		this.accounts = remaining;
+		const fallbackIndex = this.accounts.length > 0 ? 0 : -1;
+		this.cursor = indexMap.get(this.cursor) ?? Math.max(0, fallbackIndex);
+		for (const family of MODEL_FAMILIES) {
+			const mapped = indexMap.get(this.currentAccountIndexByFamily[family]);
+			this.currentAccountIndexByFamily[family] = mapped ?? fallbackIndex;
+			if (mapped === undefined) this.sessionOffsetApplied[family] = false;
+		}
+
+		await this.saveToDisk((accounts) => {
+			return accounts.filter((a) => a.refreshToken !== accountToRemove.refreshToken);
+		});
+		return true;
+	}
+
 	getAccountsSnapshot(): ManagedAccount[] {
 		return this.accounts.map((a) => ({ ...a, rateLimitResetTimes: { ...a.rateLimitResetTimes } }));
 	}
@@ -856,14 +887,22 @@ export class AccountManager {
 		return this.refreshAccountWithLock(account, refreshFn);
 	}
 
-	async saveToDisk(): Promise<void> {
+	async saveToDisk(
+		preSaveTransform?: (accounts: AccountStorageV3["accounts"]) => AccountStorageV3["accounts"],
+	): Promise<void> {
 
 		const snapshot = this.getStorageSnapshot();
 		
 		await saveAccountsWithLock((latest) => {
 			let accountsToSave: AccountStorageV3["accounts"] = snapshot.accounts;
-			if (latest?.accounts && latest.accounts.length > 0) {
-				accountsToSave = mergeAccountRecords(latest.accounts, this.accounts);
+			let baseAccounts = latest?.accounts ?? [];
+
+			if (preSaveTransform) {
+				baseAccounts = preSaveTransform(baseAccounts);
+			}
+
+			if (baseAccounts.length > 0) {
+				accountsToSave = mergeAccountRecords(baseAccounts, this.accounts);
 			}
 
 			const findSavedIndex = (
