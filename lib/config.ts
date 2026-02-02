@@ -43,7 +43,7 @@ function migrateLegacyConfigIfNeeded(): void {
 
 /**
  * Default plugin configuration
- * CODEX_MODE is enabled by default for better Codex CLI parity
+ * CODEX_MODE enabled by default for Codex CLI parity
  */
 const DEFAULT_CONFIG: PluginConfig = {
 	codexMode: true,
@@ -70,9 +70,7 @@ const DEFAULT_CONFIG: PluginConfig = {
 
 /**
  * Load plugin configuration from ~/.config/opencode/openai-codex-auth-config.json
- * Falls back to defaults if file doesn't exist or is invalid
- *
- * @returns Plugin configuration
+ * Falls back to defaults if missing/invalid
  */
 export function loadPluginConfig(): PluginConfig {
 	try {
@@ -146,11 +144,8 @@ function resolveNumberSetting(
 }
 
 /**
- * Get the effective CODEX_MODE setting
- * Priority: environment variable > config file > default (true)
- *
- * @param pluginConfig - Plugin configuration from file
- * @returns True if CODEX_MODE should be enabled
+ * Get effective CODEX_MODE setting
+ * Priority: env var > config file > default (true)
  */
 export function getCodexMode(pluginConfig: PluginConfig): boolean {
 	return resolveBooleanSetting(

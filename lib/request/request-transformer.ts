@@ -433,7 +433,6 @@ export async function transformRequestBody(
 	const lookupModel = originalModel || normalizedModel;
 	const modelConfig = getModelConfig(lookupModel, userConfig);
 
-	// Debug: Log which config was resolved
 	logDebug(
 		`Model config lookup: "${lookupModel}" → normalized to "${normalizedModel}" for API`,
 		{
@@ -457,7 +456,6 @@ export async function transformRequestBody(
 
 	// Filter and transform input
 	if (body.input && Array.isArray(body.input)) {
-		// Debug: Log original input message IDs before filtering
 		const originalIds = body.input
 			.filter((item) => item.id)
 			.map((item) => item.id);
@@ -470,7 +468,6 @@ export async function transformRequestBody(
 
 		body.input = filterInput(body.input);
 
-		// Debug: Verify all IDs were removed
 		const remainingIds = (body.input || [])
 			.filter((item) => item.id)
 			.map((item) => item.id);

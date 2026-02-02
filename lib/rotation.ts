@@ -1,10 +1,10 @@
 /**
  * Account Rotation System
  *
- * Provides the building blocks for the `hybrid` account selection strategy:
- * - Health scoring: prefer accounts that are behaving well
- * - Token bucket: client-side throttling to avoid repeatedly slamming one account
- * - LRU/freshness bias: prefer accounts that have rested longer
+ * Building blocks for `hybrid` selection:
+ * - Health scoring: prefer behaving accounts
+ * - Token bucket: client-side throttling
+ * - LRU/freshness: prefer rested accounts
  */
 
 import { createHash } from "node:crypto";
@@ -14,9 +14,7 @@ import { createHash } from "node:crypto";
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal account identity for tracker keying.
- * Uses accountId + email + plan for stable identity (matches storage conventions).
- * Falls back to refreshToken hash for legacy accounts without full identity.
+ * Minimal account identity
  */
 export interface AccountIdentity {
 	accountId?: string;
@@ -28,8 +26,7 @@ export interface AccountIdentity {
 }
 
 /**
- * Generate a stable key for an account based on its identity.
- * Priority: accountId+email+plan > refreshToken hash > "unknown"
+ * Generate stable key for account
  */
 export function getAccountKey(account: AccountIdentity): string {
 	if (account.accountId && account.email && account.plan) {
@@ -52,21 +49,21 @@ export function getAccountKey(account: AccountIdentity): string {
 // ---------------------------------------------------------------------------
 
 export interface HealthScoreConfig {
-	/** Initial score for new accounts (default: 70) */
+	/** Initial score (default: 70) */
 	initial: number;
-	/** Points added on successful request (default: 1) */
+	/** Points on success (default: 1) */
 	successReward: number;
-	/** Points removed on rate limit (default: -10) */
+	/** Penalty on rate limit (default: -10) */
 	rateLimitPenalty: number;
-	/** Points removed on failure (auth/network/server) (default: -20) */
+	/** Penalty on failure (default: -20) */
 	failurePenalty: number;
-	/** Points recovered per hour of rest (default: 2) */
+	/** Recovery per hour (default: 2) */
 	recoveryRatePerHour: number;
-	/** Minimum score to be considered usable (default: 50) */
+	/** Min usable score (default: 50) */
 	minUsable: number;
-	/** Maximum score cap (default: 100) */
+	/** Max score (default: 100) */
 	maxScore: number;
-	/** Cleanup stale entries after this many ms of inactivity (default: 24 hours) */
+	/** Cleanup inactivity ms (default: 24h) */
 	staleAfterMs: number;
 }
 
@@ -172,7 +169,7 @@ export class HealthScoreTracker {
 		});
 	}
 
-	/** For testing: get the number of tracked accounts */
+	/** Get tracked account count */
 	size(): number {
 		return this.scores.size;
 	}
@@ -183,13 +180,13 @@ export class HealthScoreTracker {
 // ---------------------------------------------------------------------------
 
 export interface TokenBucketConfig {
-	/** Maximum tokens per account (default: 50) */
+	/** Maximum tokens (default: 50) */
 	maxTokens: number;
-	/** Tokens regenerated per minute (default: 6) */
+	/** Regeneration per minute (default: 6) */
 	regenerationRatePerMinute: number;
-	/** Initial tokens for new accounts (default: 50) */
+	/** Initial tokens (default: 50) */
 	initialTokens: number;
-	/** Cleanup stale entries after this many ms of inactivity (default: 1 hour) */
+	/** Cleanup inactivity ms (default: 1h) */
 	staleAfterMs: number;
 }
 
@@ -277,7 +274,7 @@ export class TokenBucketTracker {
 		return this.config.maxTokens;
 	}
 
-	/** For testing: get the number of tracked accounts */
+	/** Get tracked account count */
 	size(): number {
 		return this.buckets.size;
 	}
