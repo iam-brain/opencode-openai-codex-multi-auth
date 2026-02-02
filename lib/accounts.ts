@@ -208,8 +208,6 @@ function mergeAccountRecords(
 		if (!current) continue;
 		const updated = { ...current };
 
-		// Token Rotation Arbitration: Only update token if memory state is newer than disk state.
-		// Higher lastUsed timestamp wins.
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
 			if (candidate.refreshToken !== candidate.originalRefreshToken && candidate.lastUsed > (updated.lastUsed || 0)) {
 				updated.refreshToken = candidate.refreshToken;
@@ -690,8 +688,6 @@ export class AccountManager {
 
 	updateFromAuth(account: ManagedAccount, auth: OAuthAuthDetails): void {
 		account.refreshToken = auth.refresh;
-		// Do NOT update originalRefreshToken here. We want it to reflect the "last saved" state
-		// so that mergeAccountRecords can detect that we have a pending change.
 		account.access = auth.access;
 		account.expires = auth.expires;
 		account.lastUsed = nowMs();
@@ -710,12 +706,9 @@ export class AccountManager {
 	}
 
 	async hydrateMissingEmails(): Promise<void> {
-		// Best-effort: refresh tokens to decode emails/accountId.
 		try {
 			await backupAccountsFile();
-		} catch {
-			// ignore backup failures
-		}
+		} catch { }
 		for (const account of this.accounts) {
 			if (account.enabled === false) continue;
 			if (account.enabled === undefined) account.enabled = true;
@@ -734,10 +727,7 @@ export class AccountManager {
 				account.plan =
 					extractAccountPlan(idToken) ?? extractAccountPlan(accessToken) ?? account.plan;
 				account.refreshToken = refreshed.refresh;
-				// Do not update originalRefreshToken here; let saveToDisk commit it.
-			} catch {
-				// ignore
-			}
+			} catch { }
 		}
 	}
 
@@ -803,9 +793,7 @@ export class AccountManager {
 			try {
 				await this.hydrateMissingEmails();
 				await this.saveToDisk();
-			} catch {
-				// Best-effort; ignore hydration failures here.
-			}
+			} catch { }
 		}
 		return this.getMinWaitTimeForFamily(family, model);
 	}
@@ -919,7 +907,6 @@ export class AccountManager {
 							a.plan === accountToRemove.plan
 						);
 					}
-					// Use originalRefreshToken to match against disk state if available (handles pending rotation)
 					const token = accountToRemove.originalRefreshToken || accountToRemove.refreshToken;
 					return a.refreshToken !== token;
 				});
@@ -983,7 +970,6 @@ export class AccountManager {
 			return storage;
 		});
 
-		// Update originalRefreshToken to reflect saved state
 		for (const account of this.accounts) {
 			account.originalRefreshToken = account.refreshToken;
 		}
