@@ -276,7 +276,6 @@ export class FetchOrchestrator {
 						return await handleSuccessResponse(res, isStreaming);
 					}
 
-					// Handle Unauthorized (401)
 					if (res.status === HTTP_STATUS.UNAUTHORIZED) {
 						debugAuth(`[Fetch] 401 Unauthorized for ${account.email}. Attempting recovery...`);
 
