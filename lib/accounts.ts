@@ -454,6 +454,8 @@ export class AccountManager {
 		const accountToRemove = this.accounts[index];
 		if (!accountToRemove) return false;
 
+		const tokenToRemove = accountToRemove.refreshToken;
+
 		const indexMap = new Map<number, number>();
 		const remaining: ManagedAccount[] = [];
 		for (let i = 0; i < this.accounts.length; i++) {
@@ -465,17 +467,23 @@ export class AccountManager {
 			remaining.push({ ...account, index: newIndex });
 		}
 
-		this.accounts = remaining;
-		const fallbackIndex = this.accounts.length > 0 ? 0 : -1;
-		this.cursor = indexMap.get(this.cursor) ?? Math.max(0, fallbackIndex);
+		const fallbackIndex = remaining.length > 0 ? 0 : -1;
+		const newCursor = indexMap.get(this.cursor) ?? Math.max(0, fallbackIndex);
+		const newIndexByFamily: Record<string, number> = {};
+		const newSessionOffsetApplied: Record<string, boolean> = {};
 		for (const family of MODEL_FAMILIES) {
 			const mapped = indexMap.get(this.currentAccountIndexByFamily[family]);
-			this.currentAccountIndexByFamily[family] = mapped ?? fallbackIndex;
-			if (mapped === undefined) this.sessionOffsetApplied[family] = false;
+			newIndexByFamily[family] = mapped ?? fallbackIndex;
+			newSessionOffsetApplied[family] = mapped !== undefined;
 		}
 
+		this.accounts = remaining;
+		this.cursor = newCursor;
+		this.currentAccountIndexByFamily = newIndexByFamily;
+		this.sessionOffsetApplied = newSessionOffsetApplied;
+
 		await this.saveToDisk((accounts) => {
-			return accounts.filter((a) => a.refreshToken !== accountToRemove.refreshToken);
+			return accounts.filter((a) => a.refreshToken !== tokenToRemove);
 		});
 		return true;
 	}
@@ -888,17 +896,17 @@ export class AccountManager {
 	}
 
 	async saveToDisk(
-		preSaveTransform?: (accounts: AccountStorageV3["accounts"]) => AccountStorageV3["accounts"],
+		latestAccountsTransform?: (accounts: AccountStorageV3["accounts"]) => AccountStorageV3["accounts"],
 	): Promise<void> {
 
 		const snapshot = this.getStorageSnapshot();
-		
+
 		await saveAccountsWithLock((latest) => {
 			let accountsToSave: AccountStorageV3["accounts"] = snapshot.accounts;
 			let baseAccounts = latest?.accounts ?? [];
 
-			if (preSaveTransform) {
-				baseAccounts = preSaveTransform(baseAccounts);
+			if (latestAccountsTransform) {
+				baseAccounts = latestAccountsTransform(baseAccounts);
 			}
 
 			if (baseAccounts.length > 0) {
