@@ -111,7 +111,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		if (quietMode) return;
 		try {
 			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
-		} catch { }
+		} catch (err) {
+			if (!quietMode) console.error("[Toast Error]", err);
+		}
 	};
 
 	const buildManualOAuthFlow = (
