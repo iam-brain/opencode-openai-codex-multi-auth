@@ -1,6 +1,5 @@
 /**
- * OpenAI ChatGPT (Codex) OAuth Plugin for opencode
- * @author numman-ali
+ * OpenAI ChatGPT (Codex) OAuth Plugin
  * @license MIT
  */
 
@@ -320,12 +319,11 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 			async execute() {
 				configureStorageForCurrentCwd();
 				const accountManager = await AccountManager.loadFromDisk();
-				// Read-only status; avoid triggering token refreshes.
+				// Read-only status.
 				const accounts = accountManager.getAccountsSnapshot();
 				const { scope, storagePath } = getStorageScope();
 				if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
 
-				// Best-effort status fetch from backend.
 				await Promise.all(accounts.map(async (acc, index) => {
 					if (acc.enabled === false) return;
 					const live = accountManager.getAccountByIndex(index);
@@ -348,7 +346,6 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 							await codexStatus.fetchFromBackend(live, auth.access);
 						}
 					} catch {
-						// Fallback to cached snapshot on failure.
 					}
 				}));
 
