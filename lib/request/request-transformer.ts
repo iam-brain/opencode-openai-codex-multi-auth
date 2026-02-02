@@ -126,7 +126,6 @@ export function getModelConfig(
 	const globalOptions = userConfig.global || {};
 	const modelOptions = userConfig.models?.[modelName]?.options || {};
 
-	// Model-specific options override global options
 	return { ...globalOptions, ...modelOptions };
 }
 
@@ -247,7 +246,6 @@ export function getReasoningConfig(
 				? "minimal"
 				: "medium";
 
-	// Get user-requested effort
 	let effort = userConfig.reasoningEffort || defaultEffort;
 
 	if (isCodexMini) {
@@ -262,7 +260,6 @@ export function getReasoningConfig(
 		}
 	}
 
-	// For models that don't support xhigh, downgrade to high
 	if (!supportsXhigh && effort === "xhigh") {
 		effort = "high";
 	}
@@ -314,11 +311,10 @@ export function filterInput(
 
 	return input
 		.filter((item) => {
-			// Remove AI SDK constructs not supported by Codex API
 			if (item.type === "item_reference") {
-				return false; // AI SDK only - references server state
+				return false;
 			}
-			return true; // Keep all other items
+			return true;
 		})
 		.map((item) => {
 			// Strip IDs from all items (Codex API stateless mode)
@@ -341,7 +337,6 @@ export async function filterOpenCodeSystemPrompts(
 ): Promise<InputItem[] | undefined> {
 	if (!Array.isArray(input)) return input;
 
-	// Fetch cached OpenCode prompt for verification
 	let cachedPrompt: string | null = null;
 	try {
 		cachedPrompt = await getOpenCodeCodexPrompt();
@@ -444,10 +439,7 @@ export async function transformRequestBody(
 	// Normalize model name for API call
 	body.model = normalizedModel;
 
-	// Codex required fields
-	// ChatGPT backend REQUIRES store=false (confirmed via testing)
 	body.store = false;
-	// Always set stream=true for API - response handling detects original intent
 	body.stream = true;
 	body.instructions = codexInstructions;
 
@@ -497,7 +489,6 @@ export async function transformRequestBody(
 		}
 	}
 
-	// Configure reasoning (prefer existing body/provider options, then config defaults)
 	const reasoningConfig = resolveReasoningConfig(
 		normalizedModel,
 		modelConfig,
@@ -508,19 +499,13 @@ export async function transformRequestBody(
 		...reasoningConfig,
 	};
 
-	// Configure text verbosity (support user config)
-	// Default: "medium" (matches Codex CLI default for all GPT-5 models)
 	body.text = {
 		...body.text,
 		verbosity: resolveTextVerbosity(modelConfig, body),
 	};
 
-	// Add include for encrypted reasoning content
-	// Default: ["reasoning.encrypted_content"] (required for stateless operation with store=false)
-	// This allows reasoning context to persist across turns without server-side storage
 	body.include = resolveInclude(modelConfig, body);
 
-	// Remove unsupported parameters
 	body.max_output_tokens = undefined;
 	body.max_completion_tokens = undefined;
 
