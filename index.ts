@@ -459,8 +459,8 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 					
 					// Force a fresh load from disk to ensure any other instance state is clean
 					if (!cachedAccountManager) {
-						// This branch only hits if the plugin wasn't fully initialized,
-						// but standard flow ensures cachedAccountManager is set.
+						// No action needed: if cachedAccountManager is null, the next access 
+						// will automatically load fresh from disk via loadFromDisk() in fetch()
 					}
 					
 					return `Removed ${label}.`;
