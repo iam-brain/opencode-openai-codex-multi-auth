@@ -17,7 +17,6 @@ export interface AccountIdentity {
 	index?: number;
 }
 
-/** Generate stable key for account */
 export function getAccountKey(account: AccountIdentity): string {
 	if (account.accountId && account.email && account.plan) {
 		const email = account.email.toLowerCase();
@@ -34,21 +33,21 @@ export function getAccountKey(account: AccountIdentity): string {
 }
 
 export interface HealthScoreConfig {
-	/** Initial score (default: 70) */
+	/** Default: 70 */
 	initial: number;
-	/** Points on success (default: 1) */
+	/** Default: 1 */
 	successReward: number;
-	/** Penalty on rate limit (default: -10) */
+	/** Default: -10 */
 	rateLimitPenalty: number;
-	/** Penalty on failure (default: -20) */
+	/** Default: -20 */
 	failurePenalty: number;
-	/** Recovery per hour (default: 2) */
+	/** Default: 2 */
 	recoveryRatePerHour: number;
-	/** Min usable score (default: 50) */
+	/** Default: 50 */
 	minUsable: number;
-	/** Max score (default: 100) */
+	/** Default: 100 */
 	maxScore: number;
-	/** Cleanup inactivity ms (default: 24h) */
+	/** Default: 24h */
 	staleAfterMs: number;
 }
 
@@ -160,13 +159,13 @@ export class HealthScoreTracker {
 }
 
 export interface TokenBucketConfig {
-	/** Maximum tokens (default: 50) */
+	/** Default: 50 */
 	maxTokens: number;
-	/** Regeneration per minute (default: 6) */
+	/** Default: 6 */
 	regenerationRatePerMinute: number;
-	/** Initial tokens (default: 50) */
+	/** Default: 50 */
 	initialTokens: number;
-	/** Cleanup inactivity ms (default: 1h) */
+	/** Default: 1h */
 	staleAfterMs: number;
 }
 
