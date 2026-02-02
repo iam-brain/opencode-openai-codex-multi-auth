@@ -9,25 +9,15 @@
 
 import { createHash } from "node:crypto";
 
-// ---------------------------------------------------------------------------
-// ACCOUNT IDENTITY
-// ---------------------------------------------------------------------------
-
-/**
- * Minimal account identity
- */
 export interface AccountIdentity {
 	accountId?: string;
 	email?: string;
 	plan?: string;
 	refreshToken?: string;
-	/** Account index is still needed for hybrid selection return values */
 	index?: number;
 }
 
-/**
- * Generate stable key for account
- */
+/** Generate stable key for account */
 export function getAccountKey(account: AccountIdentity): string {
 	if (account.accountId && account.email && account.plan) {
 		const email = account.email.toLowerCase();
@@ -37,16 +27,11 @@ export function getAccountKey(account: AccountIdentity): string {
 	if (account.refreshToken) {
 		return createHash("sha256").update(account.refreshToken).digest("hex").substring(0, 16);
 	}
-	// Last resort: use index if available
 	if (typeof account.index === "number") {
 		return `idx:${account.index}`;
 	}
 	return "unknown";
 }
-
-// ---------------------------------------------------------------------------
-// HEALTH SCORE
-// ---------------------------------------------------------------------------
 
 export interface HealthScoreConfig {
 	/** Initial score (default: 70) */
@@ -88,7 +73,7 @@ export class HealthScoreTracker {
 	private readonly scores = new Map<string, HealthScoreState>();
 	private readonly config: HealthScoreConfig;
 	private lastCleanup = 0;
-	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
+	private readonly cleanupIntervalMs = 60_000;
 
 	constructor(config: Partial<HealthScoreConfig> = {}, initialScores: Record<string, HealthScoreState> = {}) {
 		this.config = { ...DEFAULT_HEALTH_SCORE_CONFIG, ...config };
@@ -169,15 +154,10 @@ export class HealthScoreTracker {
 		});
 	}
 
-	/** Get tracked account count */
 	size(): number {
 		return this.scores.size;
 	}
 }
-
-// ---------------------------------------------------------------------------
-// TOKEN BUCKET
-// ---------------------------------------------------------------------------
 
 export interface TokenBucketConfig {
 	/** Maximum tokens (default: 50) */
@@ -206,7 +186,7 @@ export class TokenBucketTracker {
 	private readonly buckets = new Map<string, TokenBucketState>();
 	private readonly config: TokenBucketConfig;
 	private lastCleanup = 0;
-	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
+	private readonly cleanupIntervalMs = 60_000;
 
 	constructor(config: Partial<TokenBucketConfig> = {}, initialBuckets: Record<string, TokenBucketState> = {}) {
 		this.config = { ...DEFAULT_TOKEN_BUCKET_CONFIG, ...config };
@@ -274,15 +254,10 @@ export class TokenBucketTracker {
 		return this.config.maxTokens;
 	}
 
-	/** Get tracked account count */
 	size(): number {
 		return this.buckets.size;
 	}
 }
-
-// ---------------------------------------------------------------------------
-// HYBRID SELECTION
-// ---------------------------------------------------------------------------
 
 export interface AccountWithMetrics extends AccountIdentity {
 	index: number;
@@ -337,10 +312,6 @@ function calculateHybridScore(
 	const freshnessComponent = Math.min(secondsSinceUsed, 3600) * 0.1;
 	return Math.max(0, healthComponent + tokenComponent + freshnessComponent);
 }
-
-// ---------------------------------------------------------------------------
-// SINGLETONS
-// ---------------------------------------------------------------------------
 
 let globalTokenTracker: TokenBucketTracker | null = null;
 
