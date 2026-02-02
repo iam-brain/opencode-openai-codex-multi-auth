@@ -454,8 +454,6 @@ export class AccountManager {
 		const accountToRemove = this.accounts[index];
 		if (!accountToRemove) return false;
 
-		const tokenToRemove = accountToRemove.refreshToken;
-
 		const indexMap = new Map<number, number>();
 		const remaining: ManagedAccount[] = [];
 		for (let i = 0; i < this.accounts.length; i++) {
@@ -482,9 +480,7 @@ export class AccountManager {
 		this.currentAccountIndexByFamily = newIndexByFamily;
 		this.sessionOffsetApplied = newSessionOffsetApplied;
 
-		await this.saveToDisk((accounts) => {
-			return accounts.filter((a) => a.refreshToken !== tokenToRemove);
-		});
+		await this.saveToDisk({ indexToRemove: index, accountToRemove });
 		return true;
 	}
 
@@ -896,8 +892,14 @@ export class AccountManager {
 	}
 
 	async saveToDisk(
-		latestAccountsTransform?: (accounts: AccountStorageV3["accounts"]) => AccountStorageV3["accounts"],
+		optionsOrTransform?:
+			| { indexToRemove?: number; accountToRemove?: ManagedAccount }
+			| ((accounts: AccountStorageV3["accounts"]) => AccountStorageV3["accounts"]),
 	): Promise<void> {
+		const latestAccountsTransform =
+			typeof optionsOrTransform === "function" ? optionsOrTransform : undefined;
+		const accountToRemove =
+			typeof optionsOrTransform === "object" ? optionsOrTransform.accountToRemove : undefined;
 
 		const snapshot = this.getStorageSnapshot();
 
@@ -907,6 +909,17 @@ export class AccountManager {
 
 			if (latestAccountsTransform) {
 				baseAccounts = latestAccountsTransform(baseAccounts);
+			} else if (accountToRemove) {
+				baseAccounts = baseAccounts.filter((a) => {
+					if (accountToRemove.accountId && accountToRemove.email && accountToRemove.plan) {
+						return !(
+							a.accountId === accountToRemove.accountId &&
+							a.email === accountToRemove.email &&
+							a.plan === accountToRemove.plan
+						);
+					}
+					return a.refreshToken !== accountToRemove.refreshToken;
+				});
 			}
 
 			if (baseAccounts.length > 0) {

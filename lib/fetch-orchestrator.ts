@@ -244,10 +244,14 @@ export class FetchOrchestrator {
 										return;
 									}
 									const chunk = decoder.decode(value, { stream: true });
-									if (sseBuffer.length + chunk.length > 1024 * 1024) sseBuffer = chunk; else sseBuffer += chunk;
+									sseBuffer += chunk;
 									const lines = sseBuffer.split("\n");
 									sseBuffer = lines.pop() || "";
 									for (const line of lines) processLine(line);
+
+									if (sseBuffer.length > 1024 * 1024) {
+										sseBuffer = "";
+									}
 									controller.enqueue(value);
 								},
 								cancel() { reader.cancel(); }
