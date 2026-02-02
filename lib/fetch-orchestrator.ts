@@ -33,6 +33,7 @@ import {
 	getRetryAllAccountsRateLimited,
 	getSchedulingMode,
 	getSwitchOnFirstRateLimit,
+	getAuthDebugEnabled,
 } from "./config.js";
 import {
 	HTTP_STATUS,
@@ -52,7 +53,7 @@ import { replaceAccountsFile, quarantineAccounts } from "./storage.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
-const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
+const AUTH_DEBUG_ENABLED = getAuthDebugEnabled();
 
 const debugAuth = (...args: unknown[]): void => {
 	if (!AUTH_DEBUG_ENABLED) return;
