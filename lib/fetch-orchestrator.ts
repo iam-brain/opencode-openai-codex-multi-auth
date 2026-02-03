@@ -315,7 +315,7 @@ export class FetchOrchestrator {
 					try { responseText = await errorResponse.clone().text(); } catch { }
 					const reason = parseRateLimitReason(errorResponse.status, responseText);
 					const backoff = rateLimitTracker.getBackoff(`${account.index}:${modelFamily}:${model ?? ""}`, reason, retryAfterMs);
-					const decision = decideRateLimitAction({ schedulingMode: getSchedulingMode(pluginConfig), accountCount, maxCacheFirstWaitMs: Math.max(0, Math.floor(getMaxCacheFirstWaitSeconds(pluginConfig) * 1000)), switchOnFirstRateLimit: getSwitchOnFirstRateLimit(pluginConfig), shortRetryThresholdMs: RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS, backoff });
+					const decision = decideRateLimitAction({ reason, schedulingMode: getSchedulingMode(pluginConfig), accountCount, maxCacheFirstWaitMs: Math.max(0, Math.floor(getMaxCacheFirstWaitSeconds(pluginConfig) * 1000)), switchOnFirstRateLimit: getSwitchOnFirstRateLimit(pluginConfig), shortRetryThresholdMs: RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS, backoff });
 					if (tokenConsumed) tokenTracker.refund(account);
 					if (getAccountSelectionStrategy(pluginConfig) === "hybrid") healthTracker.recordRateLimit(account);
 					accountManager.markRateLimited(account, backoff.delayMs, modelFamily, model);

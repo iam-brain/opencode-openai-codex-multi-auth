@@ -9,6 +9,7 @@ export interface RateLimitBackoff {
 }
 
 export interface RateLimitDecisionInput {
+	reason: RateLimitReason;
 	schedulingMode: SchedulingMode;
 	accountCount: number;
 	maxCacheFirstWaitMs: number;
@@ -60,9 +61,13 @@ export function calculateBackoffMs(
 	retryAfterMs: number | null,
 	options: Pick<RateLimitTrackerOptions, "defaultRetryMs" | "maxBackoffMs" | "jitterMaxMs">,
 ): number {
-	const base = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : options.defaultRetryMs;
+	const hasRetryAfter = retryAfterMs !== null && retryAfterMs > 0;
+	const base = hasRetryAfter ? retryAfterMs : options.defaultRetryMs;
 	const pow = Math.max(0, Math.floor(attempt) - 1);
 	let delay = base * Math.pow(2, pow);
+	if (reason === "quota" && !hasRetryAfter && options.maxBackoffMs > 0) {
+		delay = Math.max(delay, options.maxBackoffMs);
+	}
 	if (options.maxBackoffMs > 0) delay = Math.min(delay, options.maxBackoffMs);
 	if (options.jitterMaxMs > 0) {
 		delay += Math.floor(Math.random() * options.jitterMaxMs);
@@ -78,8 +83,17 @@ export function decideRateLimitAction(options: RateLimitDecisionInput): RateLimi
 		return { action: "wait", delayMs };
 	}
 
-	if (options.switchOnFirstRateLimit && attempt <= 1) {
+	if (options.reason === "quota") {
 		return { action: "switch", delayMs };
+	}
+
+	if (options.switchOnFirstRateLimit && attempt <= 1 && options.reason !== "capacity") {
+		return { action: "switch", delayMs };
+	}
+
+	if (options.reason === "capacity") {
+		const shortThreshold = Math.max(0, Math.floor(options.shortRetryThresholdMs));
+		if (delayMs <= shortThreshold) return { action: "wait", delayMs };
 	}
 
 	switch (options.schedulingMode) {
