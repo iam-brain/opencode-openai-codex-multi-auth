@@ -4,6 +4,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { CodexStatusManager } from "../lib/codex-status.js";
 import { getCachePath } from "../lib/storage.js";
 import type { AccountRecordV3 } from "../lib/types.js";
+import { renderObsidianDashboard } from "../lib/codex-status-ui.js";
+import type { ManagedAccount } from "../lib/accounts.js";
 
 const ACCOUNTS_FIXTURE_PATH = join(__dirname, "fixtures", "openai-codex-accounts.json");
 const SNAPSHOT_FIXTURE_PATH = join(__dirname, "fixtures", "codex-status-snapshots.json");
@@ -161,6 +163,77 @@ describe("CodexStatusManager", () => {
 		expect(lines.some(l => l.includes("5 hour limit:") && l.includes("50% left"))).toBe(true);
 		expect(lines.some(l => l.includes("Weekly limit:") && l.includes("75% left"))).toBe(true);
 		expect(lines.some(l => l.includes("Credits") && l.includes("unlimited"))).toBe(true);
+	});
+
+	it("aligns limit bars and keeps consistent widths", () => {
+		const originalColumns = process.stdout.columns;
+		Object.defineProperty(process.stdout, "columns", { value: 70, configurable: true });
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-02-03T00:00:00Z"));
+			const baseAccount: ManagedAccount = {
+				index: 0,
+				accountId: "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708",
+				email: "user.one@example.com",
+				plan: "Plus",
+				enabled: true,
+				refreshToken: "rt_test",
+				originalRefreshToken: "rt_test",
+				addedAt: 0,
+				lastUsed: 0,
+				rateLimitResetTimes: {},
+			};
+			const now = Date.now();
+			const snapshots = [
+				{
+					accountId: baseAccount.accountId!,
+					email: baseAccount.email!,
+					plan: baseAccount.plan!,
+					updatedAt: now,
+					primary: {
+						usedPercent: 45,
+						windowMinutes: 300,
+						resetAt: now + 48 * 60 * 60 * 1000,
+					},
+					secondary: {
+						usedPercent: 10,
+						windowMinutes: 10080,
+						resetAt: now + 60 * 60 * 1000,
+					},
+					credits: null,
+				},
+			];
+
+			const lines = renderObsidianDashboard([baseAccount], 0, snapshots);
+			const topLength = lines[0]?.length ?? 0;
+			const limitLines = lines.filter((line) => line.includes("5h Limit") || line.includes("Weekly"));
+			const bars = limitLines.map((line) => {
+				const match = line.match(/(?<bar>[█░]+)\s+\d{1,3}% left/);
+				if (!match?.groups?.bar) return null;
+				const bar = match.groups.bar;
+				const barStart = line.indexOf(bar);
+				return {
+					bar,
+					barStart,
+					barEnd: barStart + bar.length,
+				};
+			});
+			const trailingChars = limitLines.map((line) => line.charAt(line.length - 2));
+
+			expect(limitLines.length).toBe(2);
+			expect(lines.every((line) => line.length === topLength)).toBe(true);
+			expect(limitLines.every((line) => line.endsWith("│"))).toBe(true);
+			expect(trailingChars.every((char) => char === " ")).toBe(true);
+			expect(limitLines.some((line) => line.includes("(19:00 4 Feb)"))).toBe(true);
+			expect(bars.every(Boolean)).toBe(true);
+			expect(bars[0]?.bar.length).toBeGreaterThan(0);
+			expect(bars[0]?.bar.length).toBe(bars[1]?.bar.length);
+			expect(bars[0]?.barStart).toBe(bars[1]?.barStart);
+			expect(bars[0]?.barEnd).toBe(bars[1]?.barEnd);
+		} finally {
+			vi.useRealTimers();
+			Object.defineProperty(process.stdout, "columns", { value: originalColumns, configurable: true });
+		}
 	});
 
 	it("persists snapshots to disk and reloads them", async () => {

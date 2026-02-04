@@ -88,7 +88,7 @@ export function renderObsidianDashboard(
 ): string[] {
 	const now = Date.now();
 	const lines: string[] = [];
-	const W = getColumnWidths();
+	let W = getColumnWidths();
 
 	// Helper to find snapshot
 	const findSnapshot = (acc: ManagedAccount) => {
@@ -98,6 +98,49 @@ export function renderObsidianDashboard(
 				s.email.toLowerCase() === acc.email?.toLowerCase() &&
 				s.plan === acc.plan,
 		);
+	};
+
+	const buildResetString = (resetAt: number | null | undefined) =>
+		resetAt ? ` ${formatResetTime(resetAt)}` : "";
+	const resetLengths: number[] = [];
+	for (const account of accounts) {
+		const snapshot = findSnapshot(account);
+		resetLengths.push(
+			buildResetString(snapshot?.primary?.resetAt).length,
+			buildResetString(snapshot?.secondary?.resetAt).length,
+		);
+	}
+	const maxResetLength = resetLengths.length ? Math.max(...resetLengths) : 0;
+	const minResetLength = resetLengths.length ? Math.min(...resetLengths) : 0;
+	const labelWidth = 10;
+	const leftWidth = 9;
+	const minBarWidth = 10;
+	const fixedWidth = 1 + labelWidth + 1 + leftWidth + 1;
+	const baseAvailable = Math.max(0, W.account - fixedWidth);
+	const preferredBarWidth = Math.max(minBarWidth, baseAvailable - minResetLength);
+	const requiredAccountWidth = fixedWidth + maxResetLength + preferredBarWidth;
+	if (requiredAccountWidth > W.account) {
+		W = {
+			...W,
+			account: requiredAccountWidth,
+			total: W.num + W.status + requiredAccountWidth + W.plan + 5,
+		};
+	}
+	const barWidth = Math.max(1, Math.min(preferredBarWidth, W.account - fixedWidth - maxResetLength));
+	const resetWidth = maxResetLength;
+
+	const renderBar = (
+		label: string,
+		data: { usedPercent: number; resetAt: number } | null | undefined,
+		resetStr: string,
+	): string => {
+		const usedPercent = data?.usedPercent ?? 0;
+		const p = Math.max(0, 100 - usedPercent);
+		const leftStr = `${String(p).padStart(3)}% left`;
+		const filled = Math.round((p / 100) * barWidth);
+		const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
+		const paddedReset = resetWidth > 0 ? resetStr.padEnd(resetWidth) : "";
+		return ` ${label.padEnd(labelWidth)}${bar} ${leftStr}${paddedReset} `;
 	};
 
 	// Top border
@@ -143,26 +186,12 @@ export function renderObsidianDashboard(
 
 		// Snapshot data rows
 		const snapshot = findSnapshot(acc);
-
-		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null | undefined): string => {
-			const usedPercent = data?.usedPercent ?? 0;
-			const p = Math.max(0, 100 - usedPercent);
-			const leftStr = `${String(p).padStart(3)}% left`;
-			const resetStr = data?.resetAt ? ` ${formatResetTime(data.resetAt)}` : "";
-			
-			// Dynamically adjust bar width based on available space in account column
-			// accountWidth - label(11) - brackets(2) - space(1) - leftStr(9) - resetStr(varies)
-			const reservedWidth = 11 + 2 + 1 + 9 + resetStr.length + 1;
-			const barWidth = Math.max(5, W.account - reservedWidth);
-			
-			const filled = Math.round((p / 100) * barWidth);
-			const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
-			return ` ${label.padEnd(10)} [${bar}] ${leftStr}${resetStr}`;
-		};
+		const primaryResetStr = buildResetString(snapshot?.primary?.resetAt);
+		const secondaryResetStr = buildResetString(snapshot?.secondary?.resetAt);
 
 		// Progress bar rows
-		lines.push(row("", "", renderBar("5h Limit", snapshot?.primary), "", W));
-		lines.push(row("", "", renderBar("Weekly", snapshot?.secondary), "", W));
+		lines.push(row("", "", renderBar("5h Limit", snapshot?.primary, primaryResetStr), "", W));
+		lines.push(row("", "", renderBar("Weekly", snapshot?.secondary, secondaryResetStr), "", W));
 
 		// Credits row
 		const creditInfo = snapshot?.credits;
