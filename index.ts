@@ -124,11 +124,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		options?: { replaceExisting?: boolean },
 	): Promise<void> => {
 		const now = Date.now();
-		const accountId = extractAccountId(token.idToken ?? token.access);
+		const accountId =
+			extractAccountId(token.idToken) ?? extractAccountId(token.access);
 
 		// Priority for email/plan extraction: ID Token (OIDC) > Access Token.
-		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
-		const plan = extractAccountPlan(token.idToken ?? token.access);
+		const email = sanitizeEmail(
+			extractAccountEmail(token.idToken) ?? extractAccountEmail(token.access),
+		);
+		const plan =
+			extractAccountPlan(token.idToken) ?? extractAccountPlan(token.access);
 
 		await saveAccountsWithLock((stored) => {
 			const base = options?.replaceExisting ? null : stored;
