@@ -20,7 +20,6 @@ import {
 	getQuietMode,
 	getRateLimitDedupWindowMs,
 	getRateLimitStateResetMs,
-	getRateLimitToastDebounceMs,
 	getRequestJitterMaxMs,
 	getTokenRefreshSkewMs,
 	loadPluginConfig,
@@ -44,7 +43,8 @@ import {
 	sanitizeEmail,
 } from "./lib/accounts.js";
 import {
-	promptAddAnotherAccount,
+	promptLoginMode,
+	promptManageAccounts,
 } from "./lib/cli.js";
 import {
 	configureStorageForCurrentCwd,
@@ -58,6 +58,7 @@ import {
 	quarantineAccounts,
 	replaceAccountsFile,
 	saveAccounts,
+	saveAccountsWithLock,
 	toggleAccountEnabled,
 } from "./lib/storage.js";
 import { findAccountMatchIndex } from "./lib/account-matching.js";
@@ -73,6 +74,7 @@ import {
 	type RefreshScheduler,
 } from "./lib/refresh-queue.js";
 import { formatToastMessage } from "./lib/formatting.js";
+import { logWarn } from "./lib/logger.js";
 import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
 
 
@@ -80,6 +82,7 @@ import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
 export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	let cachedAccountManager: AccountManager | null = null;
 	let proactiveRefreshScheduler: RefreshScheduler | null = null;
+	let cachedFetchOrchestrator: FetchOrchestrator | null = null;
 
 	configureStorageForPluginConfig(loadPluginConfig(), process.cwd());
 
@@ -93,7 +96,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
 		} catch (err) {
 			// Toast failures should not crash the plugin; log to debug output.
-			if (!quietMode) console.error("[Toast Error]", err);
+			if (!quietMode) logWarn("Toast error", err);
 		}
 	};
 
@@ -116,38 +119,230 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		},
 	});
 
-	const persistAccount = async (token: Extract<TokenSuccess, { type: "success" }>): Promise<void> => {
+	const persistAccount = async (
+		token: Extract<TokenSuccess, { type: "success" }>,
+		options?: { replaceExisting?: boolean },
+	): Promise<void> => {
 		const now = Date.now();
-		const stored = await loadAccounts();
-		const accounts = stored?.accounts ? [...stored.accounts] : [];
-		const accountId = extractAccountId(token.access);
-		
-		// Priority for email/plan extraction: ID Token (OIDC) > Access Token.
-		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
-		const plan = extractAccountPlan(token.idToken ?? token.access);
-		
-		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
+		const accountId =
+			extractAccountId(token.idToken) ?? extractAccountId(token.access);
 
-		if (existingIndex === -1) {
-			accounts.push({ refreshToken: token.refresh, accountId, email, plan, enabled: true, addedAt: now, lastUsed: now });
-		} else {
-			const existing = accounts[existingIndex];
-			if (existing) {
-				existing.refreshToken = token.refresh;
-				existing.accountId = accountId ?? existing.accountId;
-				existing.email = email ?? existing.email;
-				existing.plan = plan ?? existing.plan;
-				if (typeof existing.enabled !== "boolean") existing.enabled = true;
-				existing.lastUsed = now;
+		// Priority for email/plan extraction: ID Token (OIDC) > Access Token.
+		const email = sanitizeEmail(
+			extractAccountEmail(token.idToken) ?? extractAccountEmail(token.access),
+		);
+		const plan =
+			extractAccountPlan(token.idToken) ?? extractAccountPlan(token.access);
+
+		await saveAccountsWithLock((stored) => {
+			const base = options?.replaceExisting ? null : stored;
+			const accounts = base?.accounts ? [...base.accounts] : [];
+			const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
+
+			if (existingIndex === -1) {
+				accounts.push({
+					refreshToken: token.refresh,
+					accountId,
+					email,
+					plan,
+					enabled: true,
+					addedAt: now,
+					lastUsed: now,
+				});
+			} else {
+				const existing = accounts[existingIndex];
+				if (existing) {
+					existing.refreshToken = token.refresh;
+					existing.accountId = accountId ?? existing.accountId;
+					existing.email = email ?? existing.email;
+					existing.plan = plan ?? existing.plan;
+					if (typeof existing.enabled !== "boolean") existing.enabled = true;
+					existing.lastUsed = now;
+				}
 			}
-		}
-		await saveAccounts({
-			version: 3,
-			accounts,
-			activeIndex: Math.max(0, Math.min(stored?.activeIndex ?? 0, accounts.length - 1)),
-			activeIndexByFamily: stored?.activeIndexByFamily ?? {},
+
+			const activeIndex = Math.max(
+				0,
+				Math.min(base?.activeIndex ?? 0, accounts.length - 1),
+			);
+
+			return {
+				version: 3,
+				accounts,
+				activeIndex,
+				activeIndexByFamily: base?.activeIndexByFamily ?? {},
+			};
 		});
 	};
+
+	const createEmptyStorage = (): AccountStorageV3 => ({
+		version: 3,
+		accounts: [],
+		activeIndex: 0,
+		activeIndexByFamily: {},
+	});
+
+	const updateStorageWithLock = async (
+		update: (storage: AccountStorageV3) => AccountStorageV3 | null,
+	): Promise<AccountStorageV3> => {
+		let updated = createEmptyStorage();
+		await saveAccountsWithLock((stored) => {
+			const base = stored ?? createEmptyStorage();
+			const next = update(base) ?? base;
+			updated = next;
+			return next;
+		});
+		return updated;
+	};
+
+	const removeAccountFromStorage = (
+		storage: AccountStorageV3,
+		targetIndex: number,
+	): AccountStorageV3 => {
+		if (!Number.isFinite(targetIndex)) return storage;
+		const index = Math.floor(targetIndex);
+		if (index < 0 || index >= storage.accounts.length) return storage;
+		const accounts = storage.accounts.filter((_, idx) => idx !== index);
+		if (accounts.length === 0) {
+			return createEmptyStorage();
+		}
+
+		let activeIndex = storage.activeIndex;
+		if (activeIndex > index) {
+			activeIndex -= 1;
+		} else if (activeIndex === index) {
+			activeIndex = Math.min(index, accounts.length - 1);
+		}
+
+		const activeIndexByFamily = { ...(storage.activeIndexByFamily ?? {}) };
+		for (const [family, value] of Object.entries(activeIndexByFamily)) {
+			if (typeof value !== "number" || !Number.isFinite(value)) continue;
+			if (value > index) {
+				activeIndexByFamily[family] = value - 1;
+			} else if (value === index) {
+				activeIndexByFamily[family] = activeIndex;
+			}
+		}
+
+		return {
+			...storage,
+			accounts,
+			activeIndex: Math.max(0, Math.min(activeIndex, accounts.length - 1)),
+			activeIndexByFamily,
+		};
+	};
+
+	const buildExistingAccountLabels = (storage: AccountStorageV3) =>
+		storage.accounts.map((account, index) => ({
+			index,
+			email: account.email,
+			plan: account.plan,
+			accountId: account.accountId,
+			enabled: account.enabled,
+		}));
+
+	const storedAccountsForMethods = await loadAccounts();
+	const hasStoredAccounts = (storedAccountsForMethods?.accounts.length ?? 0) > 0;
+
+	const oauthMethod = {
+		label: AUTH_LABELS.OAUTH,
+		type: "oauth" as const,
+		authorize: async (inputs?: Record<string, string>) => {
+			let replaceExisting = false;
+
+			if (inputs) {
+				let existingStorage = await loadAccounts();
+				if (existingStorage?.accounts?.length) {
+					while (true) {
+						const existingLabels = buildExistingAccountLabels(existingStorage);
+						const mode = await promptLoginMode(existingLabels);
+
+						if (mode === "manage") {
+							const action = await promptManageAccounts(existingLabels);
+							if (!action) {
+								continue;
+							}
+
+							if (action.action === "toggle") {
+								existingStorage = await updateStorageWithLock((current) =>
+									toggleAccountEnabled(current, action.index),
+								);
+							} else {
+								existingStorage = await updateStorageWithLock((current) =>
+									removeAccountFromStorage(current, action.index),
+								);
+							}
+
+							if (existingStorage.accounts.length === 0) {
+								replaceExisting = true;
+								break;
+							}
+							continue;
+						}
+
+						replaceExisting = mode === "fresh";
+						break;
+					}
+				}
+			}
+
+			const { pkce, state, url } = await createAuthorizationFlow();
+			let serverInfo = null;
+			if (!(process.env.OPENCODE_NO_BROWSER === "1")) {
+				try {
+					serverInfo = await startLocalOAuthServer({ state });
+					openBrowserUrl(url);
+				} catch {
+					serverInfo = null;
+				}
+			}
+			if (serverInfo && serverInfo.ready) {
+				return {
+					url,
+					method: "auto" as const,
+					instructions: "Sign in in your browser.",
+					callback: async () => {
+						const result = await serverInfo.waitForCode(state);
+						serverInfo.close();
+						if (!result) return { type: "failed" as const };
+						const tokens = await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
+						if (tokens?.type === "success") await persistAccount(tokens, { replaceExisting });
+						return tokens?.type === "success" ? tokens : { type: "failed" as const };
+					},
+				};
+			}
+			return {
+				url,
+				method: "code" as const,
+				instructions: AUTH_LABELS.INSTRUCTIONS_MANUAL,
+				callback: async (input: string) => {
+					const parsed = parseAuthorizationInputForFlow(input, state);
+					if (parsed.stateStatus === "mismatch") return { type: "failed" as const };
+					if (!parsed.code) return { type: "failed" as const };
+					const tokens = await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
+					if (tokens?.type === "success") await persistAccount(tokens, { replaceExisting });
+					return tokens?.type === "success" ? tokens : { type: "failed" as const };
+				},
+			};
+		},
+	};
+
+	const manualOauthMethod = {
+		label: AUTH_LABELS.OAUTH_MANUAL,
+		type: "oauth" as const,
+		authorize: async () => {
+			const { pkce, state, url } = await createAuthorizationFlow();
+			return buildManualOAuthFlow(pkce, state, url, async (tokens) => {
+				await persistAccount(tokens);
+			});
+		},
+	};
+
+	const apiKeyMethod = { label: AUTH_LABELS.API_KEY, type: "api" as const };
+
+	const authMethods = hasStoredAccounts
+		? [oauthMethod]
+		: [oauthMethod, manualOauthMethod, apiKeyMethod];
 
 	return {
 		auth: {
@@ -159,11 +354,12 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const pluginConfig = loadPluginConfig();
 				configureStorageForPluginConfig(pluginConfig, process.cwd());
 				const quietMode = getQuietMode(pluginConfig);
-				const toastDebounceMs = getRateLimitToastDebounceMs(pluginConfig);
-				const accountManager = await AccountManager.loadFromDisk(auth);
-				cachedAccountManager = accountManager;
+			const accountManager = await AccountManager.loadFromDisk(auth);
+			cachedAccountManager = accountManager;
+			cachedFetchOrchestrator = null;
 
-				if (accountManager.getAccountCount() === 0) {
+				const snapshotCount = accountManager.getAccountsSnapshot().length;
+				if (snapshotCount === 0) {
 					await autoQuarantineCorruptAccountsFile();
 					return {};
 				}
@@ -227,7 +423,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					apiKey: DUMMY_API_KEY,
 					baseURL: CODEX_BASE_URL,
 async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response> {
-						const orchestrator = new FetchOrchestrator({
+					if (!cachedFetchOrchestrator) {
+						cachedFetchOrchestrator = new FetchOrchestrator({
 							accountManager,
 							pluginConfig,
 							rateLimitTracker,
@@ -238,60 +435,19 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 							pidOffsetEnabled,
 							tokenRefreshSkewMs,
 							userConfig,
+							quietMode,
 							onAuthUpdate: async (auth) => {
 								await client.auth.set({ path: { id: PROVIDER_ID }, body: auth });
 							},
 							showToast,
 						});
-						return orchestrator.execute(input, init);
-					},
-				};
-			},
-			methods: [
-				{
-					label: AUTH_LABELS.OAUTH,
-					type: "oauth" as const,
-					authorize: async () => {
-						const { pkce, state, url } = await createAuthorizationFlow();
-						let serverInfo = null;
-						if (!(process.env.OPENCODE_NO_BROWSER === "1")) { try { serverInfo = await startLocalOAuthServer({ state }); openBrowserUrl(url); } catch { serverInfo = null; } }
-						if (serverInfo && serverInfo.ready) {
-							return {
-								url, method: "auto" as const, instructions: "Sign in in your browser.",
-								callback: async () => {
-									const result = await serverInfo.waitForCode(state);
-									serverInfo.close();
-									if (!result) return { type: "failed" as const };
-									const tokens = await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
-									if (tokens?.type === "success") await persistAccount(tokens);
-									return tokens?.type === "success" ? tokens : { type: "failed" as const };
-								},
-							};
-						}
-						return {
-							url, method: "code" as const, instructions: AUTH_LABELS.INSTRUCTIONS_MANUAL,
-							callback: async (input: string) => {
-								const parsed = parseAuthorizationInputForFlow(input, state);
-								if (parsed.stateStatus === "mismatch") return { type: "failed" as const };
-								if (!parsed.code) return { type: "failed" as const };
-								const tokens = await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-								if (tokens?.type === "success") await persistAccount(tokens);
-								return tokens?.type === "success" ? tokens : { type: "failed" as const };
-							},
-						};
-					},
+					}
+					return cachedFetchOrchestrator.execute(input, init);
 				},
-				{
-					label: AUTH_LABELS.OAUTH_MANUAL,
-					type: "oauth" as const,
-					authorize: async () => {
-						const { pkce, state, url } = await createAuthorizationFlow();
-						return buildManualOAuthFlow(pkce, state, url, async (tokens) => { await persistAccount(tokens); });
-					},
-				},
-				{ label: AUTH_LABELS.API_KEY, type: "api" as const },
-			],
+			};
 		},
+		methods: authMethods,
+	},
 		config: async (cfg) => {
 			cfg.command = cfg.command || {};
 			cfg.command["codex-status"] = {
@@ -336,21 +492,10 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 					if (!live) return;
 
 					try {
-						let auth = accountManager.toAuthDetails(live);
-						const hasValidToken = auth.access && auth.expires > Date.now();
-
-						if (!hasValidToken) {
-							const refreshResult = await accountManager.refreshAccountWithFallback(live);
-							if (refreshResult.type === "success") {
-								auth = { type: "oauth", access: refreshResult.access, refresh: refreshResult.refresh, expires: refreshResult.expires };
-								accountManager.updateFromAuth(live, auth);
-								await accountManager.saveToDisk();
-							}
-						}
-
-						if (auth.access && auth.expires > Date.now()) {
-							await codexStatus.fetchFromBackend(live, auth.access);
-						}
+					const auth = accountManager.toAuthDetails(live);
+					if (auth.access && auth.expires > Date.now()) {
+						await codexStatus.fetchFromBackend(live, auth.access);
+					}
 					} catch {
 					}
 				}));
@@ -421,11 +566,11 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 					}
 					configureStorageForCurrentCwd();
 					const accountManager = cachedAccountManager ?? await AccountManager.loadFromDisk();
-					
-					if (accountManager.getAccountCount() === 0) return "No OpenAI accounts configured.";
+					const snapshot = accountManager.getAccountsSnapshot();
+					if (snapshot.length === 0) return "No OpenAI accounts configured.";
 
 					const targetIndex = Math.floor((index ?? 0) - 1);
-					if (targetIndex < 0 || targetIndex >= accountManager.getAccountCount()) {
+					if (targetIndex < 0 || targetIndex >= snapshot.length) {
 						return `Invalid account number: ${index}.`;
 					}
 					const account = accountManager.getAccountByIndex(targetIndex);

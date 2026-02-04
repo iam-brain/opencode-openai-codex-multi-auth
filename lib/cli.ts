@@ -44,13 +44,15 @@ export async function promptLoginMode(
 	});
 }
 
+export type ManageAccountAction = { action: "toggle" | "remove"; index: number };
+
 export async function promptManageAccounts(
 	existing: ExistingAccountLabel[],
-): Promise<number | null> {
+): Promise<ManageAccountAction | null> {
 	return await withTerminalModeRestored(async () => {
 		const rl = createInterface({ input: stdin, output: stdout });
 		try {
-			console.log("\nManage accounts (toggle enabled):");
+			console.log("\nManage accounts (toggle/remove):");
 			for (const account of existing) {
 				const label = formatAccountLabel(
 					{ email: account.email, plan: account.plan, accountId: account.accountId },
@@ -63,16 +65,18 @@ export async function promptManageAccounts(
 
 			while (true) {
 				const answer = (await rl
-					.question("Toggle which account? (Enter to finish): "))
+					.question("Toggle which account? (Enter to finish, prefix with 'r' to remove): "))
 					.trim()
 					.toLowerCase();
 				if (!answer) return null;
-				const parsed = Number.parseInt(answer, 10);
+				const wantsRemove = answer.startsWith("r");
+				const numeric = wantsRemove ? answer.slice(1).trim() : answer;
+				const parsed = Number.parseInt(numeric, 10);
 				if (!Number.isFinite(parsed) || parsed < 1 || parsed > existing.length) {
 					console.log(`Enter a number between 1 and ${existing.length}, or press Enter to finish.`);
 					continue;
 				}
-				return parsed - 1;
+				return { action: wantsRemove ? "remove" : "toggle", index: parsed - 1 };
 			}
 		} finally {
 			rl.close();
