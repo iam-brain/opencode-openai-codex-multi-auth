@@ -655,6 +655,20 @@ async function migrateLegacyAccountsFileIfNeeded(): Promise<void> {
 	});
 }
 
+async function writeStorageAtomic(filePath: string, storage: AccountStorageV3): Promise<void> {
+	const jsonContent = JSON.stringify(storage, null, 2);
+	const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+	try {
+		await fs.writeFile(tmpPath, jsonContent, { encoding: "utf-8", mode: 0o600 });
+		await fs.rename(tmpPath, filePath);
+	} catch (error) {
+		try {
+			await fs.unlink(tmpPath);
+		} catch { }
+		throw error;
+	}
+}
+
 async function migrateLegacyAccountsFileIfNeededLocked(
 	newPath: string,
 	legacyPath: string,
@@ -673,7 +687,7 @@ async function migrateLegacyAccountsFileIfNeededLocked(
 
 		if (!newStorage) {
 			debug("[StorageMigration] New storage invalid, adopting legacy accounts");
-			await fs.writeFile(newPath, JSON.stringify(legacyStorage, null, 2), { encoding: "utf-8", mode: 0o600 });
+			await writeStorageAtomic(newPath, legacyStorage);
 			try {
 				await fs.unlink(legacyPath);
 			} catch { }
@@ -707,7 +721,7 @@ async function migrateLegacyAccountsFileIfNeededLocked(
 		debug(
 			`[StorageMigration] Merged legacy accounts (new: ${newStorage.accounts.length}, legacy: ${legacyStorage.accounts.length}, merged: ${mergedAccounts.length})`,
 		);
-		await fs.writeFile(newPath, JSON.stringify(mergedStorage, null, 2), { encoding: "utf-8", mode: 0o600 });
+		await writeStorageAtomic(newPath, mergedStorage);
 
 		try {
 			await fs.unlink(legacyPath);

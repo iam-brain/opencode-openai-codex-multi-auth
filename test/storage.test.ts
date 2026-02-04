@@ -694,6 +694,32 @@ describe("storage", () => {
 		}
 	});
 
+	it("legacy migration writes storage atomically", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		const originalHome = process.env.HOME;
+		process.env.XDG_CONFIG_HOME = root;
+		process.env.HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		mkdirSync(join(root, ".opencode"), { recursive: true });
+
+		const storagePath = getStoragePath();
+		const legacyPath = join(root, ".opencode", "openai-codex-accounts.json");
+		writeFileSync(storagePath, JSON.stringify({ version: 3, accounts: "invalid" }, null, 2), "utf-8");
+		writeFileSync(
+			legacyPath,
+			JSON.stringify({ version: 3, accounts: [{ ...accountOne }], activeIndex: 0 }, null, 2),
+			"utf-8",
+		);
+		const renameSpy = vi.spyOn(fsPromises, "rename");
+		try {
+			await loadAccounts();
+			expect(renameSpy).toHaveBeenCalled();
+		} finally {
+			renameSpy.mockRestore();
+			process.env.HOME = originalHome;
+		}
+	});
+
 	it("toggleAccountEnabled flips enabled state", () => {
 		const storage: AccountStorageV3 = {
 			version: 3,
