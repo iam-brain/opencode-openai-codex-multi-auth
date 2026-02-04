@@ -243,6 +243,43 @@ describe("CodexStatusManager", () => {
 		}
 	});
 
+	it("renders legacy snapshots keyed by refresh token hash", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-02-03T00:00:00Z"));
+			const manager = new CodexStatusManager();
+			const now = Date.now();
+			const legacyAccount = {
+				refreshToken: "legacy-refresh-token",
+				addedAt: now,
+				lastUsed: now,
+				enabled: true,
+			};
+			await manager.updateFromHeaders(legacyAccount as any, {
+				"x-codex-primary-used-percent": "25",
+				"x-codex-primary-window-minutes": "300",
+				"x-codex-primary-reset-at": String(now + 2 * 60 * 60 * 1000),
+			});
+
+			const snapshots = await manager.getAllSnapshots();
+			const managedAccount: ManagedAccount = {
+				index: 0,
+				refreshToken: legacyAccount.refreshToken,
+				originalRefreshToken: legacyAccount.refreshToken,
+				addedAt: now,
+				lastUsed: now,
+				enabled: true,
+				rateLimitResetTimes: {},
+			};
+
+			const lines = renderObsidianDashboard([managedAccount], 0, snapshots);
+			const limitLines = lines.filter((line) => line.includes("5h Limit") || line.includes("Weekly"));
+			expect(limitLines.some((line) => /\(\d{2}:\d{2}\)/.test(line))).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("persists snapshots to disk and reloads them", async () => {
 		const manager1 = new CodexStatusManager();
 		await manager1.updateFromHeaders(testAccount, {

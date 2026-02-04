@@ -3,8 +3,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Auth } from "@opencode-ai/sdk";
-import { AUTH_LABELS, JWT_CLAIM_PATH } from "../lib/constants.js";
+import { AUTH_LABELS, DEFAULT_MODEL_FAMILY, JWT_CLAIM_PATH } from "../lib/constants.js";
 import { AccountManager } from "../lib/accounts.js";
+import * as logger from "../lib/logger.js";
 import { createJwt } from "./helpers/jwt.js";
 
 let mockedTokenResult: any;
@@ -158,6 +159,64 @@ describe("OpenAIAuthPlugin loader", () => {
 		}
 	});
 
+	it("codex-status highlights active account for default family", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-status-active-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const storageDir = join(root, "opencode");
+			mkdirSync(storageDir, { recursive: true });
+			const now = Date.now();
+			const storage = {
+				version: 3,
+				accounts: [
+					{
+						refreshToken: "status-refresh-1",
+						accountId: "acct_status_1",
+						email: "one@example.com",
+						plan: "Plus",
+						enabled: true,
+						addedAt: now,
+						lastUsed: now,
+					},
+					{
+						refreshToken: "status-refresh-2",
+						accountId: "acct_status_2",
+						email: "two@example.com",
+						plan: "Plus",
+						enabled: true,
+						addedAt: now,
+						lastUsed: now,
+					},
+				],
+				activeIndex: 0,
+				activeIndexByFamily: {
+					[DEFAULT_MODEL_FAMILY]: 0,
+					"gpt-5.2": 1,
+				},
+			};
+			writeFileSync(
+				join(storageDir, "openai-codex-accounts.json"),
+				JSON.stringify(storage, null, 2),
+				"utf-8",
+			);
+
+			const client = {
+				tui: { showToast: vi.fn() },
+				auth: { set: vi.fn() },
+			};
+
+			const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
+			const output = await (plugin as any).tool["codex-status"].execute({});
+			const activeLine = output
+				.split("\n")
+				.find((line: string) => line.includes("●") && line.includes("ACTIVE"));
+
+			expect(activeLine).toContain("one@example.com");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("returns fetch handler when only legacy accounts exist", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-legacy-"));
 		process.env.XDG_CONFIG_HOME = root;
@@ -194,6 +253,69 @@ describe("OpenAIAuthPlugin loader", () => {
 
 		expect(result).toHaveProperty("fetch");
 		await rmSync(root, { recursive: true, force: true });
+	});
+
+	it("logs toast failures during fetch", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-toast-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const originalFetch = global.fetch;
+		const logSpy = vi.spyOn(logger, "logCritical").mockImplementation(() => undefined);
+		try {
+			const storageDir = join(root, "opencode");
+			mkdirSync(storageDir, { recursive: true });
+			const now = Date.now();
+			const storage = {
+				version: 3,
+				accounts: [
+					{
+						refreshToken: "toast-refresh",
+						accountId: "acct_toast",
+						email: "toast@example.com",
+						plan: "Plus",
+						enabled: true,
+						addedAt: now,
+						lastUsed: now,
+					},
+				],
+				activeIndex: 0,
+				activeIndexByFamily: { [DEFAULT_MODEL_FAMILY]: 0 },
+			};
+			writeFileSync(
+				join(storageDir, "openai-codex-accounts.json"),
+				JSON.stringify(storage, null, 2),
+				"utf-8",
+			);
+
+			global.fetch = vi
+				.fn()
+				.mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+
+			const client = {
+				tui: { showToast: vi.fn().mockRejectedValue(new Error("toast failed")) },
+				auth: { set: vi.fn() },
+			};
+			const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
+			const authConfig = await (plugin as any).auth.loader(
+				async () => ({
+					type: "oauth",
+					access: "access",
+					refresh: "refresh",
+					expires: Date.now() + 60_000,
+				}),
+				{} as any,
+			);
+			await authConfig.fetch("https://api.openai.com/v1/chat/completions", {
+				method: "POST",
+				body: JSON.stringify({ model: "gpt-5.1", prompt_cache_key: "sess_toast" }),
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(logSpy).toHaveBeenCalled();
+		} finally {
+			logSpy.mockRestore();
+			global.fetch = originalFetch;
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("removes the correct account when legacy records exist", async () => {

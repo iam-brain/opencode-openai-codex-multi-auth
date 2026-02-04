@@ -27,6 +27,7 @@ import {
 import {
 	AUTH_LABELS,
 	CODEX_BASE_URL,
+	DEFAULT_MODEL_FAMILY,
 	DUMMY_API_KEY,
 	MODEL_FAMILIES,
 	PLUGIN_NAME,
@@ -74,7 +75,7 @@ import {
 	type RefreshScheduler,
 } from "./lib/refresh-queue.js";
 import { formatToastMessage } from "./lib/formatting.js";
-import { logWarn } from "./lib/logger.js";
+import { logCritical } from "./lib/logger.js";
 import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
 
 
@@ -95,8 +96,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		try {
 			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
 		} catch (err) {
-			// Toast failures should not crash the plugin; log to debug output.
-			if (!quietMode) logWarn("Toast error", err);
+			// Toast failures should not crash the plugin; log for visibility.
+			if (!quietMode) logCritical("Toast error", err);
 		}
 	};
 
@@ -501,7 +502,7 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 				}));
 
 					const enabledCount = accounts.filter(a => a.enabled !== false).length;
-					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
+				const activeIndex = accountManager.getActiveIndexForFamily(DEFAULT_MODEL_FAMILY);
 					const snapshots = await codexStatus.getAllSnapshots();
 
 					const lines: string[] = [

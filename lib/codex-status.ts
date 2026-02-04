@@ -8,6 +8,7 @@ import { normalizePlanTypeOrDefault } from "./plan-utils.js";
 import { getAuthDebugEnabled } from "./config.js";
 
 export interface CodexRateLimitSnapshot {
+	key?: string;
 	accountId: string;
 	email: string;
 	plan: string;
@@ -172,7 +173,10 @@ export class CodexStatusManager {
 
 	async getAllSnapshots(): Promise<CodexRateLimitSnapshot[]> {
 		await this.ensureInitialized();
-		return Array.from(this.snapshots.values());
+		return Array.from(this.snapshots.entries()).map(([key, snapshot]) => ({
+			...snapshot,
+			key,
+		}));
 	}
 
 	async renderStatus(account: AccountRecordV3): Promise<string[]> {

@@ -46,8 +46,6 @@ export async function promptLoginMode(
 	});
 }
 
-export type ManageAccountAction = { action: "toggle" | "remove"; index: number };
-
 export async function promptManageAccounts(
 	existing: ExistingAccountLabel[],
 ): Promise<ManageAccountAction | null> {

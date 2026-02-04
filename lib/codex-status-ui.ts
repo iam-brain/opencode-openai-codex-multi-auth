@@ -1,5 +1,7 @@
 import { type ManagedAccount } from "./accounts.js";
+import { createHash } from "node:crypto";
 import { type CodexRateLimitSnapshot } from "./codex-status.js";
+import { normalizePlanTypeOrDefault } from "./plan-utils.js";
 
 // Box-drawing characters
 const BOX = {
@@ -92,11 +94,27 @@ export function renderObsidianDashboard(
 
 	// Helper to find snapshot
 	const findSnapshot = (acc: ManagedAccount) => {
+		const key = (() => {
+			if (acc.accountId && acc.email && acc.plan) {
+				const plan = normalizePlanTypeOrDefault(acc.plan);
+				return `${acc.accountId}|${acc.email.toLowerCase()}|${plan}`;
+			}
+			if (acc.refreshToken) {
+				return createHash("sha256").update(acc.refreshToken).digest("hex");
+			}
+			return null;
+		})();
+
+		if (key) {
+			const match = snapshots.find((snapshot) => snapshot.key === key);
+			if (match) return match;
+		}
+
 		return snapshots.find(
-			(s) =>
-				s.accountId === acc.accountId &&
-				s.email.toLowerCase() === acc.email?.toLowerCase() &&
-				s.plan === acc.plan,
+			(snapshot) =>
+				snapshot.accountId === acc.accountId &&
+				snapshot.email.toLowerCase() === acc.email?.toLowerCase() &&
+				snapshot.plan === acc.plan,
 		);
 	};
 
