@@ -13,6 +13,7 @@ import {
 import {
 	type PluginConfig,
 	type OAuthAuthDetails,
+	type RequestBody,
 	type TokenResult,
 	type UserConfig,
 } from "./types.js";
@@ -79,6 +80,13 @@ function parseRetryAfterMs(headers: Headers): number | null {
 	return null;
 }
 
+function resolveSessionKey(body: RequestBody | undefined): string | null {
+	const key = body?.prompt_cache_key;
+	if (typeof key !== "string") return null;
+	const trimmed = key.trim();
+	return trimmed ? trimmed : null;
+}
+
 export interface FetchOrchestratorConfig {
 	accountManager: AccountManager;
 	pluginConfig: PluginConfig;
@@ -90,11 +98,16 @@ export interface FetchOrchestratorConfig {
 	pidOffsetEnabled: boolean;
 	tokenRefreshSkewMs: number;
 	userConfig: UserConfig;
+	quietMode?: boolean;
 	onAuthUpdate: (auth: OAuthAuthDetails) => Promise<void>;
 	showToast: (message: string, variant: "info" | "success" | "warning" | "error", quietMode: boolean) => Promise<void>;
 }
 
 export class FetchOrchestrator {
+	private lastSessionKey: string | null = null;
+	private readonly seenSessionKeys = new Set<string>();
+	private lastAccountIndex: number | null = null;
+
 	constructor(private config: FetchOrchestratorConfig) { }
 
 	async execute(input: Request | string | URL, init?: RequestInit): Promise<Response> {
@@ -109,6 +122,7 @@ export class FetchOrchestrator {
 			pidOffsetEnabled,
 			tokenRefreshSkewMs,
 			userConfig,
+			quietMode = false,
 			onAuthUpdate,
 			showToast,
 		} = this.config;
@@ -135,6 +149,24 @@ export class FetchOrchestrator {
 		const model = transformation?.body.model;
 		const modelFamily: ModelFamily = model ? getModelFamily(model) : DEFAULT_MODEL_FAMILY;
 		const usePidOffset = pidOffsetEnabled && accountManager.getAccountCount() > 1;
+		const sessionBody =
+			(transformation?.body ??
+				(originalBody && typeof originalBody === "object" ? originalBody : undefined)) as
+				| RequestBody
+				| undefined;
+		const sessionKey = resolveSessionKey(sessionBody);
+		let sessionEvent: "new" | "switch" | null = null;
+		if (sessionKey) {
+			const hasSeen = this.seenSessionKeys.has(sessionKey);
+			if (!hasSeen) {
+				sessionEvent = "new";
+				this.seenSessionKeys.add(sessionKey);
+			} else if (this.lastSessionKey && this.lastSessionKey !== sessionKey) {
+				sessionEvent = "switch";
+			}
+			this.lastSessionKey = sessionKey;
+		}
+		let sessionToastEmitted = false;
 
 		const abortSignal = requestInit?.signal ?? init?.signal ?? null;
 		const sleep = (ms: number): Promise<void> =>
@@ -174,6 +206,19 @@ export class FetchOrchestrator {
 				const account = accountManager.getCurrentOrNextForFamily(modelFamily, model, getAccountSelectionStrategy(pluginConfig), usePidOffset);
 				if (!account || attempted.has(account.index)) break;
 				attempted.add(account.index);
+				if (sessionEvent && !sessionToastEmitted) {
+					const label = formatAccountLabel(account, account.index);
+					const message = sessionEvent === "new"
+						? `New chat: ${label}`
+						: `Session switched: ${label}`;
+					void showToast(message, "info", quietMode);
+					sessionToastEmitted = true;
+				}
+				if (this.lastAccountIndex !== null && this.lastAccountIndex !== account.index) {
+					const label = formatAccountLabel(account, account.index);
+					void showToast(`Account switched: ${label}`, "info", quietMode);
+				}
+				this.lastAccountIndex = account.index;
 
 				let accountAuth = accountManager.toAuthDetails(account);
 				const tokenExpired = !accountAuth.access || accountAuth.expires <= Date.now();
@@ -328,7 +373,7 @@ export class FetchOrchestrator {
 					accountManager.markSwitched(account, "rate-limit", modelFamily);
 					if (accountManager.shouldShowAccountToast(account.index, getRateLimitToastDebounceMs(pluginConfig))) {
 						accountManager.markToastShown(account.index);
-						void showToast(`Rate limited - switching account`, "warning", false);
+						void showToast(`Rate limited - switching account`, "warning", quietMode);
 					}
 					if (!backoff.isDuplicate) await accountManager.saveToDisk();
 					break;

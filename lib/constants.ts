@@ -70,8 +70,8 @@ export const PLATFORM_OPENERS = {
 
 /** OAuth authorization labels */
 export const AUTH_LABELS = {
-	OAUTH: "ChatGPT Pro/Plus (Codex Multi Auth)",
-	OAUTH_MANUAL: "ChatGPT Plus/Pro (Manual URL Paste)",
+	OAUTH: "Codex Oauth (browser)",
+	OAUTH_MANUAL: "Codex Oauth (headless)",
 	API_KEY: "Manually enter API Key",
 	INSTRUCTIONS:
 		"A browser window should open. If it doesn't, copy the URL and open it manually.",

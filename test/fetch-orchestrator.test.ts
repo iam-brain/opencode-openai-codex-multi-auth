@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { FetchOrchestrator, FetchOrchestratorConfig } from '../lib/fetch-orchestrator.js';
-import { AccountManager } from '../lib/accounts.js';
+import { AccountManager, formatAccountLabel } from '../lib/accounts.js';
 import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
@@ -106,10 +106,10 @@ describe('FetchOrchestrator', () => {
 			expires: Date.now() + 100000,
 		});
 
-		mockFetch.mockResolvedValue(new Response('{"success":true}', {
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' }
-		}));
+		})));
 
 		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
 
@@ -187,6 +187,112 @@ describe('FetchOrchestrator', () => {
 		expect(accountManager.markRateLimited).toHaveBeenCalledWith(expect.objectContaining({ index: 0 }), 60000, expect.any(String), undefined);
 		expect(accountManager.markSwitched).toHaveBeenCalled();
 		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('passes quiet mode to rate-limit toast', async () => {
+		accountManager.getAccountCount.mockReturnValue(2);
+		accountManager.shouldShowAccountToast.mockReturnValue(true);
+
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		mockFetch.mockResolvedValueOnce(new Response('Rate limit', {
+			status: 429,
+			headers: { 'retry-after': '60' }
+		}));
+
+		rateLimitTracker.getBackoff.mockReturnValue({
+			delayMs: 60000,
+			attempt: 1,
+			isDuplicate: false,
+		});
+
+		mockFetch.mockResolvedValueOnce(new Response('{"success":true}', { status: 200 }));
+
+		config = { ...config, quietMode: true } as any;
+		orchestrator = new FetchOrchestrator(config);
+
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(config.showToast).toHaveBeenCalledWith('Rate limited - switching account', 'warning', true);
+	});
+
+	it('shows a toast when a new chat starts', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		const account = { index: 0, accountId: 'acc1', email: 'test@example.com', plan: 'Pro' };
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
+		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
+			status: 200,
+			headers: { 'content-type': 'application/json' },
+		})));
+
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1', prompt_cache_key: 'ses_new_1' }),
+		});
+
+		const label = formatAccountLabel(account, account.index);
+		expect(config.showToast).toHaveBeenCalledWith(`New chat: ${label}`, 'info', false);
+	});
+
+	it('shows a toast when switching to an existing session', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		const account = { index: 0, accountId: 'acc1', email: 'test@example.com', plan: 'Pro' };
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
+		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
+			status: 200,
+			headers: { 'content-type': 'application/json' },
+		})));
+
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1', prompt_cache_key: 'ses_alpha' }),
+		});
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1', prompt_cache_key: 'ses_beta' }),
+		});
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1', prompt_cache_key: 'ses_alpha' }),
+		});
+
+		const label = formatAccountLabel(account, account.index);
+		expect(config.showToast).toHaveBeenNthCalledWith(3, `Session switched: ${label}`, 'info', false);
+	});
+
+	it('shows a toast when the account changes', async () => {
+		accountManager.getAccountCount.mockReturnValue(2);
+		const first = { index: 0, accountId: 'acc1', email: 'one@example.com', plan: 'Pro' };
+		const second = { index: 1, accountId: 'acc2', email: 'two@example.com', plan: 'Pro' };
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce(first)
+			.mockReturnValueOnce(second);
+		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
+			status: 200,
+			headers: { 'content-type': 'application/json' },
+		})));
+
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1' }),
+		});
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1' }),
+		});
+
+		const label = formatAccountLabel(second, second.index);
+		expect(config.showToast).toHaveBeenCalledWith(`Account switched: ${label}`, 'info', false);
 	});
 
 	it('should return 429 if all accounts are exhausted', async () => {
