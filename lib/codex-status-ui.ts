@@ -118,15 +118,8 @@ export function renderObsidianDashboard(
 	const fixedWidth = 1 + labelWidth + 1 + leftWidth + 1;
 	const baseAvailable = Math.max(0, W.account - fixedWidth);
 	const preferredBarWidth = Math.max(minBarWidth, baseAvailable - minResetLength);
-	const requiredAccountWidth = fixedWidth + maxResetLength + preferredBarWidth;
-	if (requiredAccountWidth > W.account) {
-		W = {
-			...W,
-			account: requiredAccountWidth,
-			total: W.num + W.status + requiredAccountWidth + W.plan + 5,
-		};
-	}
-	const barWidth = Math.max(1, Math.min(preferredBarWidth, W.account - fixedWidth - maxResetLength));
+	const barSpace = Math.max(0, W.account - fixedWidth - maxResetLength);
+	const barWidth = Math.max(1, Math.min(preferredBarWidth, barSpace));
 	const resetWidth = maxResetLength;
 
 	const renderBar = (

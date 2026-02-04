@@ -204,8 +204,10 @@ describe("CodexStatusManager", () => {
 				},
 			];
 
+			const baseLines = renderObsidianDashboard([baseAccount], 0, []);
 			const lines = renderObsidianDashboard([baseAccount], 0, snapshots);
 			const topLength = lines[0]?.length ?? 0;
+			const baseLength = baseLines[0]?.length ?? 0;
 			const limitLines = lines.filter((line) => line.includes("5h Limit") || line.includes("Weekly"));
 			const bars = limitLines.map((line) => {
 				const match = line.match(/(?<bar>[█░]+)\s+\d{1,3}% left/);
@@ -221,6 +223,7 @@ describe("CodexStatusManager", () => {
 			const trailingChars = limitLines.map((line) => line.charAt(line.length - 2));
 
 			expect(limitLines.length).toBe(2);
+			expect(topLength).toBe(baseLength);
 			expect(lines.every((line) => line.length === topLength)).toBe(true);
 			expect(limitLines.every((line) => line.endsWith("│"))).toBe(true);
 			expect(trailingChars.every((char) => char === " ")).toBe(true);
