@@ -854,6 +854,7 @@ async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
 export async function writeQuarantineFile(
 	records: unknown[],
 	reason: string,
+ 	options?: { skipCleanup?: boolean },
 ): Promise<string> {
 	const filePath = getStoragePath();
 	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
@@ -874,7 +875,9 @@ export async function writeQuarantineFile(
 		throw error;
 	}
 
-	await cleanupQuarantineFiles(filePath);
+	if (!options?.skipCleanup) {
+		await cleanupQuarantineFiles(filePath);
+	}
 	return quarantinePath;
 }
 
@@ -886,19 +889,29 @@ export async function quarantineCorruptFile(): Promise<string | null> {
 	const filePath = getStoragePath();
 	if (!existsSync(filePath)) return null;
 	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
+	let didQuarantine = false;
 	await withFileLock(filePath, async () => {
 		if (!existsSync(filePath)) return;
 		const content = await fs.readFile(filePath);
 		await fs.writeFile(quarantinePath, content, { mode: 0o600 });
+		didQuarantine = true;
+		try {
+			await writeStorageAtomic(filePath, {
+				version: 3,
+				accounts: [],
+				activeIndex: 0,
+				activeIndexByFamily: {},
+			});
+		} catch (error) {
+			await fs.unlink(quarantinePath).catch(() => undefined);
+			throw error;
+		}
+	});
+	if (didQuarantine) {
 		await cleanupQuarantineFiles(filePath);
-	});
-	await writeAccountsFile({
-		version: 3,
-		accounts: [],
-		activeIndex: 0,
-		activeIndexByFamily: {},
-	});
-	return quarantinePath;
+		return quarantinePath;
+	}
+	return null;
 }
 
 export async function autoQuarantineCorruptAccountsFile(): Promise<string | null> {
@@ -929,8 +942,14 @@ export async function quarantineAccounts(
 			activeIndex: 0,
 			activeIndexByFamily: {},
 		};
-	const quarantinePath = await writeQuarantineFile(entries, reason);
-	await writeAccountsFile(updated);
+	const quarantinePath = await writeQuarantineFile(entries, reason, { skipCleanup: true });
+	try {
+		await writeAccountsFile(updated);
+	} catch (error) {
+		await fs.unlink(quarantinePath).catch(() => undefined);
+		throw error;
+	}
+	await cleanupQuarantineFiles(getStoragePath());
 	return { storage: updated, quarantinePath };
 }
 
@@ -938,6 +957,7 @@ export async function quarantineAccountsByRefreshToken(
 	tokens: Set<string>,
 	reason: string,
 ): Promise<{ storage: AccountStorageV3; quarantinePath: string }> {
+	const filePath = getStoragePath();
 	let updatedStorage: AccountStorageV3 = {
 		version: 3,
 		accounts: [],
@@ -945,16 +965,23 @@ export async function quarantineAccountsByRefreshToken(
 		activeIndexByFamily: {},
 	};
 	let quarantineEntries: AccountRecord[] = [];
+	let quarantinePath = "";
+	let shouldCleanup = false;
 
-	await saveAccountsWithLock((existing) => {
+	await withFileLock(filePath, async () => {
+		await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
+		const existing = await loadAccountsUnsafe(filePath);
 		const base = existing ?? updatedStorage;
 		quarantineEntries = base.accounts.filter((account) =>
 			tokens.has(account.refreshToken),
 		);
 		if (!quarantineEntries.length) {
+			quarantinePath = await writeQuarantineFile([], reason, { skipCleanup: true });
 			updatedStorage = base;
-			return base;
+			shouldCleanup = true;
+			return;
 		}
+		quarantinePath = await writeQuarantineFile(quarantineEntries, reason, { skipCleanup: true });
 		const remaining = base.accounts.filter(
 			(account) => !tokens.has(account.refreshToken),
 		);
@@ -970,10 +997,21 @@ export async function quarantineAccountsByRefreshToken(
 				activeIndex: 0,
 				activeIndexByFamily: {},
 			};
-		return updatedStorage;
+		try {
+			await writeStorageAtomic(filePath, updatedStorage);
+		} catch (error) {
+			if (quarantinePath) {
+				await fs.unlink(quarantinePath).catch(() => undefined);
+			}
+			throw error;
+		}
+		shouldCleanup = true;
 	});
 
-	const quarantinePath = await writeQuarantineFile(quarantineEntries, reason);
+	if (shouldCleanup) {
+		await cleanupQuarantineFiles(filePath);
+	}
+
 	return { storage: updatedStorage, quarantinePath };
 }
 

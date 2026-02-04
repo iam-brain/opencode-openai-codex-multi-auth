@@ -4,6 +4,7 @@ pnpm-lock.yaml
 dist/
 .worktrees/
 docs/plans/
+docs/research/
 .DS_Store
 .history/
 opencode.json

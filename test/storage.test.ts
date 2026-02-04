@@ -22,6 +22,7 @@ import {
 	autoQuarantineCorruptAccountsFile,
 	writeQuarantineFile,
 	quarantineAccounts,
+	quarantineAccountsByRefreshToken,
 	saveAccounts,
 	toggleAccountEnabled,
 } from "../lib/storage.js";
@@ -799,6 +800,100 @@ describe("storage", () => {
 		expect(payload.records).toHaveLength(1);
 		const loaded = await loadAccounts();
 		expect(loaded?.accounts.length).toBe(storage.accounts.length - 1);
+	});
+
+	it("quarantineAccounts removes quarantine file if storage write fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const base = seedStorageFromBackup(storagePath);
+		const storage = loadFixture("openai-codex-accounts.json");
+		const originalRename = fsPromises.rename;
+		const renameSpy = vi
+			.spyOn(fsPromises, "rename")
+			.mockImplementation(async (from, to) => {
+				if (String(to).endsWith("openai-codex-accounts.json")) {
+					throw new Error("rename failed");
+				}
+				return originalRename(from as string, to as string);
+			});
+		try {
+			await expect(
+				quarantineAccounts(storage, [storage.accounts[0]!], "test"),
+			).rejects.toThrow("rename failed");
+		} finally {
+			renameSpy.mockRestore();
+		}
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles).toHaveLength(0);
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts.length).toBe(base.accounts.length);
+	});
+
+	it("quarantineAccountsByRefreshToken keeps storage intact if quarantine write fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const base = seedStorageFromBackup(storagePath);
+		const tokens = new Set([base.accounts[0]!.refreshToken]);
+		const originalWriteFile = fsPromises.writeFile;
+		const writeSpy = vi
+			.spyOn(fsPromises, "writeFile")
+			.mockImplementation(async (path, data, options) => {
+				if (String(path).includes(".quarantine-")) {
+					throw new Error("quarantine write failed");
+				}
+				return originalWriteFile(path as string, data as any, options as any);
+			});
+		try {
+			await expect(
+				quarantineAccountsByRefreshToken(tokens, "test"),
+			).rejects.toThrow("quarantine write failed");
+		} finally {
+			writeSpy.mockRestore();
+		}
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts.length).toBe(base.accounts.length);
+		expect(
+			loaded?.accounts.some(
+				(account) => account.refreshToken === base.accounts[0]!.refreshToken,
+			),
+		).toBe(true);
+	});
+
+	it("quarantineAccountsByRefreshToken removes quarantine file if storage write fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const base = seedStorageFromBackup(storagePath);
+		const tokens = new Set([base.accounts[0]!.refreshToken]);
+		const originalRename = fsPromises.rename;
+		const renameSpy = vi
+			.spyOn(fsPromises, "rename")
+			.mockImplementation(async (from, to) => {
+				if (String(to).endsWith("openai-codex-accounts.json")) {
+					throw new Error("rename failed");
+				}
+				return originalRename(from as string, to as string);
+			});
+		try {
+			await expect(
+				quarantineAccountsByRefreshToken(tokens, "test"),
+			).rejects.toThrow("rename failed");
+		} finally {
+			renameSpy.mockRestore();
+		}
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles).toHaveLength(0);
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts.length).toBe(base.accounts.length);
 	});
 
 	it("writeQuarantineFile sets private permissions (0600)", async () => {
