@@ -1,9 +1,8 @@
 /**
  * Constants used throughout the plugin
- * Centralized for easy maintenance and configuration
  */
 
-/** Plugin identifier for logging and error messages */
+/** Plugin identifier */
 export const PLUGIN_NAME = "openai-codex-plugin";
 
 /** Base URL for ChatGPT backend API */

@@ -11,72 +11,65 @@ export interface PluginConfig {
 	codexMode?: boolean;
 
 	/**
-	 * Account selection strategy when multiple accounts are configured.
-	 * - sticky: keep the same account until rate-limited (best for caching)
+	 * Account selection strategy
+	 * - sticky: keep same account until rate-limited (best for caching)
 	 * - round-robin: rotate accounts on every request (best for throughput)
+	 * - hybrid: balance health score, token bucket, and freshness
 	 * @default "sticky"
 	 */
 	accountSelectionStrategy?: AccountSelectionStrategy;
 
 	/**
 	 * Enable PID-based account offset for parallel agents.
-	 * When enabled, each process chooses a different starting account but remains sticky.
-	 *
-	 * Note: This is only meaningful when 2+ accounts exist.
+	 * Note: Only meaningful when 2+ accounts exist.
 	 * @default true
 	 */
 	pidOffsetEnabled?: boolean;
 
 	/**
-	 * Suppress most toast notifications.
+	 * Suppress toast notifications.
 	 * @default false
 	 */
 	quietMode?: boolean;
 
 	/**
 	 * Store accounts per-project when a repo-local accounts file exists.
-	 * When enabled, the plugin searches upward from the current working directory
-	 * for `.opencode/openai-codex-accounts.json` and uses it exclusively.
 	 * @default false
 	 */
 	perProjectAccounts?: boolean;
 
 	/**
-	 * Milliseconds before token expiry to proactively refresh.
+	 * Proactive refresh skew (ms).
 	 * @default 60000
 	 */
 	tokenRefreshSkewMs?: number;
 
 	/**
-	 * Enable proactive token refresh before expiry.
-	 * When enabled, tokens are refreshed in the background before they expire.
+	 * Enable proactive token refresh.
 	 * @default false
 	 */
 	proactiveTokenRefresh?: boolean;
 
 	/**
-	 * Enable detailed authentication debug logging.
+	 * Enable auth debug logging.
 	 * @default false
 	 */
 	authDebug?: boolean;
 
 	/**
-	 * Debounce interval for account-related toasts.
+	 * Toast debounce interval (ms).
 	 * @default 60000
 	 */
 	rateLimitToastDebounceMs?: number;
 
 	/**
 	 * Scheduling mode for rate-limit handling.
-	 * - cache_first: wait briefly for the same account before switching
-	 * - balance: switch accounts on rate limit
-	 * - performance_first: switch quickly for throughput
 	 * @default "cache_first"
 	 */
 	schedulingMode?: SchedulingMode;
 
 	/**
-	 * Maximum wait (in seconds) before switching in cache_first mode.
+	 * Max cache-first wait (seconds).
 	 * @default 60
 	 */
 	maxCacheFirstWaitSeconds?: number;
@@ -88,50 +81,50 @@ export interface PluginConfig {
 	switchOnFirstRateLimit?: boolean;
 
 	/**
-	 * Rate-limit dedup window (ms) to avoid thrashing.
+	 * Rate-limit dedup window (ms).
 	 * @default 2000
 	 */
 	rateLimitDedupWindowMs?: number;
 
 	/**
-	 * Reset rate-limit state after idle (ms).
+	 * Rate-limit reset delay (ms).
 	 * @default 120000
 	 */
 	rateLimitStateResetMs?: number;
 
 	/**
-	 * Default retry delay when server omits Retry-After.
+	 * Default retry delay (ms).
 	 * @default 60000
 	 */
 	defaultRetryAfterMs?: number;
 
 	/**
-	 * Maximum backoff delay (ms).
+	 * Max backoff delay (ms).
 	 * @default 120000
 	 */
 	maxBackoffMs?: number;
 
 	/**
-	 * Max jitter to add to backoff (ms).
+	 * Max request jitter (ms).
 	 * @default 1000
 	 */
 	requestJitterMaxMs?: number;
 
 	/**
-	 * When all accounts are rate-limited, optionally wait and retry.
+	 * Retry when all accounts rate-limited.
 	 * @default false
 	 */
 	retryAllAccountsRateLimited?: boolean;
 
 	/**
-	 * Maximum time to wait when all accounts are rate-limited.
+	 * Max retry wait (ms).
 	 * Set to 0 to disable wait limit.
 	 * @default 30000
 	 */
 	retryAllAccountsMaxWaitMs?: number;
 
 	/**
-	 * Maximum number of "all accounts rate-limited" waits.
+	 * Max retry attempts.
 	 * @default 1
 	 */
 	retryAllAccountsMaxRetries?: number;
@@ -169,7 +162,7 @@ export interface AccountStorageV3 {
 }
 
 /**
- * User configuration structure from opencode.json
+ * User config structure
  */
 export interface UserConfig {
 	global: ConfigOptions;
@@ -183,7 +176,7 @@ export interface UserConfig {
 }
 
 /**
- * Configuration options for reasoning and text settings
+ * Reasoning/text options
  */
 export interface ConfigOptions {
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -193,7 +186,7 @@ export interface ConfigOptions {
 }
 
 /**
- * Reasoning configuration for requests
+ * Reasoning config
  */
 export interface ReasoningConfig {
 	effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -201,7 +194,7 @@ export interface ReasoningConfig {
 }
 
 /**
- * OAuth server information
+ * OAuth server info
  */
 export interface OAuthServerInfo {
 	port: number;
@@ -211,7 +204,7 @@ export interface OAuthServerInfo {
 }
 
 /**
- * PKCE challenge and verifier
+ * PKCE pair
  */
 export interface PKCEPair {
 	challenge: string;
@@ -219,7 +212,7 @@ export interface PKCEPair {
 }
 
 /**
- * Authorization flow result
+ * Auth flow result
  */
 export interface AuthorizationFlow {
 	pkce: PKCEPair;
@@ -228,7 +221,7 @@ export interface AuthorizationFlow {
 }
 
 /**
- * Token exchange success result
+ * Token success result
  */
 export interface TokenSuccess {
 	type: "success";
@@ -240,19 +233,19 @@ export interface TokenSuccess {
 }
 
 /**
- * Token exchange failure result
+ * Token failure result
  */
 export interface TokenFailure {
 	type: "failed";
 }
 
 /**
- * Token exchange result
+ * Token result
  */
 export type TokenResult = TokenSuccess | TokenFailure;
 
 /**
- * Parsed authorization input
+ * Parsed auth input
  */
 export interface ParsedAuthInput {
 	code?: string;
@@ -260,7 +253,7 @@ export interface ParsedAuthInput {
 }
 
 /**
- * JWT payload with ChatGPT account info
+ * JWT payload
  */
 export interface JWTPayload {
 	"https://api.openai.com/auth"?: {
@@ -270,7 +263,7 @@ export interface JWTPayload {
 }
 
 /**
- * Message input item
+ * Input item
  */
 export interface InputItem {
 	id?: string;
@@ -281,7 +274,7 @@ export interface InputItem {
 }
 
 /**
- * Request body structure
+ * Request body
  */
 export interface RequestBody {
 	model: string;
@@ -307,7 +300,7 @@ export interface RequestBody {
 }
 
 /**
- * Official OpenAI /wham/usage response structure
+ * /wham/usage response
  */
 export interface CodexWhamUsageResponse {
 	plan_type?: string;
@@ -331,7 +324,7 @@ export interface CodexWhamUsageResponse {
 }
 
 /**
- * SSE event data structure
+ * SSE event data
  */
 export interface SSEEventData {
 	type: string;
@@ -340,7 +333,7 @@ export interface SSEEventData {
 }
 
 /**
- * Cache metadata for Codex instructions
+ * Cache metadata
  */
 export interface CacheMetadata {
 	etag: string | null;
@@ -350,7 +343,7 @@ export interface CacheMetadata {
 }
 
 /**
- * GitHub release data
+ * GitHub release
  */
 export interface GitHubRelease {
 	tag_name: string;

@@ -10,7 +10,6 @@ import { PLATFORM_OPENERS } from "../constants.js";
 
 /**
  * Gets the platform-specific command to open a URL in the default browser
- * @returns Browser opener command for the current platform
  */
 export function getBrowserOpener(): string {
 	const platform = process.platform;
@@ -54,8 +53,6 @@ function commandExists(command: string): boolean {
 /**
  * Opens a URL in the default browser
  * Silently fails if browser cannot be opened (user can copy URL manually)
- * @param url - URL to open
- * @returns True if a browser launch was attempted
  */
 export function openBrowserUrl(url: string): boolean {
 	try {

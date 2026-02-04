@@ -1,36 +1,22 @@
 /**
  * Account Rotation System
  *
- * Provides the building blocks for the `hybrid` account selection strategy:
- * - Health scoring: prefer accounts that are behaving well
- * - Token bucket: client-side throttling to avoid repeatedly slamming one account
- * - LRU/freshness bias: prefer accounts that have rested longer
+ * Building blocks for `hybrid` selection:
+ * - Health scoring: prefer behaving accounts
+ * - Token bucket: client-side throttling
+ * - LRU/freshness: prefer rested accounts
  */
 
 import { createHash } from "node:crypto";
 
-// ---------------------------------------------------------------------------
-// ACCOUNT IDENTITY
-// ---------------------------------------------------------------------------
-
-/**
- * Minimal account identity for tracker keying.
- * Uses accountId + email + plan for stable identity (matches storage conventions).
- * Falls back to refreshToken hash for legacy accounts without full identity.
- */
 export interface AccountIdentity {
 	accountId?: string;
 	email?: string;
 	plan?: string;
 	refreshToken?: string;
-	/** Account index is still needed for hybrid selection return values */
 	index?: number;
 }
 
-/**
- * Generate a stable key for an account based on its identity.
- * Priority: accountId+email+plan > refreshToken hash > "unknown"
- */
 export function getAccountKey(account: AccountIdentity): string {
 	if (account.accountId && account.email && account.plan) {
 		const email = account.email.toLowerCase();
@@ -40,33 +26,20 @@ export function getAccountKey(account: AccountIdentity): string {
 	if (account.refreshToken) {
 		return createHash("sha256").update(account.refreshToken).digest("hex").substring(0, 16);
 	}
-	// Last resort: use index if available
 	if (typeof account.index === "number") {
 		return `idx:${account.index}`;
 	}
 	return "unknown";
 }
 
-// ---------------------------------------------------------------------------
-// HEALTH SCORE
-// ---------------------------------------------------------------------------
-
 export interface HealthScoreConfig {
-	/** Initial score for new accounts (default: 70) */
 	initial: number;
-	/** Points added on successful request (default: 1) */
 	successReward: number;
-	/** Points removed on rate limit (default: -10) */
 	rateLimitPenalty: number;
-	/** Points removed on failure (auth/network/server) (default: -20) */
 	failurePenalty: number;
-	/** Points recovered per hour of rest (default: 2) */
 	recoveryRatePerHour: number;
-	/** Minimum score to be considered usable (default: 50) */
 	minUsable: number;
-	/** Maximum score cap (default: 100) */
 	maxScore: number;
-	/** Cleanup stale entries after this many ms of inactivity (default: 24 hours) */
 	staleAfterMs: number;
 }
 
@@ -91,7 +64,7 @@ export class HealthScoreTracker {
 	private readonly scores = new Map<string, HealthScoreState>();
 	private readonly config: HealthScoreConfig;
 	private lastCleanup = 0;
-	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
+	private readonly cleanupIntervalMs = 60_000;
 
 	constructor(config: Partial<HealthScoreConfig> = {}, initialScores: Record<string, HealthScoreState> = {}) {
 		this.config = { ...DEFAULT_HEALTH_SCORE_CONFIG, ...config };
@@ -172,24 +145,15 @@ export class HealthScoreTracker {
 		});
 	}
 
-	/** For testing: get the number of tracked accounts */
 	size(): number {
 		return this.scores.size;
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TOKEN BUCKET
-// ---------------------------------------------------------------------------
-
 export interface TokenBucketConfig {
-	/** Maximum tokens per account (default: 50) */
 	maxTokens: number;
-	/** Tokens regenerated per minute (default: 6) */
 	regenerationRatePerMinute: number;
-	/** Initial tokens for new accounts (default: 50) */
 	initialTokens: number;
-	/** Cleanup stale entries after this many ms of inactivity (default: 1 hour) */
 	staleAfterMs: number;
 }
 
@@ -209,7 +173,7 @@ export class TokenBucketTracker {
 	private readonly buckets = new Map<string, TokenBucketState>();
 	private readonly config: TokenBucketConfig;
 	private lastCleanup = 0;
-	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
+	private readonly cleanupIntervalMs = 60_000;
 
 	constructor(config: Partial<TokenBucketConfig> = {}, initialBuckets: Record<string, TokenBucketState> = {}) {
 		this.config = { ...DEFAULT_TOKEN_BUCKET_CONFIG, ...config };
@@ -277,15 +241,10 @@ export class TokenBucketTracker {
 		return this.config.maxTokens;
 	}
 
-	/** For testing: get the number of tracked accounts */
 	size(): number {
 		return this.buckets.size;
 	}
 }
-
-// ---------------------------------------------------------------------------
-// HYBRID SELECTION
-// ---------------------------------------------------------------------------
 
 export interface AccountWithMetrics extends AccountIdentity {
 	index: number;
@@ -295,20 +254,20 @@ export interface AccountWithMetrics extends AccountIdentity {
 	isCoolingDown: boolean;
 }
 
-const STICKINESS_BONUS = 150;
-const SWITCH_THRESHOLD = 100;
-
+/**
+ * Selects account by health score, token availability, then LRU.
+ */
 export function selectHybridAccount(
 	accounts: AccountWithMetrics[],
 	tokenTracker: TokenBucketTracker,
-	currentAccountIndex: number | null = null,
+	_currentAccountIndex: number | null = null,
 	minHealthScore = 50,
 ): number | null {
 	const candidates = accounts
 		.filter(
 			(acc) =>
-				!acc.isRateLimited &&
 				!acc.isCoolingDown &&
+				!acc.isRateLimited &&
 				acc.healthScore >= minHealthScore &&
 				tokenTracker.hasTokens(acc),
 		)
@@ -316,39 +275,15 @@ export function selectHybridAccount(
 
 	if (candidates.length === 0) return null;
 
-	const maxTokens = tokenTracker.getMaxTokens();
-	const scored = candidates
-		.map((acc) => {
-			const base = calculateHybridScore(acc, maxTokens);
-			const isCurrent = currentAccountIndex !== null && acc.index === currentAccountIndex;
-			const score = base + (isCurrent ? STICKINESS_BONUS : 0);
-			return { index: acc.index, score, base, isCurrent };
-		})
-		.sort((a, b) => b.score - a.score);
+	candidates.sort((a, b) => {
+		if (b.healthScore !== a.healthScore) return b.healthScore - a.healthScore;
+		if (b.tokens !== a.tokens) return b.tokens - a.tokens;
+		if (a.lastUsed !== b.lastUsed) return a.lastUsed - b.lastUsed;
+		return a.index - b.index;
+	});
 
-	const best = scored[0];
-	const current = scored.find((item) => item.isCurrent);
-	if (current && best && !best.isCurrent && best.base - current.base < SWITCH_THRESHOLD) {
-		return current.index;
-	}
-
-	return best?.index ?? null;
+	return candidates[0]?.index ?? null;
 }
-
-function calculateHybridScore(
-	account: AccountWithMetrics & { tokens: number },
-	maxTokens: number,
-): number {
-	const healthComponent = account.healthScore * 2;
-	const tokenComponent = (account.tokens / maxTokens) * 100 * 5;
-	const secondsSinceUsed = (Date.now() - account.lastUsed) / 1000;
-	const freshnessComponent = Math.min(secondsSinceUsed, 3600) * 0.1;
-	return Math.max(0, healthComponent + tokenComponent + freshnessComponent);
-}
-
-// ---------------------------------------------------------------------------
-// SINGLETONS
-// ---------------------------------------------------------------------------
 
 let globalTokenTracker: TokenBucketTracker | null = null;
 

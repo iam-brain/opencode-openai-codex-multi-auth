@@ -44,6 +44,12 @@ export function extractAccountEmail(accessToken?: string): string | undefined {
 	if (!accessToken) return undefined;
 	const decoded = decodeJWT(accessToken);
 	const nested = decoded?.[JWT_CLAIM_PATH] as Record<string, unknown> | undefined;
+	
+	// Priority list for email extraction:
+	// 1. OIDC 'email' claim in nested path.
+	// 2. ChatGPT-specific user email.
+	// 3. Root-level 'email' claim.
+	// 4. Preferred username (often email in these flows).
 	const candidate =
 		(nested?.email as string | undefined) ??
 		(nested?.chatgpt_user_email as string | undefined) ??
@@ -167,6 +173,7 @@ function mergeAccountRecords(
 	existing: AccountStorageV3["accounts"],
 	incoming: ManagedAccount[],
 ): AccountStorageV3["accounts"] {
+	// Deep copy to avoid side effects during merge.
 	const merged = existing.map((account) => ({
 		...account,
 		rateLimitResetTimes: account.rateLimitResetTimes
@@ -208,8 +215,6 @@ function mergeAccountRecords(
 		if (!current) continue;
 		const updated = { ...current };
 
-		// Token Rotation Arbitration: Only update token if memory state is newer than disk state.
-		// Higher lastUsed timestamp wins.
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
 			if (candidate.refreshToken !== candidate.originalRefreshToken && candidate.lastUsed > (updated.lastUsed || 0)) {
 				updated.refreshToken = candidate.refreshToken;
@@ -542,7 +547,7 @@ export class AccountManager {
 		strategy: AccountSelectionStrategy = "sticky",
 		pidOffsetEnabled: boolean = false,
 	): ManagedAccount | null {
-		// antigravity-style: PID offset is primarily for sticky/round-robin.
+		// PID offset is primarily for sticky/round-robin.
 		if (pidOffsetEnabled && strategy !== "hybrid") this.applyPidOffsetOnce(family);
 
 		if (strategy === "hybrid") {
@@ -690,8 +695,6 @@ export class AccountManager {
 
 	updateFromAuth(account: ManagedAccount, auth: OAuthAuthDetails): void {
 		account.refreshToken = auth.refresh;
-		// Do NOT update originalRefreshToken here. We want it to reflect the "last saved" state
-		// so that mergeAccountRecords can detect that we have a pending change.
 		account.access = auth.access;
 		account.expires = auth.expires;
 		account.lastUsed = nowMs();
@@ -710,12 +713,9 @@ export class AccountManager {
 	}
 
 	async hydrateMissingEmails(): Promise<void> {
-		// Best-effort: refresh tokens to decode emails/accountId.
 		try {
 			await backupAccountsFile();
-		} catch {
-			// ignore backup failures
-		}
+		} catch { }
 		for (const account of this.accounts) {
 			if (account.enabled === false) continue;
 			if (account.enabled === undefined) account.enabled = true;
@@ -734,13 +734,14 @@ export class AccountManager {
 				account.plan =
 					extractAccountPlan(idToken) ?? extractAccountPlan(accessToken) ?? account.plan;
 				account.refreshToken = refreshed.refresh;
-				// Do not update originalRefreshToken here; let saveToDisk commit it.
-			} catch {
-				// ignore
-			}
+			} catch { }
 		}
 	}
 
+	/**
+	 * Repairs legacy accounts without full identity by attempting a token refresh.
+	 * Accounts that fail refresh or have mismatched IDs are quarantined for manual review.
+	 */
 	async repairLegacyAccounts(): Promise<{
 		repaired: ManagedAccount[];
 		quarantined: ManagedAccount[];
@@ -778,7 +779,6 @@ export class AccountManager {
 				account.email = email;
 				account.plan = plan;
 				account.refreshToken = refreshed.refresh;
-				// Do not update originalRefreshToken here; let saveToDisk commit it.
 				repaired.push(account);
 			} catch {
 				quarantined.push(account);
@@ -803,9 +803,7 @@ export class AccountManager {
 			try {
 				await this.hydrateMissingEmails();
 				await this.saveToDisk();
-			} catch {
-				// Best-effort; ignore hydration failures here.
-			}
+			} catch { }
 		}
 		return this.getMinWaitTimeForFamily(family, model);
 	}
@@ -858,6 +856,10 @@ export class AccountManager {
 		return refreshPromise;
 	}
 
+	/**
+	 * Refreshes an account, falling back to reading from disk if the current refresh fails.
+	 * This handles cases where another process might have already rotated the token.
+	 */
 	async refreshAccountWithFallback(
 		account: ManagedAccount,
 		refreshFn: (refreshToken: string) => Promise<TokenResult> = refreshAccessToken,
@@ -919,7 +921,6 @@ export class AccountManager {
 							a.plan === accountToRemove.plan
 						);
 					}
-					// Use originalRefreshToken to match against disk state if available (handles pending rotation)
 					const token = accountToRemove.originalRefreshToken || accountToRemove.refreshToken;
 					return a.refreshToken !== token;
 				});
@@ -983,7 +984,6 @@ export class AccountManager {
 			return storage;
 		});
 
-		// Update originalRefreshToken to reflect saved state
 		for (const account of this.accounts) {
 			account.originalRefreshToken = account.refreshToken;
 		}

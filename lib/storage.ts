@@ -17,6 +17,7 @@ type RateLimitState = Record<string, number | undefined>;
 
 const STORAGE_FILE = "openai-codex-accounts.json";
 const AUTH_DEBUG_ENABLED = getAuthDebugEnabled();
+// Limit quarantine and backup files to prevent unbounded disk usage.
 const MAX_QUARANTINE_FILES = 20;
 const MAX_BACKUP_FILES = 20;
 
@@ -27,7 +28,6 @@ let storageScopeOverride: StorageScope = "global";
 
 function findClosestProjectAccountsFile(startDir: string): string | null {
 	let current = resolve(startDir);
-	// Walk up to filesystem root.
 	while (true) {
 		const candidate = join(current, ".opencode", STORAGE_FILE);
 		if (existsSync(candidate)) return candidate;
@@ -183,6 +183,7 @@ async function ensureFileExists(path: string): Promise<void> {
 			null,
 			2,
 		),
+		// Mode 0o600: Owner read/write only (prevents leaks of refresh tokens).
 		{ encoding: "utf-8", mode: 0o600 },
 	);
 }
@@ -197,9 +198,7 @@ async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
 		if (release) {
 			try {
 				await release();
-			} catch {
-				// ignore lock release errors
-			}
+			} catch { }
 		}
 	}
 }
@@ -227,14 +226,10 @@ async function cleanupQuarantineFiles(storagePath: string): Promise<void> {
 			toDelete.map(async (entry) => {
 				try {
 					await fs.unlink(join(dir, entry.name));
-				} catch {
-					// ignore per-file deletion failures
-				}
+				} catch { }
 			}),
 		);
-	} catch {
-		// ignore cleanup failures
-	}
+	} catch { }
 }
 
 async function cleanupBackupFiles(storagePath: string): Promise<void> {
@@ -260,14 +255,10 @@ async function cleanupBackupFiles(storagePath: string): Promise<void> {
 			toDelete.map(async (entry) => {
 				try {
 					await fs.unlink(join(dir, entry.name));
-				} catch {
-					// ignore per-file deletion failures
-				}
+				} catch { }
 			}),
 		);
-	} catch {
-		// ignore cleanup failures
-	}
+	} catch { }
 }
 
 function getLegacyOpencodeDir(): string {
@@ -470,7 +461,6 @@ function mergeAccounts(
 
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
 			const shouldPreserve = options?.preserveRefreshTokens === true;
-			// Token Rotation Arbitration: Only update token if incoming state is newer than disk state.
 			const isNewer = (candidate.lastUsed || 0) > (updated.lastUsed || 0);
 			if (!shouldPreserve && isNewer) {
 				updated.refreshToken = candidate.refreshToken;
@@ -686,9 +676,7 @@ async function migrateLegacyAccountsFileIfNeededLocked(
 			await fs.writeFile(newPath, JSON.stringify(legacyStorage, null, 2), { encoding: "utf-8", mode: 0o600 });
 			try {
 				await fs.unlink(legacyPath);
-			} catch {
-				// Best-effort; ignore.
-			}
+			} catch { }
 			return;
 		}
 
@@ -723,12 +711,8 @@ async function migrateLegacyAccountsFileIfNeededLocked(
 
 		try {
 			await fs.unlink(legacyPath);
-		} catch {
-			// Best-effort; ignore.
-		}
-	} catch {
-		// Best-effort; ignore.
-	}
+		} catch { }
+	} catch { }
 }
 
 export async function loadAccountsUnsafe(filePath: string): Promise<AccountStorageV3 | null> {
@@ -755,6 +739,9 @@ export async function saveAccountsWithLock(
 			const mergedStorage = mergeFn(existing);
 			const jsonContent = JSON.stringify(mergedStorage, null, 2);
 			debug(`[SaveAccountsWithLock] Writing ${jsonContent.length} bytes`);
+			
+			// Atomic write pattern: write to tmp file then rename to destination.
+			// This prevents data corruption during partial writes or power loss.
 			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
 			try {
 				await fs.writeFile(tmpPath, jsonContent, { encoding: "utf-8", mode: 0o600 });
@@ -762,9 +749,7 @@ export async function saveAccountsWithLock(
 			} catch (error) {
 				try {
 					await fs.unlink(tmpPath);
-				} catch {
-					// ignore cleanup errors
-				}
+				} catch { }
 				throw error;
 			}
 		});

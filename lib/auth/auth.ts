@@ -10,19 +10,10 @@ export const TOKEN_URL = "https://auth.openai.com/oauth/token";
 export const REDIRECT_URI = "http://localhost:1455/auth/callback";
 export const SCOPE = "openid profile email offline_access";
 
-/**
- * Generate a random state value for OAuth flow
- * @returns Random hex string
- */
 export function createState(): string {
 	return randomBytes(16).toString("hex");
 }
 
-/**
- * Parse authorization code and state from user input
- * @param input - User input (URL, code#state, or just code)
- * @returns Parsed authorization data
- */
 export function parseAuthorizationInput(input: string): ParsedAuthInput {
 	const value = (input || "").trim();
 	if (!value) return {};
@@ -73,11 +64,6 @@ export function parseAuthorizationInputForFlow(
 	};
 }
 
-/**
- * Decode a JWT token to extract payload
- * @param token - JWT token to decode
- * @returns Decoded payload or null if invalid
- */
 export function decodeJWT(token: string): JWTPayload | null {
 	try {
 		const parts = token.split(".");
@@ -92,13 +78,6 @@ export function decodeJWT(token: string): JWTPayload | null {
 }
 
 
-/**
- * Exchange authorization code for access and refresh tokens
- * @param code - Authorization code from OAuth flow
- * @param verifier - PKCE verifier
- * @param redirectUri - OAuth redirect URI
- * @returns Token result
- */
 export async function exchangeAuthorizationCode(
 	code: string,
 	verifier: string,
@@ -144,11 +123,6 @@ export async function exchangeAuthorizationCode(
 	};
 }
 
-/**
- * Refresh access token using refresh token
- * @param refreshToken - Refresh token
- * @returns Token result
- */
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
 	try {
 		const response = await fetch(TOKEN_URL, {
@@ -197,10 +171,6 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 	}
 }
 
-/**
- * Create OAuth authorization flow
- * @returns Authorization flow details
- */
 export async function createAuthorizationFlow(): Promise<AuthorizationFlow> {
 	const pkce = (await generatePKCE()) as PKCEPair;
 	const state = createState();

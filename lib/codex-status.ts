@@ -29,8 +29,8 @@ export interface CodexRateLimitSnapshot {
 	} | null;
 }
 
-const STALENESS_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const STALENESS_TTL_MS = 15 * 60 * 1000;
+const SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const SNAPSHOTS_FILE = "codex-snapshots.json";
 
 const WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -110,7 +110,6 @@ export class CodexStatusManager {
 		const secondaryUsed = parseNum(getHeader("x-codex-secondary-used-percent"));
 		const secondaryWindow = parseNum(getHeader("x-codex-secondary-window-minutes"));
 		let secondaryReset = parseNum(getHeader("x-codex-secondary-reset-at"));
-		// Handle unix seconds (Codex API style)
 		if (secondaryReset !== null && secondaryReset < 2000000000) {
 			secondaryReset *= 1000;
 		}
@@ -271,7 +270,6 @@ export class CodexStatusManager {
 				await fs.mkdir(dir, { recursive: true });
 			}
 
-			// Ensure file exists for lock
 			if (!existsSync(path)) {
 				await fs.writeFile(path, "[]", { encoding: "utf-8", mode: 0o600 });
 			}
@@ -301,7 +299,6 @@ export class CodexStatusManager {
 							}
 						}
 
-						// Update local cache to reflect current authoritative state
 						this.snapshots = diskMap;
 					}
 				} catch {
@@ -318,7 +315,6 @@ export class CodexStatusManager {
 				}
 			}
 		} catch (error) {
-			// ignore save errors but log if debug
 			if (getAuthDebugEnabled()) {
 				console.error("[CodexStatus] Failed to save snapshots:", error);
 			}
@@ -372,7 +368,7 @@ export class CodexStatusManager {
 	}
 
 	async fetchFromBackend(account: AccountRecordV3, accessToken: string): Promise<void> {
-		const isChatGPT = accessToken.split(".").length === 3; // Simple JWT check
+		const isChatGPT = accessToken.split(".").length === 3;
 		const url = isChatGPT ? WHAM_USAGE_URL : CODEX_USAGE_URL;
 
 		try {

@@ -9,9 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const successHtml = fs.readFileSync(path.join(__dirname, "..", "oauth-success.html"), "utf-8");
 
 /**
- * Start a small local HTTP server that waits for /auth/callback and returns the code
- * @param options - OAuth state for validation
- * @returns Promise that resolves to server info
+ * Start a local HTTP server that waits for /auth/callback and returns the code
  */
 export function startLocalOAuthServer({ state }: { state: string }): Promise<OAuthServerInfo> {
 	const server = http.createServer((req, res) => {

@@ -1,25 +1,5 @@
 /**
- * OpenAI ChatGPT (Codex) OAuth Authentication Plugin for opencode
- *
- * COMPLIANCE NOTICE:
- * This plugin uses OpenAI's official OAuth authentication flow (the same method
- * used by OpenAI's official Codex CLI at https://github.com/openai/codex).
- *
- * INTENDED USE: Personal development and coding assistance with your own
- * ChatGPT Plus/Pro subscription.
- *
- * NOT INTENDED FOR: Commercial resale, multi-user services, high-volume
- * automated extraction, or any use that violates OpenAI's Terms of Service.
- *
- * Users are responsible for ensuring their usage complies with:
- * - OpenAI Terms of Use: https://openai.com/policies/terms-of-use/
- * - OpenAI Usage Policies: https://openai.com/policies/usage-policies/
- *
- * For production applications, use the OpenAI Platform API: https://platform.openai.com/
- *
- * @license MIT with Usage Disclaimer (see LICENSE file)
- * @author numman-ali
- * @repository https://github.com/numman-ali/opencode-openai-codex-auth
+ * OpenAI ChatGPT (Codex) OAuth Plugin
  */
 
 import { tool, type Plugin, type PluginInput } from "@opencode-ai/plugin";
@@ -111,7 +91,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		if (quietMode) return;
 		try {
 			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
-		} catch { }
+		} catch (err) {
+			// Toast failures should not crash the plugin; log to debug output.
+			if (!quietMode) console.error("[Toast Error]", err);
+		}
 	};
 
 	const buildManualOAuthFlow = (
@@ -138,8 +121,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		const stored = await loadAccounts();
 		const accounts = stored?.accounts ? [...stored.accounts] : [];
 		const accountId = extractAccountId(token.access);
+		
+		// Priority for email/plan extraction: ID Token (OIDC) > Access Token.
 		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
 		const plan = extractAccountPlan(token.idToken ?? token.access);
+		
 		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
 
 		if (existingIndex === -1) {
@@ -190,7 +176,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const proactiveRefreshEnabled = getProactiveTokenRefresh(pluginConfig);
 
 				const proactiveRefreshQueue = proactiveRefreshEnabled
-					? new ProactiveRefreshQueue({ bufferMs: tokenRefreshSkewMs, intervalMs: 250 })
+					? new ProactiveRefreshQueue({ 
+							bufferMs: tokenRefreshSkewMs, 
+							// Short interval to process the queue quickly without overwhelming the event loop.
+							intervalMs: 250 
+						})
 					: null;
 
 				if (proactiveRefreshScheduler) proactiveRefreshScheduler.stop();
@@ -336,14 +326,10 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 			async execute() {
 				configureStorageForCurrentCwd();
 				const accountManager = await AccountManager.loadFromDisk();
-				// NOTE: Do NOT call hydrateMissingEmails() here - status should be read-only
-				// and not trigger token refreshes that could fail when rate-limited
 				const accounts = accountManager.getAccountsSnapshot();
 				const { scope, storagePath } = getStorageScope();
 				if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
 
-				// Fetch status from backend - requires access token, so we may need to refresh
-				// This is best-effort: if refresh fails (e.g., rate-limited), we fall back to cached data
 				await Promise.all(accounts.map(async (acc, index) => {
 					if (acc.enabled === false) return;
 					const live = accountManager.getAccountByIndex(index);
@@ -353,23 +339,19 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 						let auth = accountManager.toAuthDetails(live);
 						const hasValidToken = auth.access && auth.expires > Date.now();
 
-						// If no valid access token in memory, try to refresh (best effort)
 						if (!hasValidToken) {
 							const refreshResult = await accountManager.refreshAccountWithFallback(live);
 							if (refreshResult.type === "success") {
 								auth = { type: "oauth", access: refreshResult.access, refresh: refreshResult.refresh, expires: refreshResult.expires };
-								// Update in-memory state AND save to disk (rotation occurred)
 								accountManager.updateFromAuth(live, auth);
 								await accountManager.saveToDisk();
 							}
 						}
 
-						// If we now have a valid token, fetch status
 						if (auth.access && auth.expires > Date.now()) {
 							await codexStatus.fetchFromBackend(live, auth.access);
 						}
 					} catch {
-						// Silently fall back to cached snapshot if anything fails
 					}
 				}));
 
@@ -438,14 +420,11 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 						return "To remove account, call with confirm: true";
 					}
 					configureStorageForCurrentCwd();
-					// Use cachedAccountManager if available to ensure shared state consistency,
-					// otherwise load from disk (though in tool context cachedAccountManager should exist)
 					const accountManager = cachedAccountManager ?? await AccountManager.loadFromDisk();
 					
 					if (accountManager.getAccountCount() === 0) return "No OpenAI accounts configured.";
 
 					const targetIndex = Math.floor((index ?? 0) - 1);
-					// Check bounds before accessing
 					if (targetIndex < 0 || targetIndex >= accountManager.getAccountCount()) {
 						return `Invalid account number: ${index}.`;
 					}
@@ -456,12 +435,6 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 					const success = await accountManager.removeAccountByIndex(targetIndex);
 
 					if (!success) return `Failed to remove account ${index}.`;
-					
-					// Force a fresh load from disk to ensure any other instance state is clean
-					if (!cachedAccountManager) {
-						// No action needed: if cachedAccountManager is null, the next access 
-						// will automatically load fresh from disk via loadFromDisk() in fetch()
-					}
 					
 					return `Removed ${label}.`;
 				},

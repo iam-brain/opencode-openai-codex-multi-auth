@@ -89,7 +89,6 @@ export class ProactiveRefreshQueue {
 					try {
 						item.resolve(result);
 					} catch {
-						// ignore errors during resolve (e.g. if promise already settled)
 					}
 				}
 				if (this.intervalMs > 0 && this.queue.length > 0) {
