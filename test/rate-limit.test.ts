@@ -52,11 +52,22 @@ describe("rate limit tracker", () => {
 		expect(second).toBe(2000);
 		expect(third).toBe(4000);
 	});
+
+	it("uses max backoff for quota without retry-after", () => {
+		const options = {
+			defaultRetryMs: 1000,
+			maxBackoffMs: 120_000,
+			jitterMaxMs: 0,
+		};
+		const delay = calculateBackoffMs("quota", 1, null, options);
+		expect(delay).toBe(120_000);
+	});
 });
 
 describe("rate limit scheduling", () => {
 	it("cache_first waits same account under threshold", () => {
 		const decision = decideRateLimitAction({
+			reason: "rate-limit",
 			schedulingMode: "cache_first",
 			maxCacheFirstWaitMs: 60_000,
 			switchOnFirstRateLimit: false,
@@ -69,6 +80,7 @@ describe("rate limit scheduling", () => {
 
 	it("cache_first switches when delay exceeds threshold", () => {
 		const decision = decideRateLimitAction({
+			reason: "rate-limit",
 			schedulingMode: "cache_first",
 			maxCacheFirstWaitMs: 5_000,
 			switchOnFirstRateLimit: false,
@@ -77,5 +89,31 @@ describe("rate limit scheduling", () => {
 			backoff: { delayMs: 10_000, attempt: 1, isDuplicate: false },
 		});
 		expect(decision.action).toBe("switch");
+	});
+
+	it("quota always switches when multiple accounts", () => {
+		const decision = decideRateLimitAction({
+			reason: "quota",
+			schedulingMode: "cache_first",
+			maxCacheFirstWaitMs: 60_000,
+			switchOnFirstRateLimit: false,
+			shortRetryThresholdMs: 5_000,
+			accountCount: 2,
+			backoff: { delayMs: 1000, attempt: 1, isDuplicate: false },
+		});
+		expect(decision.action).toBe("switch");
+	});
+
+	it("capacity waits on short delays even with switch-on-first", () => {
+		const decision = decideRateLimitAction({
+			reason: "capacity",
+			schedulingMode: "performance_first",
+			maxCacheFirstWaitMs: 60_000,
+			switchOnFirstRateLimit: true,
+			shortRetryThresholdMs: 5_000,
+			accountCount: 2,
+			backoff: { delayMs: 1000, attempt: 1, isDuplicate: false },
+		});
+		expect(decision.action).toBe("wait");
 	});
 });
