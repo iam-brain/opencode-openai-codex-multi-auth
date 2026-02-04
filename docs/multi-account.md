@@ -130,20 +130,22 @@ Security note: this file contains OAuth refresh tokens. Treat it like a password
 
 ## Account Repair and Quarantine
 
-On login, the plugin inspects the accounts file for corrupt JSON or legacy entries missing
-identity fields. If issues are found, it prompts to repair before continuing.
+On login, the plugin inspects the accounts file for corrupt JSON or corrupt entries. Legacy
+entries missing identity fields are preserved for hydration (they are not auto-quarantined
+at login).
 
-- Corrupt files are quarantined and replaced with an empty accounts file.
-- Corrupt or unrepairable entries are removed and written to a quarantine file.
-- Auto-repair runs once on the first request if no eligible accounts remain; failures are
-  quarantined and the request retries the next eligible account if one exists.
+- Corrupt JSON or corrupt entries trigger a quarantine snapshot and storage reset.
+- If the file is parseable, valid entries are preserved; corrupt and legacy entries are dropped.
+- Auto-repair runs once on the first request if legacy accounts exist; any records that still
+  lack identity after hydration are quarantined and removed from storage.
 
-Quarantine files live next to the accounts file with a `.quarantine-<timestamp>.json` suffix
-and include the reason and records.
+Quarantine files live next to the accounts file with a `.quarantine-<timestamp>.json` suffix.
+For parseable quarantines, they include the reason and records; for corrupt JSON they are raw
+snapshots of the original file.
 
 Quarantine files contain refresh tokens (treat them like passwords). The plugin writes them with
 restrictive permissions when supported, and keeps only the most recent set (older quarantine files
-may be pruned automatically).
+may be pruned automatically after successful writes).
 
 ## Account Selection Strategies
 

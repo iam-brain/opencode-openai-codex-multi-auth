@@ -721,6 +721,42 @@ describe("storage", () => {
 		}
 	});
 
+	it("legacy migration keeps legacy file when write fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		const originalHome = process.env.HOME;
+		process.env.XDG_CONFIG_HOME = root;
+		process.env.HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		mkdirSync(join(root, ".opencode"), { recursive: true });
+
+		const storagePath = getStoragePath();
+		const legacyPath = join(root, ".opencode", "openai-codex-accounts.json");
+		writeFileSync(storagePath, JSON.stringify({ version: 3, accounts: "invalid" }, null, 2), "utf-8");
+		writeFileSync(
+			legacyPath,
+			JSON.stringify({ version: 3, accounts: [{ ...accountOne }], activeIndex: 0 }, null, 2),
+			"utf-8",
+		);
+		const originalRename = fsPromises.rename;
+		const renameSpy = vi
+			.spyOn(fsPromises, "rename")
+			.mockImplementation(async (from, to) => {
+				if (String(to).endsWith("openai-codex-accounts.json")) {
+					throw new Error("rename failed");
+				}
+				return originalRename(from as string, to as string);
+			});
+		let loaded: AccountStorageV3 | null = null;
+		try {
+			loaded = await loadAccounts();
+		} finally {
+			renameSpy.mockRestore();
+			process.env.HOME = originalHome;
+		}
+		expect(loaded).toBeNull();
+		expect(existsSync(legacyPath)).toBe(true);
+	});
+
 	it("toggleAccountEnabled flips enabled state", () => {
 		const storage: AccountStorageV3 = {
 			version: 3,
@@ -802,13 +838,82 @@ describe("storage", () => {
 		expect(loaded?.accounts.length).toBe(storage.accounts.length - 1);
 	});
 
-	it("quarantineAccounts removes quarantine file if storage write fails", async () => {
+	it("quarantineAccounts uses latest storage under lock", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const fixture = loadFixture("openai-codex-accounts.json");
+		const accountA = fixture.accounts[0]!;
+		const accountB = fixture.accounts[1]!;
+		const accountC = fixture.accounts[2]!;
+		const staleStorage: AccountStorageV3 = {
+			version: 3,
+			accounts: [accountA, accountB],
+			activeIndex: 0,
+			activeIndexByFamily: fixture.activeIndexByFamily,
+		};
+		writeFileSync(
+			storagePath,
+			JSON.stringify(
+				{
+					version: 3,
+					accounts: [accountA, accountB, accountC],
+					activeIndex: 0,
+					activeIndexByFamily: fixture.activeIndexByFamily,
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		const result = await quarantineAccounts(staleStorage, [accountA], "test");
+
+		expect(result.quarantinePath).toBeTruthy();
+		const loaded = await loadAccounts();
+		expect(
+			loaded?.accounts.some(
+				(account) => account.refreshToken === accountC.refreshToken,
+			),
+		).toBe(true);
+		expect(
+			loaded?.accounts.some(
+				(account) => account.refreshToken === accountA.refreshToken,
+			),
+		).toBe(false);
+	});
+
+	it("quarantineAccounts skips quarantine when entries are empty", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
+		for (let i = 0; i < 5; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
+		const storage = loadFixture("openai-codex-accounts.json");
+
+		const result = await quarantineAccounts(storage, [], "test");
+
+		expect(result.quarantinePath).toBe("");
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles).toHaveLength(5);
+	});
+
+	it("quarantineAccounts keeps quarantine file if storage write fails", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
 		const storagePath = getStoragePath();
 		const base = seedStorageFromBackup(storagePath);
 		const storage = loadFixture("openai-codex-accounts.json");
+		for (let i = 0; i < 25; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
 		const originalRename = fsPromises.rename;
 		const renameSpy = vi
 			.spyOn(fsPromises, "rename")
@@ -828,9 +933,42 @@ describe("storage", () => {
 		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
 			name.startsWith("openai-codex-accounts.json.quarantine-"),
 		);
-		expect(quarantineFiles).toHaveLength(0);
+		expect(quarantineFiles).toHaveLength(26);
+		const payloads = quarantineFiles.map((name) => {
+			const content = readFileSync(join(root, "opencode", name), "utf-8");
+			return JSON.parse(content) as { records?: unknown[] };
+		});
+		const matching = payloads.find(
+			(payload) => Array.isArray(payload.records) && payload.records.length === 1,
+		);
+		expect(matching).toBeTruthy();
 		const loaded = await loadAccounts();
 		expect(loaded?.accounts.length).toBe(base.accounts.length);
+		expect(
+			loaded?.accounts.some(
+				(account) => account.refreshToken === storage.accounts[0]!.refreshToken,
+			),
+		).toBe(true);
+	});
+
+	it("quarantineAccounts prunes old quarantine files after successful write", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
+		for (let i = 0; i < 30; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
+		const storage = loadFixture("openai-codex-accounts.json");
+
+		const result = await quarantineAccounts(storage, [storage.accounts[0]!], "test");
+
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles.length).toBeLessThanOrEqual(20);
+		expect(existsSync(result.quarantinePath)).toBe(true);
 	});
 
 	it("quarantineAccountsByRefreshToken keeps storage intact if quarantine write fails", async () => {
@@ -865,12 +1003,37 @@ describe("storage", () => {
 		).toBe(true);
 	});
 
-	it("quarantineAccountsByRefreshToken removes quarantine file if storage write fails", async () => {
+	it("quarantineAccountsByRefreshToken skips quarantine when no tokens match", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
 		const storagePath = getStoragePath();
 		const base = seedStorageFromBackup(storagePath);
+		for (let i = 0; i < 5; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
+		const tokens = new Set(["missing-refresh-token"]);
+
+		const result = await quarantineAccountsByRefreshToken(tokens, "test");
+
+		expect(result.quarantinePath).toBe("");
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles).toHaveLength(5);
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts.length).toBe(base.accounts.length);
+	});
+
+	it("quarantineAccountsByRefreshToken keeps quarantine file if storage write fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const base = seedStorageFromBackup(storagePath);
+		for (let i = 0; i < 25; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
 		const tokens = new Set([base.accounts[0]!.refreshToken]);
 		const originalRename = fsPromises.rename;
 		const renameSpy = vi
@@ -891,9 +1054,22 @@ describe("storage", () => {
 		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
 			name.startsWith("openai-codex-accounts.json.quarantine-"),
 		);
-		expect(quarantineFiles).toHaveLength(0);
+		expect(quarantineFiles).toHaveLength(26);
+		const payloads = quarantineFiles.map((name) => {
+			const content = readFileSync(join(root, "opencode", name), "utf-8");
+			return JSON.parse(content) as { records?: unknown[] };
+		});
+		const matching = payloads.find(
+			(payload) => Array.isArray(payload.records) && payload.records.length === 1,
+		);
+		expect(matching).toBeTruthy();
 		const loaded = await loadAccounts();
 		expect(loaded?.accounts.length).toBe(base.accounts.length);
+		expect(
+			loaded?.accounts.some(
+				(account) => account.refreshToken === base.accounts[0]!.refreshToken,
+			),
+		).toBe(true);
 	});
 
 	it("writeQuarantineFile sets private permissions (0600)", async () => {
@@ -933,6 +1109,100 @@ describe("storage", () => {
 		);
 		expect(quarantineFiles.length).toBeLessThanOrEqual(20);
 		expect(quarantineFiles.some((name) => name.includes("quarantine-10000"))).toBe(true);
+	});
+
+	it("autoQuarantineCorruptAccountsFile keeps quarantine file when reset fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		for (let i = 0; i < 25; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
+		writeFileSync(storagePath, "{", "utf-8");
+		const originalRename = fsPromises.rename;
+		const renameSpy = vi
+			.spyOn(fsPromises, "rename")
+			.mockImplementation(async (from, to) => {
+				if (String(to).endsWith("openai-codex-accounts.json")) {
+					throw new Error("rename failed");
+				}
+				return originalRename(from as string, to as string);
+			});
+		try {
+			await expect(autoQuarantineCorruptAccountsFile()).rejects.toThrow("rename failed");
+		} finally {
+			renameSpy.mockRestore();
+		}
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles).toHaveLength(26);
+		const contents = quarantineFiles.map((name) =>
+			readFileSync(join(root, "opencode", name), "utf-8"),
+		);
+		expect(contents.includes("{")).toBe(true);
+		expect(readFileSync(storagePath, "utf-8")).toBe("{");
+	});
+
+	it("autoQuarantineCorruptAccountsFile skips legacy-only needs-repair storage", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const original = JSON.stringify(
+			{
+				accounts: [
+					{ ...accountOne },
+					{ refreshToken: accountTwo.refreshToken },
+				],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			},
+			null,
+			2,
+		);
+		writeFileSync(storagePath, original, "utf-8");
+
+		const quarantinePath = await autoQuarantineCorruptAccountsFile();
+
+		expect(quarantinePath).toBeNull();
+		expect(readFileSync(storagePath, "utf-8")).toBe(original);
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles).toHaveLength(0);
+	});
+
+	it("autoQuarantineCorruptAccountsFile quarantines needs-repair with corrupt entries", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		const original = JSON.stringify(
+			{
+				accounts: [
+					{ ...accountOne },
+					"not-an-account",
+				],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			},
+			null,
+			2,
+		);
+		writeFileSync(storagePath, original, "utf-8");
+
+		const quarantinePath = await autoQuarantineCorruptAccountsFile();
+
+		expect(quarantinePath).toBeTruthy();
+		if (!quarantinePath) return;
+		expect(readFileSync(quarantinePath, "utf-8")).toBe(original);
+		const after = JSON.parse(readFileSync(storagePath, "utf-8")) as { accounts?: unknown[] };
+		expect(Array.isArray(after.accounts)).toBe(true);
+		const remaining = after.accounts as Array<{ refreshToken?: string }>;
+		expect(remaining).toHaveLength(1);
+		expect(remaining[0]?.refreshToken).toBe(accountOne.refreshToken);
 	});
 
 	it("autoQuarantineCorruptAccountsFile quarantines and resets corrupt JSON", async () => {

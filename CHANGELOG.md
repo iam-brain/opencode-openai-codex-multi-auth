@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.6.0] - 2026-02-04
+
+**Quarantine + Multi-Account Reliability release**: safer storage handling, clearer recovery, and
+more deterministic account management.
+
+### Changed
+- **Account management**: toggle/remove now targets identity (accountId/email/plan) to avoid stale index actions.
+- **Quarantine flow**: corrupt files now quarantine under lock and salvage valid entries; legacy-only records are dropped during salvage.
+- **Legacy handling**: hydration attempts run before quarantining missing-identity records.
+- **Hybrid selection**: waits for token bucket availability when hybrid strategy has no tokens.
+
+### Fixed
+- **Storage safety**: quarantine writes and account management now re-read under lock to avoid overwriting concurrent updates.
+- **Quarantine retention**: pruning now only occurs after successful writes; failures preserve existing quarantine files.
+- **Auth toasts**: auth failures include the account label for faster debugging.
+
+### Docs
+- **Multi-account guide**: clarified repair/quarantine behavior and legacy handling.
+
 ## [4.5.24] - 2026-01-31
 
 **UI Polish release**: Final alignment tweaks for `codex-status`.

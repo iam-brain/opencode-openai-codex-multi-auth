@@ -793,13 +793,8 @@ function extractAccountsSource(parsed: unknown): {
 	return null;
 }
 
-export async function inspectAccountsFile(): Promise<AccountsInspection> {
-	const filePath = getStoragePath();
-	if (!existsSync(filePath)) {
-		return { status: "missing", corruptEntries: [], legacyEntries: [], validEntries: [] };
-	}
+function inspectAccountsData(raw: string): AccountsInspection {
 	try {
-		const raw = await fs.readFile(filePath, "utf-8");
 		const parsed = JSON.parse(raw) as unknown;
 		const source = extractAccountsSource(parsed);
 		if (!source) {
@@ -847,6 +842,25 @@ export async function inspectAccountsFile(): Promise<AccountsInspection> {
 	}
 }
 
+export async function inspectAccountsFile(): Promise<AccountsInspection> {
+	const filePath = getStoragePath();
+	if (!existsSync(filePath)) {
+		return { status: "missing", corruptEntries: [], legacyEntries: [], validEntries: [] };
+	}
+	try {
+		const raw = await fs.readFile(filePath, "utf-8");
+		return inspectAccountsData(raw);
+	} catch {
+		return {
+			status: "corrupt-file",
+			reason: "parse-error",
+			corruptEntries: [],
+			legacyEntries: [],
+			validEntries: [],
+		};
+	}
+}
+
 async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
 	await saveAccountsWithLock(() => storage);
 }
@@ -854,7 +868,7 @@ async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
 export async function writeQuarantineFile(
 	records: unknown[],
 	reason: string,
- 	options?: { skipCleanup?: boolean },
+	options?: { skipCleanup?: boolean },
 ): Promise<string> {
 	const filePath = getStoragePath();
 	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
@@ -881,6 +895,29 @@ export async function writeQuarantineFile(
 	return quarantinePath;
 }
 
+async function writeQuarantineRaw(
+	content: Buffer | string,
+	options?: { skipCleanup?: boolean },
+): Promise<string> {
+	const filePath = getStoragePath();
+	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
+	await fs.mkdir(dirname(filePath), { recursive: true });
+	const tmpPath = `${quarantinePath}.${randomBytes(6).toString("hex")}.tmp`;
+
+	try {
+		await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
+		await fs.rename(tmpPath, quarantinePath);
+	} catch (error) {
+		await fs.unlink(tmpPath).catch(() => undefined);
+		throw error;
+	}
+
+	if (!options?.skipCleanup) {
+		await cleanupQuarantineFiles(filePath);
+	}
+	return quarantinePath;
+}
+
 export async function replaceAccountsFile(storage: AccountStorageV3): Promise<void> {
 	await writeAccountsFile(storage);
 }
@@ -888,26 +925,19 @@ export async function replaceAccountsFile(storage: AccountStorageV3): Promise<vo
 export async function quarantineCorruptFile(): Promise<string | null> {
 	const filePath = getStoragePath();
 	if (!existsSync(filePath)) return null;
-	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
-	let didQuarantine = false;
+	let quarantinePath = "";
 	await withFileLock(filePath, async () => {
 		if (!existsSync(filePath)) return;
 		const content = await fs.readFile(filePath);
-		await fs.writeFile(quarantinePath, content, { mode: 0o600 });
-		didQuarantine = true;
-		try {
-			await writeStorageAtomic(filePath, {
-				version: 3,
-				accounts: [],
-				activeIndex: 0,
-				activeIndexByFamily: {},
-			});
-		} catch (error) {
-			await fs.unlink(quarantinePath).catch(() => undefined);
-			throw error;
-		}
+		quarantinePath = await writeQuarantineRaw(content, { skipCleanup: true });
+		await writeStorageAtomic(filePath, {
+			version: 3,
+			accounts: [],
+			activeIndex: 0,
+			activeIndexByFamily: {},
+		});
 	});
-	if (didQuarantine) {
+	if (quarantinePath) {
 		await cleanupQuarantineFiles(filePath);
 		return quarantinePath;
 	}
@@ -915,9 +945,54 @@ export async function quarantineCorruptFile(): Promise<string | null> {
 }
 
 export async function autoQuarantineCorruptAccountsFile(): Promise<string | null> {
-	const inspection = await inspectAccountsFile();
-	if (inspection.status !== "corrupt-file") return null;
-	return await quarantineCorruptFile();
+	const filePath = getStoragePath();
+	if (!existsSync(filePath)) return null;
+	let quarantinePath = "";
+	let shouldCleanup = false;
+	let error: unknown;
+	try {
+		await withFileLock(filePath, async () => {
+			if (!existsSync(filePath)) return;
+			const raw = await fs.readFile(filePath, "utf-8");
+			const inspection = inspectAccountsData(raw);
+			const hasCorruptEntries =
+				inspection.status === "corrupt-file" ||
+				(inspection.status === "needs-repair" && inspection.corruptEntries.length > 0);
+			if (!hasCorruptEntries) return;
+			quarantinePath = await writeQuarantineRaw(raw, { skipCleanup: true });
+			shouldCleanup = true;
+			let updatedStorage: AccountStorageV3 = {
+				version: 3,
+				accounts: [],
+				activeIndex: 0,
+				activeIndexByFamily: {},
+			};
+			if (inspection.status === "needs-repair") {
+				try {
+					const parsed = JSON.parse(raw) as unknown;
+					const source = extractAccountsSource(parsed);
+					if (source) {
+						const normalized = normalizeStorage({
+							accounts: inspection.validEntries,
+							activeIndex: source.activeIndexSource,
+							activeIndexByFamily: source.activeIndexByFamilySource,
+						});
+						if (normalized) updatedStorage = normalized;
+					}
+				} catch { }
+			}
+			await writeStorageAtomic(filePath, updatedStorage);
+		});
+	} catch (err) {
+		error = err;
+	}
+	if (shouldCleanup) {
+		if (!error) {
+			await cleanupQuarantineFiles(filePath);
+		}
+	}
+	if (error) throw error;
+	return quarantinePath || null;
 }
 
 export async function quarantineAccounts(
@@ -925,32 +1000,56 @@ export async function quarantineAccounts(
 	entries: AccountRecord[],
 	reason: string,
 ): Promise<{ storage: AccountStorageV3; quarantinePath: string }> {
+	const filePath = getStoragePath();
 	if (!entries.length) {
-		return { storage, quarantinePath: await writeQuarantineFile([], reason) };
+		return { storage, quarantinePath: "" };
 	}
 	const tokens = new Set(entries.map((entry) => entry.refreshToken));
-	const remaining = storage.accounts.filter((account) => !tokens.has(account.refreshToken));
-	const normalized = normalizeStorage({
-		accounts: remaining,
-		activeIndex: storage.activeIndex,
-		activeIndexByFamily: storage.activeIndexByFamily,
-	});
-	const updated: AccountStorageV3 =
-		normalized ?? {
-			version: 3,
-			accounts: [],
-			activeIndex: 0,
-			activeIndexByFamily: {},
-		};
-	const quarantinePath = await writeQuarantineFile(entries, reason, { skipCleanup: true });
+	let updatedStorage: AccountStorageV3 = storage;
+	let quarantineEntries: AccountRecord[] = [];
+	let quarantinePath = "";
+	let shouldCleanup = false;
+	let error: unknown;
 	try {
-		await writeAccountsFile(updated);
-	} catch (error) {
-		await fs.unlink(quarantinePath).catch(() => undefined);
-		throw error;
+		await withFileLock(filePath, async () => {
+			await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
+			const existing = await loadAccountsUnsafe(filePath);
+			const base = existing ?? storage;
+			quarantineEntries = base.accounts.filter((account) =>
+				tokens.has(account.refreshToken),
+			);
+			if (!quarantineEntries.length) {
+				updatedStorage = base;
+				return;
+			}
+			quarantinePath = await writeQuarantineFile(quarantineEntries, reason, { skipCleanup: true });
+			shouldCleanup = true;
+			const remaining = base.accounts.filter(
+				(account) => !tokens.has(account.refreshToken),
+			);
+			const normalized = normalizeStorage({
+				accounts: remaining,
+				activeIndex: base.activeIndex,
+				activeIndexByFamily: base.activeIndexByFamily,
+			});
+			updatedStorage =
+				normalized ?? {
+					version: 3,
+					accounts: [],
+					activeIndex: 0,
+					activeIndexByFamily: {},
+				};
+			await writeStorageAtomic(filePath, updatedStorage);
+		});
+	} catch (err) {
+		error = err;
 	}
-	await cleanupQuarantineFiles(getStoragePath());
-	return { storage: updated, quarantinePath };
+
+	if (!error && shouldCleanup) {
+		await cleanupQuarantineFiles(filePath);
+	}
+	if (error) throw error;
+	return { storage: updatedStorage, quarantinePath };
 }
 
 export async function quarantineAccountsByRefreshToken(
@@ -967,51 +1066,46 @@ export async function quarantineAccountsByRefreshToken(
 	let quarantineEntries: AccountRecord[] = [];
 	let quarantinePath = "";
 	let shouldCleanup = false;
-
-	await withFileLock(filePath, async () => {
-		await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
-		const existing = await loadAccountsUnsafe(filePath);
-		const base = existing ?? updatedStorage;
-		quarantineEntries = base.accounts.filter((account) =>
-			tokens.has(account.refreshToken),
-		);
-		if (!quarantineEntries.length) {
-			quarantinePath = await writeQuarantineFile([], reason, { skipCleanup: true });
-			updatedStorage = base;
-			shouldCleanup = true;
-			return;
-		}
-		quarantinePath = await writeQuarantineFile(quarantineEntries, reason, { skipCleanup: true });
-		const remaining = base.accounts.filter(
-			(account) => !tokens.has(account.refreshToken),
-		);
-		const normalized = normalizeStorage({
-			accounts: remaining,
-			activeIndex: base.activeIndex,
-			activeIndexByFamily: base.activeIndexByFamily,
-		});
-		updatedStorage =
-			normalized ?? {
-				version: 3,
-				accounts: [],
-				activeIndex: 0,
-				activeIndexByFamily: {},
-			};
-		try {
-			await writeStorageAtomic(filePath, updatedStorage);
-		} catch (error) {
-			if (quarantinePath) {
-				await fs.unlink(quarantinePath).catch(() => undefined);
+	let error: unknown;
+	try {
+		await withFileLock(filePath, async () => {
+			await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
+			const existing = await loadAccountsUnsafe(filePath);
+			const base = existing ?? updatedStorage;
+			quarantineEntries = base.accounts.filter((account) =>
+				tokens.has(account.refreshToken),
+			);
+			if (!quarantineEntries.length) {
+				updatedStorage = base;
+				return;
 			}
-			throw error;
-		}
-		shouldCleanup = true;
-	});
-
-	if (shouldCleanup) {
-		await cleanupQuarantineFiles(filePath);
+			quarantinePath = await writeQuarantineFile(quarantineEntries, reason, { skipCleanup: true });
+			shouldCleanup = true;
+			const remaining = base.accounts.filter(
+				(account) => !tokens.has(account.refreshToken),
+			);
+			const normalized = normalizeStorage({
+				accounts: remaining,
+				activeIndex: base.activeIndex,
+				activeIndexByFamily: base.activeIndexByFamily,
+			});
+			updatedStorage =
+				normalized ?? {
+					version: 3,
+					accounts: [],
+					activeIndex: 0,
+					activeIndexByFamily: {},
+				};
+			await writeStorageAtomic(filePath, updatedStorage);
+		});
+	} catch (err) {
+		error = err;
 	}
 
+	if (!error && shouldCleanup) {
+		await cleanupQuarantineFiles(filePath);
+	}
+	if (error) throw error;
 	return { storage: updatedStorage, quarantinePath };
 }
 
