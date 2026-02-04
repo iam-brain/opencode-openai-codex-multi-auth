@@ -12,7 +12,7 @@ vi.mock("node:readline/promises", () => ({
 	})),
 }));
 
-import { promptLoginMode } from "../lib/cli.js";
+import { promptLoginMode, promptManageAccounts } from "../lib/cli.js";
 
 type AccountsFixture = {
 	accounts: Array<{ accountId: string; email: string; plan: string }>;
@@ -60,5 +60,31 @@ describe("cli", () => {
 		expect(questionMock).toHaveBeenCalledTimes(2);
 		expect(closeMock).toHaveBeenCalledTimes(1);
 		logSpy.mockRestore();
+	});
+
+	it("promptManageAccounts toggles by number", async () => {
+		questionMock.mockResolvedValueOnce("1");
+
+		const result = await promptManageAccounts([
+			{ index: 0, email: accountOne.email, plan: accountOne.plan, accountId: accountOne.accountId },
+			{ index: 1, email: accountTwo.email, plan: accountTwo.plan, accountId: accountTwo.accountId },
+		]);
+
+		expect(result).toEqual({ action: "toggle", index: 0 });
+		expect(questionMock).toHaveBeenCalledTimes(1);
+		expect(closeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("promptManageAccounts removes with r prefix", async () => {
+		questionMock.mockResolvedValueOnce("r2");
+
+		const result = await promptManageAccounts([
+			{ index: 0, email: accountOne.email, plan: accountOne.plan, accountId: accountOne.accountId },
+			{ index: 1, email: accountTwo.email, plan: accountTwo.plan, accountId: accountTwo.accountId },
+		]);
+
+		expect(result).toEqual({ action: "remove", index: 1 });
+		expect(questionMock).toHaveBeenCalledTimes(1);
+		expect(closeMock).toHaveBeenCalledTimes(1);
 	});
 });
