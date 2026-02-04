@@ -11,7 +11,7 @@ import type {
 	TokenResult,
 } from "./types.js";
 import { backupAccountsFile, loadAccounts, saveAccounts, saveAccountsWithLock } from "./storage.js";
-import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
+import { getHealthTracker, getTokenTracker, selectHybridAccount, type TokenBucketTracker } from "./rotation.js";
 import { findAccountMatchIndex } from "./account-matching.js";
 import { normalizePlanType } from "./plan-utils.js";
 
@@ -810,6 +810,29 @@ export class AccountManager {
 			} catch { }
 		}
 		return this.getMinWaitTimeForFamily(family, model);
+	}
+
+	getMinTokenWaitMsForFamily(
+		family: ModelFamily,
+		model: string | null | undefined,
+		tokenTracker: TokenBucketTracker,
+		cost = 1,
+	): number {
+		const eligible = this.accounts.filter((account) => {
+			if (!hasCompleteIdentity(account) || !isAccountEnabled(account)) return false;
+			clearExpiredRateLimits(account);
+			return !isRateLimitedForFamily(account, family, model) && !this.isAccountCoolingDown(account);
+		});
+
+		let minWait = Infinity;
+		for (const account of eligible) {
+			const waitMs = tokenTracker.getTokenWaitMs(account, cost);
+			if (waitMs === null) continue;
+			if (waitMs <= 0) return 0;
+			minWait = Math.min(minWait, waitMs);
+		}
+
+		return Number.isFinite(minWait) ? minWait : 0;
 	}
 
 	getMinWaitTimeForFamily(family: ModelFamily, model?: string | null): number {

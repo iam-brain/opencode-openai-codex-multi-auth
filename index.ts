@@ -47,6 +47,7 @@ import {
 	promptLoginMode,
 	promptManageAccounts,
 } from "./lib/cli.js";
+import { normalizePlanTypeOrDefault } from "./lib/plan-utils.js";
 import {
 	configureStorageForCurrentCwd,
 	configureStorageForPluginConfig,
@@ -196,12 +197,37 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		return updated;
 	};
 
+	const findAccountIndex = (
+		storage: AccountStorageV3,
+		target: { accountId?: string; email?: string; plan?: string; refreshToken?: string },
+	): number => {
+		if (target.accountId && target.email && target.plan) {
+			const email = target.email.toLowerCase();
+			const plan = normalizePlanTypeOrDefault(target.plan);
+			const matchByIdentity = storage.accounts.findIndex(
+				(account) =>
+					account.accountId === target.accountId &&
+					account.email?.toLowerCase() === email &&
+					normalizePlanTypeOrDefault(account.plan) === plan,
+			);
+			if (matchByIdentity !== -1) return matchByIdentity;
+		}
+
+		if (target.refreshToken) {
+			const matchByToken = storage.accounts.findIndex(
+				(account) => account.refreshToken === target.refreshToken,
+			);
+			if (matchByToken !== -1) return matchByToken;
+		}
+
+		return -1;
+	};
+
 	const removeAccountFromStorage = (
 		storage: AccountStorageV3,
-		targetIndex: number,
+		target: { accountId?: string; email?: string; plan?: string; refreshToken?: string },
 	): AccountStorageV3 => {
-		if (!Number.isFinite(targetIndex)) return storage;
-		const index = Math.floor(targetIndex);
+		const index = findAccountIndex(storage, target);
 		if (index < 0 || index >= storage.accounts.length) return storage;
 		const accounts = storage.accounts.filter((_, idx) => idx !== index);
 		if (accounts.length === 0) {
@@ -239,6 +265,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			email: account.email,
 			plan: account.plan,
 			accountId: account.accountId,
+			refreshToken: account.refreshToken,
 			enabled: account.enabled,
 		}));
 
@@ -264,15 +291,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								continue;
 							}
 
-							if (action.action === "toggle") {
-								existingStorage = await updateStorageWithLock((current) =>
-									toggleAccountEnabled(current, action.index),
-								);
-							} else {
-								existingStorage = await updateStorageWithLock((current) =>
-									removeAccountFromStorage(current, action.index),
-								);
-							}
+						const actionIndex = findAccountIndex(existingStorage, action.target);
+						if (actionIndex < 0) {
+							continue;
+						}
+						if (action.action === "toggle") {
+							existingStorage = await updateStorageWithLock((current) =>
+								toggleAccountEnabled(current, actionIndex),
+							);
+						} else {
+							existingStorage = await updateStorageWithLock((current) =>
+								removeAccountFromStorage(current, action.target),
+							);
+						}
 
 							if (existingStorage.accounts.length === 0) {
 								replaceExisting = true;

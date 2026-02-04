@@ -202,8 +202,11 @@ export class TokenBucketTracker {
 	getTokens(account: AccountIdentity): number {
 		this.cleanup();
 		const key = getAccountKey(account);
-		const state = this.buckets.get(key);
-		if (!state) return this.config.initialTokens;
+		let state = this.buckets.get(key);
+		if (!state) {
+			state = { tokens: this.config.initialTokens, lastUpdated: Date.now() };
+			this.buckets.set(key, state);
+		}
 
 		const now = Date.now();
 		const minutesSinceUpdate = (now - state.lastUpdated) / (1000 * 60);
@@ -239,6 +242,15 @@ export class TokenBucketTracker {
 
 	getMaxTokens(): number {
 		return this.config.maxTokens;
+	}
+
+	getTokenWaitMs(account: AccountIdentity, cost = 1): number | null {
+		const current = this.getTokens(account);
+		if (current >= cost) return 0;
+		if (this.config.regenerationRatePerMinute <= 0) return null;
+		const needed = cost - current;
+		const minutes = needed / this.config.regenerationRatePerMinute;
+		return Math.ceil(minutes * 60_000);
 	}
 
 	size(): number {

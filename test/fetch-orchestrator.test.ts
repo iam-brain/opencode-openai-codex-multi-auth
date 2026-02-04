@@ -5,6 +5,12 @@ import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
 import { PluginConfig } from '../lib/types.js';
+import { quarantineAccounts } from '../lib/storage.js';
+
+vi.mock('../lib/storage.js', () => ({
+	quarantineAccounts: vi.fn(),
+	replaceAccountsFile: vi.fn(),
+}));
 
 describe('FetchOrchestrator', () => {
 	let config: FetchOrchestratorConfig;
@@ -21,6 +27,10 @@ describe('FetchOrchestrator', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.resetAllMocks();
+		vi.mocked(quarantineAccounts).mockResolvedValue({
+			storage: { version: 3, accounts: [], activeIndex: 0, activeIndexByFamily: {} },
+			quarantinePath: "/tmp/quarantine.json",
+		});
         // ...
 		global.fetch = mockFetch;
 
@@ -42,6 +52,7 @@ describe('FetchOrchestrator', () => {
 			shouldShowAccountToast: vi.fn(),
 			markToastShown: vi.fn(),
 			getMinWaitTimeForFamilyWithHydration: vi.fn().mockResolvedValue(0),
+			getMinTokenWaitMsForFamily: vi.fn().mockReturnValue(0),
 			getAccountsSnapshot: vi.fn().mockReturnValue([]),
 			getActiveIndexForFamily: vi.fn(),
 		};
@@ -346,6 +357,115 @@ describe('FetchOrchestrator', () => {
 		expect(response.status).toBe(429); // Fails after retry limit
 		expect(mockFetch).toHaveBeenCalledTimes(2); // Initial + 1 retry
 		expect(accountManager.markAccountCoolingDown).toHaveBeenCalled();
+	});
+
+	it('shows a toast when auth fails', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		const account = { index: 0, accountId: 'acc1', email: 'fail@example.com', plan: 'Pro' };
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
+		accountManager.toAuthDetails.mockReturnValue({ access: 'bad-token', expires: Date.now() + 100000 });
+		accountManager.getAccountsSnapshot.mockReturnValue([account]);
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(0);
+
+		mockFetch.mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+		accountManager.refreshAccountWithFallback.mockResolvedValue({ type: 'failed' });
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(429);
+		expect(config.showToast).toHaveBeenCalledWith(
+			expect.stringContaining('fail@example.com'),
+			'error',
+			false,
+		);
+	});
+
+	it('waits for token bucket availability when hybrid has no tokens', async () => {
+		const hybridConfig = {
+			...pluginConfig,
+			accountSelectionStrategy: 'hybrid',
+			request: { ...(pluginConfig as any).request, account_selection: 'hybrid' },
+		} as any;
+		orchestrator = new FetchOrchestrator({ ...config, pluginConfig: hybridConfig });
+
+		accountManager.getAccountCount
+			.mockReturnValueOnce(1)
+			.mockReturnValueOnce(0);
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
+			.mockReturnValueOnce(null);
+		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
+		accountManager.getAccountsSnapshot.mockReturnValue([]);
+		accountManager.getMinTokenWaitMsForFamily
+			.mockReturnValueOnce(500)
+			.mockReturnValueOnce(0);
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(0);
+		tokenTracker.consume.mockReturnValue(false);
+
+		const timeoutSpy = vi.spyOn(global, 'setTimeout');
+		const responsePromise = orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+		await vi.advanceTimersByTimeAsync(500);
+		const response = await responsePromise;
+
+		expect(response.status).toBe(429);
+		expect(accountManager.getMinTokenWaitMsForFamily).toHaveBeenCalled();
+		expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
+	});
+
+	it('repairs legacy accounts even when others exist', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getLegacyAccounts.mockReturnValue([{ refreshToken: 'legacy-refresh' }]);
+		accountManager.repairLegacyAccounts.mockResolvedValue({
+			repaired: [{ refreshToken: 'legacy-refresh' }],
+			quarantined: [],
+		});
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(null);
+		accountManager.getAccountsSnapshot.mockReturnValue([]);
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(0);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(429);
+		expect(accountManager.repairLegacyAccounts).toHaveBeenCalled();
+		expect(accountManager.saveToDisk).toHaveBeenCalled();
+	});
+
+	it('quarantines legacy accounts that fail repair', async () => {
+		const legacyAccount = { refreshToken: 'legacy-refresh' };
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getLegacyAccounts.mockReturnValue([legacyAccount]);
+		accountManager.repairLegacyAccounts.mockResolvedValue({
+			repaired: [],
+			quarantined: [legacyAccount],
+		});
+		accountManager.getStorageSnapshot.mockReturnValue({
+			version: 3,
+			accounts: [
+				{
+					refreshToken: 'legacy-refresh',
+					addedAt: 0,
+					lastUsed: 0,
+				},
+			],
+			activeIndex: 0,
+			activeIndexByFamily: {},
+		});
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(null);
+		accountManager.getAccountsSnapshot.mockReturnValue([]);
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(0);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(429);
+		expect(quarantineAccounts).toHaveBeenCalledWith(
+			expect.objectContaining({ version: 3 }),
+			[expect.objectContaining({ refreshToken: 'legacy-refresh' })],
+			'legacy-repair',
+		);
+		expect(accountManager.removeAccountsByRefreshToken).toHaveBeenCalled();
+		const [tokenSet] = accountManager.removeAccountsByRefreshToken.mock.calls[0];
+		expect(tokenSet).toBeInstanceOf(Set);
+		expect(tokenSet.has('legacy-refresh')).toBe(true);
 	});
 
 	it('should handle non-JSON or non-string bodies gracefully', async () => {

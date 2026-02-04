@@ -15,7 +15,7 @@ vi.mock("node:readline/promises", () => ({
 import { promptLoginMode, promptManageAccounts } from "../lib/cli.js";
 
 type AccountsFixture = {
-	accounts: Array<{ accountId: string; email: string; plan: string }>;
+	accounts: Array<{ accountId: string; email: string; plan: string; refreshToken: string }>;
 };
 
 const fixture = JSON.parse(
@@ -66,11 +66,31 @@ describe("cli", () => {
 		questionMock.mockResolvedValueOnce("1");
 
 		const result = await promptManageAccounts([
-			{ index: 0, email: accountOne.email, plan: accountOne.plan, accountId: accountOne.accountId },
-			{ index: 1, email: accountTwo.email, plan: accountTwo.plan, accountId: accountTwo.accountId },
+			{
+				index: 0,
+				email: accountOne.email,
+				plan: accountOne.plan,
+				accountId: accountOne.accountId,
+				refreshToken: accountOne.refreshToken,
+			},
+			{
+				index: 1,
+				email: accountTwo.email,
+				plan: accountTwo.plan,
+				accountId: accountTwo.accountId,
+				refreshToken: accountTwo.refreshToken,
+			},
 		]);
 
-		expect(result).toEqual({ action: "toggle", index: 0 });
+		expect(result).toEqual({
+			action: "toggle",
+			target: {
+				accountId: accountOne.accountId,
+				email: accountOne.email,
+				plan: accountOne.plan,
+				refreshToken: accountOne.refreshToken,
+			},
+		});
 		expect(questionMock).toHaveBeenCalledTimes(1);
 		expect(closeMock).toHaveBeenCalledTimes(1);
 	});
@@ -79,11 +99,31 @@ describe("cli", () => {
 		questionMock.mockResolvedValueOnce("r2");
 
 		const result = await promptManageAccounts([
-			{ index: 0, email: accountOne.email, plan: accountOne.plan, accountId: accountOne.accountId },
-			{ index: 1, email: accountTwo.email, plan: accountTwo.plan, accountId: accountTwo.accountId },
+			{
+				index: 0,
+				email: accountOne.email,
+				plan: accountOne.plan,
+				accountId: accountOne.accountId,
+				refreshToken: accountOne.refreshToken,
+			},
+			{
+				index: 1,
+				email: accountTwo.email,
+				plan: accountTwo.plan,
+				accountId: accountTwo.accountId,
+				refreshToken: accountTwo.refreshToken,
+			},
 		]);
 
-		expect(result).toEqual({ action: "remove", index: 1 });
+		expect(result).toEqual({
+			action: "remove",
+			target: {
+				accountId: accountTwo.accountId,
+				email: accountTwo.email,
+				plan: accountTwo.plan,
+				refreshToken: accountTwo.refreshToken,
+			},
+		});
 		expect(questionMock).toHaveBeenCalledTimes(1);
 		expect(closeMock).toHaveBeenCalledTimes(1);
 	});

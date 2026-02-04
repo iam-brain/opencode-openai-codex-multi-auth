@@ -52,7 +52,7 @@ import {
 } from "./request/fetch-helpers.js";
 import { getModelFamily } from "./prompts/codex.js";
 import { logDebug, logWarn } from "./logger.js";
-import { replaceAccountsFile, quarantineAccounts } from "./storage.js";
+import { quarantineAccounts } from "./storage.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 // Cooldown prevents spamming authentication requests for accounts with persistent failures.
@@ -183,19 +183,19 @@ export class FetchOrchestrator {
 
 		while (true) {
 			const accountCount = accountManager.getAccountCount();
-			if (!autoRepairAttempted && accountCount === 0) {
+			if (!autoRepairAttempted) {
 				const legacyAccounts = accountManager.getLegacyAccounts();
 				if (legacyAccounts.length > 0) {
 					autoRepairAttempted = true;
 					const repair = await accountManager.repairLegacyAccounts();
-					const storageSnapshot = accountManager.getStorageSnapshot();
-					if (repair.quarantined.length > 0) {
-						const quarantinedTokens = new Set(repair.quarantined.map(a => a.refreshToken));
-						const quarantineEntries = storageSnapshot.accounts.filter(a => quarantinedTokens.has(a.refreshToken));
-						await quarantineAccounts(storageSnapshot, quarantineEntries, "legacy-auto-repair-failed");
-						accountManager.removeAccountsByRefreshToken(quarantinedTokens);
-					} else {
-						await replaceAccountsFile(storageSnapshot);
+					const tokens = new Set(repair.quarantined.map((account) => account.refreshToken));
+					if (tokens.size > 0) {
+						const snapshot = accountManager.getStorageSnapshot();
+						const entries = snapshot.accounts.filter((entry) => tokens.has(entry.refreshToken));
+						await quarantineAccounts(snapshot, entries, "legacy-repair");
+						accountManager.removeAccountsByRefreshToken(tokens);
+					} else if (repair.repaired.length > 0) {
+						await accountManager.saveToDisk();
 					}
 					continue;
 				}
@@ -251,6 +251,8 @@ export class FetchOrchestrator {
 
 				const accountId = account.accountId ?? extractAccountId(accountAuth.access);
 				if (!accountId) {
+					const label = formatAccountLabel(account, account.index);
+					void showToast(`Auth failed: ${label}`, "error", quietMode);
 					accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
 					await accountManager.saveToDisk();
 					continue;
@@ -344,9 +346,11 @@ export class FetchOrchestrator {
 							logWarn(`[Fetch] 401 Unauthorized retry limit reached for ${account.email}`);
 						}
 
-						accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
-						await accountManager.saveToDisk();
-						break;
+					const label = formatAccountLabel(account, account.index);
+					void showToast(`Auth failed: ${label}`, "error", quietMode);
+					accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
+					await accountManager.saveToDisk();
+					break;
 					}
 
 					const errorResponse = await handleErrorResponse(res);
@@ -378,6 +382,15 @@ export class FetchOrchestrator {
 					if (!backoff.isDuplicate) await accountManager.saveToDisk();
 					break;
 				}
+			}
+
+			const tokenWaitMs =
+				getAccountSelectionStrategy(pluginConfig) === "hybrid"
+					? accountManager.getMinTokenWaitMsForFamily(modelFamily, model, tokenTracker)
+					: 0;
+			if (tokenWaitMs && tokenWaitMs > 0) {
+				await sleep(tokenWaitMs);
+				continue;
 			}
 
 			const waitMs = await accountManager.getMinWaitTimeForFamilyWithHydration(modelFamily, model);

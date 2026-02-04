@@ -8,10 +8,19 @@ export interface ExistingAccountLabel {
 	email?: string;
 	plan?: string;
 	accountId?: string;
+	refreshToken?: string;
 	enabled?: boolean;
 }
 
-export type ManageAccountAction = { action: "toggle" | "remove"; index: number };
+export type ManageAccountAction = {
+	action: "toggle" | "remove";
+	target: {
+		accountId?: string;
+		email?: string;
+		plan?: string;
+		refreshToken?: string;
+	};
+};
 
 export async function promptLoginMode(
 	existing: ExistingAccountLabel[],
@@ -76,7 +85,16 @@ export async function promptManageAccounts(
 					console.log(`Enter a number between 1 and ${existing.length}, or press Enter to finish.`);
 					continue;
 				}
-				return { action: wantsRemove ? "remove" : "toggle", index: parsed - 1 };
+				const selected = existing[parsed - 1];
+				return {
+					action: wantsRemove ? "remove" : "toggle",
+					target: {
+						accountId: selected?.accountId,
+						email: selected?.email,
+						plan: selected?.plan,
+						refreshToken: selected?.refreshToken,
+					},
+				};
 			}
 		} finally {
 			rl.close();
