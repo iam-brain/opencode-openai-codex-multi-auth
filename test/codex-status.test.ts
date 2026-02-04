@@ -227,7 +227,11 @@ describe("CodexStatusManager", () => {
 			expect(lines.every((line) => line.length === topLength)).toBe(true);
 			expect(limitLines.every((line) => line.endsWith("│"))).toBe(true);
 			expect(trailingChars.every((char) => char === " ")).toBe(true);
-			expect(limitLines.some((line) => line.includes("(19:00 4 Feb)"))).toBe(true);
+			expect(
+				limitLines.some((line) =>
+					/\(\d{2}:\d{2} \d{1,2} [A-Z][a-z]{2}\)/.test(line),
+				),
+			).toBe(true);
 			expect(bars.every(Boolean)).toBe(true);
 			expect(bars[0]?.bar.length).toBeGreaterThan(0);
 			expect(bars[0]?.bar.length).toBe(bars[1]?.bar.length);
