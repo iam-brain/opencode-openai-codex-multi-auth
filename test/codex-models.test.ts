@@ -58,7 +58,7 @@ describe("codex model metadata resolver", () => {
 
 		expect(mockFetch).toHaveBeenCalled();
 		expect(mockFetch.mock.calls[0]?.[0]?.toString()).toContain("/codex/models");
-		expect(defaults.onlineDefaultPersonality).toBe("none");
+		expect(defaults.onlineDefaultPersonality).toBeUndefined();
 		expect(defaults.personalityMessages?.friendly).toBe("Friendly from server");
 
 		rmSync(root, { recursive: true, force: true });
@@ -157,8 +157,45 @@ describe("codex model metadata resolver", () => {
 			fetchImpl: mockFetch as unknown as typeof fetch,
 		});
 
-		expect(defaults.onlineDefaultPersonality).toBe("none");
+		expect(defaults.onlineDefaultPersonality).toBeUndefined();
 		expect(defaults.personalityMessages?.friendly).toBe("Friendly from GitHub");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("uses explicit online personality default when provided by model metadata", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-online-default-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+
+		const mockFetch = vi.fn(async () => {
+			return new Response(
+				JSON.stringify({
+					models: [
+						{
+							slug: "gpt-5.3-codex",
+							model_messages: {
+								instructions_template: "Base {{ personality }}",
+								instructions_variables: {
+									personality: "PrAgMaTiC",
+									personality_default: "",
+									personality_friendly: "Friendly from server",
+									personality_pragmatic: "Pragmatic from server",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200 },
+			);
+		});
+
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		expect(defaults.onlineDefaultPersonality).toBe("pragmatic");
 		rmSync(root, { recursive: true, force: true });
 	});
 

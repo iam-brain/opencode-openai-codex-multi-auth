@@ -1019,6 +1019,33 @@ describe('Request Transformer Module', () => {
 				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
 				expect(result.instructions?.toLowerCase()).toContain('pragmatic');
 			});
+
+			it('applies global personality when runtime defaults only provide template messages', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5.3-codex',
+					input: [],
+				};
+				const userConfig: UserConfig = {
+					global: { personality: 'friendly' } as any,
+					models: {},
+				};
+				const result = await transformRequestBody(
+					body,
+					'BASE INSTRUCTIONS',
+					userConfig,
+					{
+						instructionsTemplate: 'Template {{ personality }}',
+						personalityMessages: {
+							default: '',
+							friendly: 'Friendly from runtime defaults',
+							pragmatic: 'Pragmatic from runtime defaults',
+						},
+						staticDefaultPersonality: 'none',
+					},
+				);
+				expect(result.instructions).toContain('Friendly from runtime defaults');
+				expect(result.instructions).not.toContain('Pragmatic from runtime defaults');
+			});
 		});
 
 		// NEW: Integration tests for all config scenarios

@@ -15,6 +15,7 @@ import { getLatestReleaseTag } from "./codex.js";
 type PersonalityOption = "none" | "friendly" | "pragmatic";
 
 interface ModelInstructionsVariables {
+	personality?: string | null;
 	personality_default?: string | null;
 	personality_friendly?: string | null;
 	personality_pragmatic?: string | null;
@@ -65,6 +66,11 @@ const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
 const MODELS_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_DEFAULT_PERSONALITY: PersonalityOption = "none";
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
+const PERSONALITY_VALUES = new Set<PersonalityOption>([
+	"none",
+	"friendly",
+	"pragmatic",
+]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,6 +82,13 @@ function normalizeModelSlug(model: string): string {
 
 function stripEffortSuffix(model: string): string {
 	return model.replace(EFFORT_SUFFIX_REGEX, "");
+}
+
+function normalizePersonalityValue(value: unknown): PersonalityOption | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (!PERSONALITY_VALUES.has(normalized as PersonalityOption)) return undefined;
+	return normalized as PersonalityOption;
 }
 
 function readModelsCache(): ModelsCache | null {
@@ -273,13 +286,12 @@ export async function getCodexModelRuntimeDefaults(
 
 	const instructionsVariables = model?.model_messages?.instructions_variables;
 	const instructionsTemplate = model?.model_messages?.instructions_template ?? undefined;
-	const hasOnlinePersonalityDefaults =
-		typeof instructionsVariables?.personality_default === "string" ||
-		typeof instructionsVariables?.personality_friendly === "string" ||
-		typeof instructionsVariables?.personality_pragmatic === "string";
+	const explicitOnlineDefault = normalizePersonalityValue(
+		instructionsVariables?.personality,
+	);
 
 	return {
-		onlineDefaultPersonality: hasOnlinePersonalityDefaults ? "none" : undefined,
+		onlineDefaultPersonality: explicitOnlineDefault,
 		instructionsTemplate: instructionsTemplate ?? undefined,
 		personalityMessages: {
 			default:
