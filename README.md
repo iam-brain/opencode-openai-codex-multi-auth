@@ -1,7 +1,9 @@
 ![Image 1: opencode-openai-codex-auth](assets/readme-hero.svg)
 
+
 **This project is now EOL and no further developments will be made. A complete rewrite, based on the current native implementation of OpenAI's OAuth in Opencode, is now underway and will be available at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-openai-multi) when complete.**
 
+  
 Fork maintained by [iam-brain](https://github.com/iam-brain).
 
 Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://github.com/numman-ali/opencode-openai-codex-auth)
@@ -11,7 +13,6 @@ Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://githu
 
 **One install. Every Codex model. Multi-account aware.**
 [Install](#-quick-start) · [Models](#-models) · [Configuration](#-configuration) · [Docs](#-docs)
-
 ---
 ## 💡 Philosophy
 > **"One config. Every model."**
