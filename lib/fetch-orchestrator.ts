@@ -26,7 +26,6 @@ import { type ProactiveRefreshQueue } from "./refresh-queue.js";
 import {
 	getAccountSelectionStrategy,
 	getAuthDebugEnabled,
-	getCodexMode,
 	getMaxCacheFirstWaitSeconds,
 	getRateLimitDedupWindowMs,
 	getRateLimitToastDebounceMs,
@@ -50,6 +49,7 @@ import {
 	handleErrorResponse,
 	handleSuccessResponse,
 } from "./request/fetch-helpers.js";
+import { normalizeModel } from "./request/request-transformer.js";
 import { getModelFamily } from "./prompts/codex.js";
 import { logDebug, logWarn } from "./logger.js";
 import { quarantineAccountsByRefreshToken } from "./storage.js";
@@ -141,17 +141,20 @@ export class FetchOrchestrator {
 		}
 
 		const isStreaming = originalBody.stream === true;
-		
-		// Map the request to a specific Codex model behavior based on plugin configuration.
-		const transformation = await transformRequestForCodex(init, url, userConfig, getCodexMode(pluginConfig));
-		
-		const requestInit = transformation?.updatedInit ?? init;
-		const model = transformation?.body.model;
-		const modelFamily: ModelFamily = model ? getModelFamily(model) : DEFAULT_MODEL_FAMILY;
+		const initialModel = normalizeModel(
+			typeof originalBody?.model === "string" ? originalBody.model : undefined,
+		);
+		let transformation:
+			| Awaited<ReturnType<typeof transformRequestForCodex>>
+			| undefined;
+		let requestInit = init;
+		let model: string | undefined = initialModel;
+		const modelFamily: ModelFamily = model
+			? getModelFamily(model)
+			: DEFAULT_MODEL_FAMILY;
 		const usePidOffset = pidOffsetEnabled && accountManager.getAccountCount() > 1;
 		const sessionBody =
-			(transformation?.body ??
-				(originalBody && typeof originalBody === "object" ? originalBody : undefined)) as
+			(originalBody && typeof originalBody === "object" ? originalBody : undefined) as
 				| RequestBody
 				| undefined;
 		const sessionKey = resolveSessionKey(sessionBody);
@@ -168,7 +171,7 @@ export class FetchOrchestrator {
 		}
 		let sessionToastEmitted = false;
 
-		const abortSignal = requestInit?.signal ?? init?.signal ?? null;
+		const abortSignal = init?.signal ?? null;
 		const sleep = (ms: number): Promise<void> =>
 			new Promise((resolve, reject) => {
 				if (abortSignal?.aborted) return reject(new Error("Aborted"));
@@ -256,6 +259,15 @@ export class FetchOrchestrator {
 					continue;
 				}
 				account.accountId = accountId;
+
+				if (!transformation) {
+					transformation = await transformRequestForCodex(init, url, userConfig, {
+						accessToken: accountAuth.access,
+						accountId,
+					});
+					requestInit = transformation?.updatedInit ?? init;
+					model = transformation?.body.model ?? model;
+				}
 
 				const headers = createCodexHeaders(requestInit, accountId, accountAuth.access, { model, promptCacheKey: transformation?.body?.prompt_cache_key });
 

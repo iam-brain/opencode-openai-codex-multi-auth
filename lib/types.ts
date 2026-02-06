@@ -5,8 +5,9 @@ import type { Auth, Provider, Model } from "@opencode-ai/sdk";
  */
 export interface PluginConfig {
 	/**
-	 * Enable CODEX_MODE (Codex-OpenCode bridge prompt instead of tool remap)
-	 * @default true
+	 * Legacy toggle for bridge mode.
+	 * Deprecated: bridge injection has been removed and this flag no longer changes runtime behavior.
+	 * @default false
 	 */
 	codexMode?: boolean;
 
@@ -182,6 +183,7 @@ export interface ConfigOptions {
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on";
 	textVerbosity?: "low" | "medium" | "high";
+	personality?: "none" | "friendly" | "pragmatic";
 	include?: string[];
 }
 

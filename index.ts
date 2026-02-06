@@ -79,6 +79,202 @@ import { formatToastMessage } from "./lib/formatting.js";
 import { logCritical } from "./lib/logger.js";
 import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
 
+const LEGACY_ALLOWED_METADATA_MODELS = new Set([
+	"gpt-5.2",
+	"gpt-5.1",
+	"gpt-5-codex",
+	"codex-mini-latest",
+]);
+
+const CODEX_METADATA_REGEX =
+	/^(gpt-\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(none|minimal|low|medium|high|xhigh))?$/i;
+
+const CODEX_STANDARD_VARIANTS = ["low", "medium", "high"] as const;
+const CODEX_XHIGH_VARIANTS = ["low", "medium", "high", "xhigh"] as const;
+const CODEX_MINI_VARIANTS = ["medium", "high"] as const;
+
+const CLONE_IDENTITY_FIELDS = [
+	"id",
+	"slug",
+	"model",
+	"name",
+	"displayName",
+	"display_name",
+] as const;
+const VARIANT_DISALLOWED_FIELDS = new Set(["id", "slug", "model", "variants"]);
+
+function parseCodexMetadataModel(
+	modelId: string,
+): { baseId: string; effort?: string } | undefined {
+	const match = modelId.toLowerCase().match(CODEX_METADATA_REGEX);
+	if (!match?.[1]) return undefined;
+	return {
+		baseId: match[1],
+		effort: match[2]?.toLowerCase(),
+	};
+}
+
+function codexModelSupportsXhigh(baseId: string): boolean {
+	const normalized = baseId.toLowerCase();
+	if (normalized.includes("-codex-mini")) return false;
+	if (normalized.includes("-codex-max")) return true;
+
+	const versionPart = normalized.replace(/^gpt-/, "").split("-codex")[0];
+	const [majorRaw, minorRaw = "0"] = versionPart.split(".");
+	const major = Number(majorRaw);
+	const minor = Number(minorRaw);
+
+	if (!Number.isFinite(major)) return false;
+	if (major > 5) return true;
+	return major === 5 && Number.isFinite(minor) && minor >= 2;
+}
+
+function codexVariantSet(baseId: string): readonly string[] {
+	const normalized = baseId.toLowerCase();
+	if (normalized.includes("-codex-mini")) return CODEX_MINI_VARIANTS;
+	if (codexModelSupportsXhigh(normalized)) return CODEX_XHIGH_VARIANTS;
+	return CODEX_STANDARD_VARIANTS;
+}
+
+function isAllowedMetadataModel(modelId: string): boolean {
+	const normalized = modelId.toLowerCase();
+	if (LEGACY_ALLOWED_METADATA_MODELS.has(normalized)) return true;
+	return parseCodexMetadataModel(normalized) !== undefined;
+}
+
+function cloneModelMetadata(
+	template: Record<string, unknown>,
+	targetId: string,
+): Record<string, unknown> {
+	const cloned = { ...template };
+	for (const field of CLONE_IDENTITY_FIELDS) {
+		if (typeof cloned[field] === "string") {
+			cloned[field] = targetId;
+		}
+	}
+	return cloned;
+}
+
+function toVariantMetadata(template: Record<string, unknown>): Record<string, unknown> {
+	const variant: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(template)) {
+		if (VARIANT_DISALLOWED_FIELDS.has(key)) continue;
+		variant[key] = value;
+	}
+	return variant;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function looksLikeModelMetadataRegistry(models: Record<string, unknown>): boolean {
+	for (const value of Object.values(models)) {
+		if (!isObjectRecord(value)) continue;
+		if (
+			typeof value.instructions === "string" ||
+			typeof value.displayName === "string" ||
+			typeof value.display_name === "string"
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function normalizeProviderModelMetadata(
+	models: Record<string, unknown>,
+	options?: { force?: boolean },
+): void {
+	if (!options?.force && !looksLikeModelMetadataRegistry(models)) return;
+
+	const codexBases = new Map<
+		string,
+		{
+			baseTemplate?: Record<string, unknown>;
+			fallbackTemplate?: Record<string, unknown>;
+			seenEfforts: Set<string>;
+			variantTemplates: Map<string, Record<string, unknown>>;
+		}
+	>();
+
+	for (const [modelId, metadata] of Object.entries(models)) {
+		const parsed = parseCodexMetadataModel(modelId);
+		if (!parsed || !isObjectRecord(metadata)) continue;
+
+		const entry = codexBases.get(parsed.baseId) ?? {
+			seenEfforts: new Set<string>(),
+			variantTemplates: new Map<string, Record<string, unknown>>(),
+		};
+		if (modelId.toLowerCase() === parsed.baseId) {
+			entry.baseTemplate = metadata;
+		}
+		if (!entry.fallbackTemplate) {
+			entry.fallbackTemplate = metadata;
+		}
+		if (parsed.effort) entry.seenEfforts.add(parsed.effort);
+		if (parsed.effort) {
+			const prior = entry.variantTemplates.get(parsed.effort);
+			entry.variantTemplates.set(parsed.effort, {
+				...(prior ?? {}),
+				...toVariantMetadata(metadata),
+			});
+		}
+
+		const existingVariants = isObjectRecord(metadata.variants)
+			? (metadata.variants as Record<string, unknown>)
+			: undefined;
+		if (existingVariants) {
+			for (const variantName of Object.keys(existingVariants)) {
+				entry.seenEfforts.add(variantName.toLowerCase());
+			}
+		}
+
+		codexBases.set(parsed.baseId, entry);
+	}
+
+	for (const [baseId, entry] of codexBases) {
+		const template = entry.baseTemplate ?? entry.fallbackTemplate;
+		if (!template) continue;
+
+		const baseModel =
+			models[baseId] !== undefined && isObjectRecord(models[baseId])
+				? (models[baseId] as Record<string, unknown>)
+				: cloneModelMetadata(template, baseId);
+		models[baseId] = baseModel;
+
+		const variants = isObjectRecord(baseModel.variants)
+			? (baseModel.variants as Record<string, unknown>)
+			: {};
+
+		const efforts = new Set<string>([
+			...codexVariantSet(baseId),
+			...entry.seenEfforts,
+		]);
+
+		for (const effort of efforts) {
+			const existingVariant = isObjectRecord(variants[effort])
+				? (variants[effort] as Record<string, unknown>)
+				: {};
+			const templateVariant = entry.variantTemplates.get(effort) ?? {};
+			variants[effort] = {
+				...templateVariant,
+				...existingVariant,
+				reasoningEffort: effort,
+			};
+		}
+		baseModel.variants = variants;
+	}
+
+	for (const modelId of Object.keys(models)) {
+		const parsed = parseCodexMetadataModel(modelId);
+		if (parsed?.effort) {
+			delete models[modelId];
+			continue;
+		}
+		if (!isAllowedMetadataModel(modelId)) delete models[modelId];
+	}
+}
 
 
 export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
@@ -385,8 +581,12 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		auth: {
 			provider: PROVIDER_ID,
 			async loader(getAuth: () => Promise<Auth>, provider: unknown) {
-				const auth = await getAuth();
-				if (!isOAuthAuth(auth)) return {};
+					const auth = await getAuth();
+					if (!isOAuthAuth(auth)) return {};
+					const providerConfig = provider as { options?: Record<string, unknown>; models?: UserConfig["models"] } | undefined;
+					if (providerConfig?.models && isObjectRecord(providerConfig.models)) {
+						normalizeProviderModelMetadata(providerConfig.models, { force: true });
+					}
 
 				const pluginConfig = loadPluginConfig();
 				configureStorageForPluginConfig(pluginConfig, process.cwd());
@@ -401,7 +601,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					return {};
 				}
 
-				const providerConfig = provider as { options?: Record<string, unknown>; models?: UserConfig["models"] } | undefined;
 				const userConfig: UserConfig = { global: providerConfig?.options || {}, models: providerConfig?.models || {} };
 
 				const pidOffsetEnabled = getPidOffsetEnabled(pluginConfig);
@@ -486,6 +685,11 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 		methods: authMethods,
 	},
 		config: async (cfg) => {
+			const openAIModels = (cfg as { provider?: { openai?: { models?: unknown } } })?.provider?.openai?.models;
+			if (openAIModels && isObjectRecord(openAIModels)) {
+				normalizeProviderModelMetadata(openAIModels, { force: true });
+			}
+
 			cfg.command = cfg.command || {};
 			cfg.command["codex-status"] = {
 				template: "Run the codex-status tool and output the result EXACTLY as returned by the tool, without any additional text or commentary.",

@@ -26,7 +26,7 @@ This plugin bridges two different systems with careful engineering:
 1. **AI SDK Compatibility** - Filters `item_reference` (AI SDK construct) for Codex API compatibility
 2. **Stateless Operation** - ChatGPT backend requires `store: false`, verified via testing
 3. **Full Context Preservation** - Sends complete message history (IDs stripped) for LLM context
-4. **15-Minute Caching** - Prevents GitHub API rate limit exhaustion
+4. **Online-First Metadata** - Uses `/codex/models` and GitHub templates with cache/fallback safety
 5. **Per-Model Configuration** - Enables quality presets with quick switching
 
 **Testing**: 200+ unit tests + integration tests with actual API verification

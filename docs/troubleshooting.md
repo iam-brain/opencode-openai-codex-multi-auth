@@ -351,7 +351,7 @@ Your input exceeds the context window
 **2. Use compact mode** (if OpenCode supports it)
 
 **3. Switch to model with larger context:**
-- gpt-5-codex has larger context than gpt-5-nano
+- gpt-5.1-codex / gpt-5.2-codex presets have larger context windows than lightweight presets
 
 ---
 
@@ -367,15 +367,20 @@ Using cached instructions
 
 **Cause**: GitHub API rate limit (60 req/hour for unauthenticated)
 
-**Status**: **Fixed in v2.1.2** with 15-minute caching
+**Current behavior**:
+- Instructions are ETag-cached with periodic refresh checks
+- Runtime model metadata is online-first (`/codex/models`) with local cache + GitHub/static fallbacks
 
 **Verify fix:**
 ```bash
-# Should only check GitHub once per 15 minutes
-ls -lt ~/.config/opencode/cache/codex-instructions-meta.json
+# Check instruction cache metadata files
+ls -lt ~/.config/opencode/cache/*-instructions-meta.json
 
-# Check lastChecked timestamp
-cat ~/.config/opencode/cache/codex-instructions-meta.json | jq '.lastChecked'
+# Check lastChecked timestamp (example family)
+cat ~/.config/opencode/cache/gpt-5.1-instructions-meta.json | jq '.lastChecked'
+
+# Check runtime model metadata fallback cache
+ls -lt ~/.config/opencode/cache/codex-models-cache.json
 ```
 
 **Manual workaround** (if on old version):
@@ -456,7 +461,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"
 **Reduce tokens:**
 1. Lower `textVerbosity`
 2. Lower `reasoningEffort`
-3. Shorter system prompts (disable CODEX_MODE if needed)
+3. Keep custom system prompts concise
 
 ---
 

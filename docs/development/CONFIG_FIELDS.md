@@ -2,6 +2,8 @@
 
 Understanding the difference between config key, `id`, and `name` fields in OpenCode model configuration.
 
+> Note: Examples may use legacy aliases (for example `gpt-5-codex-*`) to show compatibility behavior. Runtime normalization maps these aliases to current canonical API slugs.
+
 ## The Three Fields
 
 ```json

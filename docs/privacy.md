@@ -32,10 +32,10 @@ All data is stored **locally on your machine**:
 ### Cache Files
 - **Location:** `~/.config/opencode/cache/`
 - **Contents:**
-  - `codex-instructions.txt` - Codex system instructions (fetched from GitHub)
-  - `codex-instructions-meta.json` - ETag and timestamp metadata
-- **Purpose:** Reduce GitHub API calls and improve performance
-- **TTL:** 15 minutes (automatically refreshes when stale)
+  - `gpt-5.1-instructions.md`, `gpt-5.2-instructions.md`, `gpt-5.2-codex-instructions.md`, etc. (Codex system instructions)
+  - `*-instructions-meta.json` (ETag/tag/timestamp metadata per family)
+  - `codex-models-cache.json` (runtime `/codex/models` fallback cache)
+- **Purpose:** Reduce GitHub API calls, preserve offline fallbacks, and improve startup/runtime performance
 
 ### Debug Logs
 - **Location:** `~/.config/opencode/logs/codex-plugin/`
@@ -81,15 +81,15 @@ When you use the plugin, the following is transmitted to OpenAI:
 ### GitHub API
 The plugin fetches Codex instructions from GitHub:
 - **URL:** `https://api.github.com/repos/openai/codex/releases/latest`
-- **Purpose:** Get latest Codex system instructions
-- **Frequency:** Once per 15 minutes (cached with ETag)
+- **Purpose:** Resolve latest release tag, then fetch prompt/model metadata files from `raw.githubusercontent.com`
+- **Frequency:** Instructions use ETag + 15-minute staleness checks; runtime model metadata also has local cache fallback
 - **Data sent:** HTTP GET request (no personal data)
 - **Rate limiting:** 60 requests/hour (unauthenticated)
 
 ### OpenAI Services
 All interactions with OpenAI go through:
 - **OAuth:** `https://chatgpt.com/oauth`
-- **API:** `https://chatgpt.com/backend-api/conversation`
+- **API:** `https://chatgpt.com/backend-api/codex/responses` and `https://chatgpt.com/backend-api/codex/models`
 
 See [OpenAI Privacy Policy](https://openai.com/policies/privacy-policy/) for how OpenAI handles data.
 

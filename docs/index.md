@@ -128,7 +128,7 @@ This plugin represents significant engineering effort to bridge OpenCode and the
 - **7-step fetch flow** with precise transformations
 - **AI SDK compatibility layer** handling `item_reference` and other SDK constructs
 - **Stateless multi-turn** conversations via encrypted reasoning content
-- **15-minute caching** to prevent GitHub API rate limits
+- **Online-first metadata resolution** with resilient fallback chains for templates and runtime model metadata
 - **Comprehensive test coverage** with actual API verification
 
 **Explore the development docs** to see the depth of implementation:

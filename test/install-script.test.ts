@@ -8,10 +8,15 @@ import { parse } from 'jsonc-parser';
 const SCRIPT_PATH = resolve(process.cwd(), 'scripts', 'install-opencode-codex-auth.js');
 const EXPECTED_PLUGIN_LATEST = 'opencode-openai-codex-multi-auth@latest';
 
-const runInstaller = (args: string[], homeDir: string) => {
-	execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
-		env: { ...process.env, HOME: homeDir },
+const runInstaller = (
+	args: string[],
+	homeDir: string,
+	envOverrides: Record<string, string> = {},
+) => {
+	return execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
+		env: { ...process.env, HOME: homeDir, ...envOverrides },
 		stdio: 'pipe',
+		encoding: 'utf8',
 	});
 };
 
@@ -88,6 +93,102 @@ describe('Install script', () => {
 		expect(existsSync(configPath)).toBe(true);
 		const { data } = readJsoncFile(configPath);
 		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
+	});
+
+	it('uses online template when available', () => {
+		const homeDir = makeHome();
+		const releaseApiUrl =
+			'https://api.github.com/repos/iam-brain/opencode-openai-codex-multi-auth/releases/latest';
+		const templateUrl =
+			'https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/vtest/config/opencode-modern.json';
+
+		runInstaller(['--no-cache-clear'], homeDir, {
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_TEST_FETCH_MOCKS: JSON.stringify({
+				[releaseApiUrl]: {
+					status: 200,
+					json: { tag_name: 'vtest' },
+				},
+				[templateUrl]: {
+					status: 200,
+					json: {
+						provider: {
+							openai: {
+								models: {
+									'online-only-model': {
+										options: { reasoningEffort: 'high' },
+									},
+								},
+							},
+						},
+					},
+				},
+			}),
+		});
+
+		const configPath = join(homeDir, '.config', 'opencode', 'opencode.jsonc');
+		const { data } = readJsoncFile(configPath);
+		expect(data.provider.openai.models['online-only-model']).toBeDefined();
+	});
+
+	it('falls back to static template when online template payload is malformed', () => {
+		const homeDir = makeHome();
+		const releaseApiUrl =
+			'https://api.github.com/repos/iam-brain/opencode-openai-codex-multi-auth/releases/latest';
+		const templateUrl =
+			'https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/vtest/config/opencode-modern.json';
+
+		runInstaller(['--no-cache-clear'], homeDir, {
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_TEST_FETCH_MOCKS: JSON.stringify({
+				[releaseApiUrl]: {
+					status: 200,
+					json: { tag_name: 'vtest' },
+				},
+				[templateUrl]: {
+					status: 200,
+					json: {
+						provider: {
+							openai: {
+								models: [],
+							},
+						},
+					},
+				},
+			}),
+		});
+
+		const configPath = join(homeDir, '.config', 'opencode', 'opencode.jsonc');
+		const { data } = readJsoncFile(configPath);
+		expect(data.provider.openai.models['online-only-model']).toBeUndefined();
+		expect(data.provider.openai.models['gpt-5.2']).toBeDefined();
+	});
+
+	it('rejects disallowed endpoint override hosts in test mode', () => {
+		const homeDir = makeHome();
+		const output = runInstaller(['--no-cache-clear'], homeDir, {
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_INSTALLER_TEST_MODE: '1',
+			OPENCODE_TEMPLATE_RELEASE_API: 'https://evil.example/releases/latest',
+			OPENCODE_TEMPLATE_RAW_BASE: 'https://evil.example',
+		});
+
+		expect(output).toContain('Ignoring release endpoint override with disallowed host');
+		expect(output).toContain('Ignoring raw endpoint override with disallowed host');
+	});
+
+	it('ignores endpoint overrides outside test mode', () => {
+		const homeDir = makeHome();
+		const output = runInstaller(['--no-cache-clear'], homeDir, {
+			VITEST: '',
+			OPENCODE_INSTALLER_TEST_MODE: '0',
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_TEMPLATE_RELEASE_API: 'http://localhost:7777/releases/latest',
+			OPENCODE_TEMPLATE_RAW_BASE: 'http://localhost:7777',
+		});
+
+		expect(output).toContain('Ignoring release endpoint override outside test mode');
+		expect(output).toContain('Ignoring raw endpoint override outside test mode');
 	});
 
 	it('preserves pinned plugin versions', () => {

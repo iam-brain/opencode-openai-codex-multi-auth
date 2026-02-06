@@ -61,7 +61,7 @@ describe('Plugin Configuration', () => {
 
 	describe('loadPluginConfig', () => {
 		const expectedDefault = {
-			codexMode: true,
+			codexMode: false,
 			accountSelectionStrategy: 'sticky',
 			pidOffsetEnabled: true,
 			quietMode: false,
@@ -96,11 +96,11 @@ describe('Plugin Configuration', () => {
 
 		it('should load config from file when it exists', () => {
 			mockExistsSync.mockReturnValue(true);
-			mockReadFileSync.mockReturnValue(JSON.stringify({ codexMode: false }));
+			mockReadFileSync.mockReturnValue(JSON.stringify({ codexMode: true }));
 
 			const config = loadPluginConfig();
 
-			expect(config).toEqual({ ...expectedDefault, codexMode: false });
+			expect(config).toEqual({ ...expectedDefault, codexMode: true });
 		});
 
 		it('should merge user config with defaults', () => {
@@ -169,68 +169,15 @@ describe('Plugin Configuration', () => {
 	});
 
 	describe('getCodexMode', () => {
-		it('should return true by default', () => {
-			delete process.env.CODEX_MODE;
-			const config: PluginConfig = {};
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(true);
+		it('should always return false by default', () => {
+			expect(getCodexMode({})).toBe(false);
 		});
 
-		it('should use config value when env var not set', () => {
-			delete process.env.CODEX_MODE;
-			const config: PluginConfig = { codexMode: false };
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(false);
-		});
-
-		it('should prioritize env var CODEX_MODE=1 over config', () => {
-			process.env.CODEX_MODE = '1';
-			const config: PluginConfig = { codexMode: false };
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(true);
-		});
-
-		it('should prioritize env var CODEX_MODE=0 over config', () => {
-			process.env.CODEX_MODE = '0';
-			const config: PluginConfig = { codexMode: true };
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(false);
-		});
-
-		it('should handle env var with any value other than "1" as false', () => {
-			process.env.CODEX_MODE = 'false';
-			const config: PluginConfig = { codexMode: true };
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(false);
-		});
-
-		it('should use config codexMode=true when explicitly set', () => {
-			delete process.env.CODEX_MODE;
-			const config: PluginConfig = { codexMode: true };
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(true);
-		});
-
-		it('should prioritize CODEX_AUTH_MODE over CODEX_MODE', () => {
+		it('should ignore legacy env vars and config values', () => {
 			process.env.CODEX_AUTH_MODE = '1';
-			process.env.CODEX_MODE = '0';
-			const config: PluginConfig = { codexMode: false };
-
-			const result = getCodexMode(config);
-
-			expect(result).toBe(true);
+			process.env.CODEX_MODE = '1';
+			expect(getCodexMode({ codexMode: true })).toBe(false);
+			expect(getCodexMode({ codexMode: false })).toBe(false);
 		});
 	});
 
@@ -350,17 +297,12 @@ describe('Plugin Configuration', () => {
 	});
 
 	describe('Priority order', () => {
-		it('should follow priority: env var > config file > default', () => {
-			// Test 1: env var overrides config
-			process.env.CODEX_MODE = '0';
+		it('keeps codexMode as a legacy no-op', () => {
+			process.env.CODEX_AUTH_MODE = '1';
+			process.env.CODEX_MODE = '1';
 			expect(getCodexMode({ codexMode: true })).toBe(false);
-
-			// Test 2: config overrides default
-			delete process.env.CODEX_MODE;
 			expect(getCodexMode({ codexMode: false })).toBe(false);
-
-			// Test 3: default when neither set
-			expect(getCodexMode({})).toBe(true);
+			expect(getCodexMode({})).toBe(false);
 		});
 	});
 });

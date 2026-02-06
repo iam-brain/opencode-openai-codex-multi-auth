@@ -41,6 +41,7 @@ export const OPENAI_HEADER_VALUES = {
 export const URL_PATHS = {
 	RESPONSES: "/responses",
 	CODEX_RESPONSES: "/codex/responses",
+	CODEX_MODELS: "/codex/models",
 } as const;
 
 /** JWT claim path for ChatGPT account ID */

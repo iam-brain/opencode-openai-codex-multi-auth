@@ -2,6 +2,8 @@
 
 Comprehensive testing matrix for all config scenarios and backwards compatibility.
 
+> Note: Some examples intentionally use legacy aliases (`gpt-5`, `gpt-5-codex`, etc.) to verify compatibility paths. Current runtime normalizes these to current canonical slugs (for example, `gpt-5.1`, `gpt-5.1-codex`).
+
 ## Test Scenarios Matrix
 
 ### Scenario 1: Default OpenCode Models (No Custom Config)
@@ -9,7 +11,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 **Config:**
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"]
+  "plugin": ["opencode-openai-codex-multi-auth"]
 }
 ```
 
@@ -40,7 +42,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 **Config:**
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "options": {
@@ -81,7 +83,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 **Config:**
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "options": {
@@ -116,7 +118,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 **Config:**
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "models": {
@@ -209,7 +211,7 @@ API receives: "gpt-5-codex" ✅
 **Config:**
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"]
+  "plugin": ["opencode-openai-codex-multi-auth"]
 }
 ```
 
@@ -346,7 +348,7 @@ Turn 4: > now delete it
 **Config:**
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "model": "openai/gpt-5-codex"
 }
 ```
@@ -443,12 +445,12 @@ DEBUG_CODEX_PLUGIN=1 opencode run "test" --model=openai/gpt-5-codex
 
 ```bash
 # 1. Clear cache
-(cd ~ && rm -rf .cache/opencode/node_modules/opencode-openai-codex-auth)
+(cd ~ && rm -rf .cache/opencode/node_modules/opencode-openai-codex-multi-auth)
 
 # 2. Use minimal config
 cat > ~/.config/opencode/opencode.jsonc <<'EOF'
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "model": "openai/gpt-5-codex"
 }
 EOF
@@ -472,7 +474,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "write hello world to test.txt"
 # Update config with custom models
 cat > ~/.config/opencode/opencode.jsonc <<'EOF'
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "models": {

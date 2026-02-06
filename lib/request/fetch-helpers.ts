@@ -8,6 +8,7 @@ import type { OpencodeClient } from "@opencode-ai/sdk";
 import { refreshAccessToken } from "../auth/auth.js";
 import { logRequest, logWarn } from "../logger.js";
 import { getCodexInstructions, getModelFamily } from "../prompts/codex.js";
+import { getCodexModelRuntimeDefaults } from "../prompts/codex-models.js";
 import { transformRequestBody, normalizeModel } from "./request-transformer.js";
 import { convertSseToJson, ensureContentType } from "./response-handler.js";
 import type { UserConfig, RequestBody } from "../types.js";
@@ -95,14 +96,14 @@ export function rewriteUrlForCodex(url: string): string {
  * @param init - Request init options
  * @param url - Request URL
  * @param userConfig - User configuration
- * @param codexMode - Enable CODEX_MODE (bridge prompt instead of tool remap)
+ * @param runtimeContext - Runtime context used for server-side model metadata lookups
  * @returns Transformed body and updated init, or undefined if no body
  */
 export async function transformRequestForCodex(
 	init: RequestInit | undefined,
 	url: string,
 	userConfig: UserConfig,
-	codexMode = true,
+	runtimeContext?: { accessToken?: string; accountId?: string },
 ): Promise<{ body: RequestBody; updatedInit: RequestInit } | undefined> {
 	if (!init?.body) return undefined;
 
@@ -123,19 +124,22 @@ export async function transformRequestForCodex(
 			hasTools: !!body.tools,
 			hasInput: !!body.input,
 			inputLength: body.input?.length,
-			codexMode,
 			body: body as unknown as Record<string, unknown>,
 		});
 
 		// Fetch model-specific Codex instructions (cached per model family)
 		const codexInstructions = await getCodexInstructions(normalizedModel);
+		const runtimeDefaults = await getCodexModelRuntimeDefaults(normalizedModel, {
+			accessToken: runtimeContext?.accessToken,
+			accountId: runtimeContext?.accountId,
+		});
 
 		// Transform request body
 		const transformedBody = await transformRequestBody(
 			body,
 			codexInstructions,
 			userConfig,
-			codexMode,
+			runtimeDefaults,
 		);
 
 		// Log transformed request

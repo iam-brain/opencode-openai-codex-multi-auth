@@ -12,22 +12,23 @@
  * Value: The normalized model name to send to the API
  */
 export const MODEL_MAP: Record<string, string> = {
-// ============================================================================
-// GPT-5.1 Codex Models
-// ============================================================================
-	"gpt-5.1-codex": "gpt-5.1-codex",
-	"gpt-5.1-codex-low": "gpt-5.1-codex",
-	"gpt-5.1-codex-medium": "gpt-5.1-codex",
-	"gpt-5.1-codex-high": "gpt-5.1-codex",
+	// ============================================================================
+	// GPT-5.3 Codex Models (low/medium/high/xhigh)
+	// ============================================================================
+	"gpt-5.3-codex": "gpt-5.3-codex",
+	"gpt-5.3-codex-low": "gpt-5.3-codex",
+	"gpt-5.3-codex-medium": "gpt-5.3-codex",
+	"gpt-5.3-codex-high": "gpt-5.3-codex",
+	"gpt-5.3-codex-xhigh": "gpt-5.3-codex",
 
 	// ============================================================================
-	// GPT-5.1 Codex Max Models
+	// GPT-5.2 Codex Models (low/medium/high/xhigh)
 	// ============================================================================
-	"gpt-5.1-codex-max": "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-low": "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-medium": "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-high": "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-xhigh": "gpt-5.1-codex-max",
+	"gpt-5.2-codex": "gpt-5.2-codex",
+	"gpt-5.2-codex-low": "gpt-5.2-codex",
+	"gpt-5.2-codex-medium": "gpt-5.2-codex",
+	"gpt-5.2-codex-high": "gpt-5.2-codex",
+	"gpt-5.2-codex-xhigh": "gpt-5.2-codex",
 
 	// ============================================================================
 	// GPT-5.2 Models (supports none/low/medium/high/xhigh per OpenAI API docs)
@@ -40,13 +41,13 @@ export const MODEL_MAP: Record<string, string> = {
 	"gpt-5.2-xhigh": "gpt-5.2",
 
 	// ============================================================================
-	// GPT-5.2 Codex Models (low/medium/high/xhigh)
+	// GPT-5.1 Codex Max Models
 	// ============================================================================
-	"gpt-5.2-codex": "gpt-5.2-codex",
-	"gpt-5.2-codex-low": "gpt-5.2-codex",
-	"gpt-5.2-codex-medium": "gpt-5.2-codex",
-	"gpt-5.2-codex-high": "gpt-5.2-codex",
-	"gpt-5.2-codex-xhigh": "gpt-5.2-codex",
+	"gpt-5.1-codex-max": "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-low": "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-medium": "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-high": "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-xhigh": "gpt-5.1-codex-max",
 
 	// ============================================================================
 	// GPT-5.1 Codex Mini Models
@@ -54,6 +55,14 @@ export const MODEL_MAP: Record<string, string> = {
 	"gpt-5.1-codex-mini": "gpt-5.1-codex-mini",
 	"gpt-5.1-codex-mini-medium": "gpt-5.1-codex-mini",
 	"gpt-5.1-codex-mini-high": "gpt-5.1-codex-mini",
+
+	// ============================================================================
+	// GPT-5.1 Codex Models
+	// ============================================================================
+	"gpt-5.1-codex": "gpt-5.1-codex",
+	"gpt-5.1-codex-low": "gpt-5.1-codex",
+	"gpt-5.1-codex-medium": "gpt-5.1-codex",
+	"gpt-5.1-codex-high": "gpt-5.1-codex",
 
 	// ============================================================================
 	// GPT-5.1 General Purpose Models (supports none/low/medium/high per OpenAI API docs)
@@ -86,6 +95,43 @@ export const MODEL_MAP: Record<string, string> = {
 	"gpt-5-nano": "gpt-5.1",
 };
 
+const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
+const GPT_CODEX_DYNAMIC_REGEX =
+	/^(gpt-\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
+const GPT_GENERAL_DYNAMIC_REGEX =
+	/^(gpt-\d+(?:\.\d+)*)(?:-(?:none|minimal|low|medium|high|xhigh))$/i;
+const LEGACY_DYNAMIC_ALIASES: Record<string, string> = {
+	"gpt-5": "gpt-5.1",
+	"gpt-5-codex": "gpt-5.1-codex",
+	"gpt-5-codex-max": "gpt-5.1-codex-max",
+	"gpt-5-codex-mini": "gpt-5.1-codex-mini",
+};
+
+function applyDynamicAlias(baseModel: string): string {
+	return LEGACY_DYNAMIC_ALIASES[baseModel] ?? baseModel;
+}
+
+function getDynamicNormalizedModel(modelId: string): string | undefined {
+	const normalized = modelId.toLowerCase();
+
+	const codexMatch = normalized.match(GPT_CODEX_DYNAMIC_REGEX);
+	if (codexMatch?.[1]) {
+		return applyDynamicAlias(codexMatch[1]);
+	}
+
+	const generalMatch = normalized.match(GPT_GENERAL_DYNAMIC_REGEX);
+	if (generalMatch?.[1]) {
+		return applyDynamicAlias(generalMatch[1]);
+	}
+
+	// Fallback for odd casing/formatting where only effort suffix needs stripping.
+	if (EFFORT_SUFFIX_REGEX.test(normalized) && normalized.startsWith("gpt-")) {
+		return applyDynamicAlias(normalized.replace(EFFORT_SUFFIX_REGEX, ""));
+	}
+
+	return undefined;
+}
+
 /**
  * Get normalized model name from config ID
  *
@@ -104,8 +150,11 @@ export function getNormalizedModel(modelId: string): string | undefined {
 		const match = Object.keys(MODEL_MAP).find(
 			(key) => key.toLowerCase() === lowerModelId,
 		);
+		if (match) {
+			return MODEL_MAP[match];
+		}
 
-		return match ? MODEL_MAP[match] : undefined;
+		return getDynamicNormalizedModel(lowerModelId);
 	} catch {
 		return undefined;
 	}

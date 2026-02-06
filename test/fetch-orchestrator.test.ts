@@ -199,7 +199,12 @@ describe('FetchOrchestrator', () => {
 		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
 
 		expect(response.status).toBe(200);
-		expect(accountManager.markRateLimited).toHaveBeenCalledWith(expect.objectContaining({ index: 0 }), 60000, expect.any(String), undefined);
+		expect(accountManager.markRateLimited).toHaveBeenCalledWith(
+			expect.objectContaining({ index: 0 }),
+			60000,
+			expect.any(String),
+			expect.any(String),
+		);
 		expect(accountManager.markSwitched).toHaveBeenCalled();
 		expect(mockFetch).toHaveBeenCalledTimes(2);
 	});

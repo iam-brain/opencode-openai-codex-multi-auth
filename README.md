@@ -67,8 +67,35 @@ opencode auth login
 ## 🧩 Configuration
 - Modern (OpenCode v1.0.210+): `config/opencode-modern.json`
 - Legacy (OpenCode v1.0.209 and below): `config/opencode-legacy.json`
+- Installer template source: latest GitHub release → GitHub `main` → bundled static template fallback
+- Runtime model metadata source: Codex `/backend-api/codex/models` → local cache → GitHub `models.json` (release/main) → static template defaults
 
 Minimal configs are not supported for GPT‑5.x; use the full configs above.
+
+Personality is supported for all current and future models via `options.personality`:
+
+```json
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "personality": "friendly"
+      },
+      "models": {
+        "gpt-5.3-codex": {
+          "options": {
+            "personality": "pragmatic"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Accepted values: `none`, `friendly`, `pragmatic` (case-insensitive).
+
+Legacy note: `codexMode` is deprecated and now a no-op.
 ---
 ## ⌨️ Slash Commands (TUI)
 In the OpenCode TUI, you can use these commands to manage your accounts and monitor usage:
@@ -86,6 +113,7 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 - Variant system support (v1.0.210+) + legacy presets
 - Multimodal input enabled for all models
 - Usage‑aware errors + automatic token refresh
+- Online-first template/model metadata resolution with resilient fallbacks
 - Multi-account support with sticky selection + PID offset (great for parallel agents)
 - Account enable/disable management (via `opencode auth login` manage)
 - Strict account identity matching (`accountId` + `email` + `plan`)

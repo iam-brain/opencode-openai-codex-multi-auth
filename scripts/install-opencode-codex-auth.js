@@ -44,6 +44,66 @@ const uninstallRequested = args.has("--uninstall") || args.has("--all");
 const uninstallAll = args.has("--all");
 const dryRun = args.has("--dry-run");
 const skipCacheClear = args.has("--no-cache-clear");
+const ONLINE_FETCH_TIMEOUT_MS = 1500;
+const GITHUB_REPO = "iam-brain/opencode-openai-codex-multi-auth";
+const GITHUB_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const IS_TEST_MODE = Boolean(
+	process.env.VITEST || process.env.OPENCODE_INSTALLER_TEST_MODE === "1",
+);
+const RELEASE_HOST_ALLOWLIST = new Set(["api.github.com", "localhost", "127.0.0.1"]);
+const RAW_HOST_ALLOWLIST = new Set([
+	"raw.githubusercontent.com",
+	"localhost",
+	"127.0.0.1",
+]);
+
+function isAllowedHost(urlString, allowlist) {
+	try {
+		const host = new URL(urlString).hostname.toLowerCase();
+		return allowlist.has(host);
+	} catch {
+		return false;
+	}
+}
+
+function resolveEndpointOverride(envValue, defaultValue, allowlist, label) {
+	if (!envValue) {
+		return defaultValue;
+	}
+	if (!IS_TEST_MODE) {
+		log(`Ignoring ${label} override outside test mode`);
+		return defaultValue;
+	}
+	if (!isAllowedHost(envValue, allowlist)) {
+		log(`Ignoring ${label} override with disallowed host: ${envValue}`);
+		return defaultValue;
+	}
+	return envValue;
+}
+
+const TEMPLATE_RELEASE_API = resolveEndpointOverride(
+	process.env.OPENCODE_TEMPLATE_RELEASE_API,
+	GITHUB_RELEASE_API,
+	RELEASE_HOST_ALLOWLIST,
+	"release endpoint",
+);
+const TEMPLATE_RAW_BASE = resolveEndpointOverride(
+	process.env.OPENCODE_TEMPLATE_RAW_BASE,
+	"https://raw.githubusercontent.com",
+	RAW_HOST_ALLOWLIST,
+	"raw endpoint",
+);
+const TEST_FETCH_MOCKS = (() => {
+	if (!IS_TEST_MODE) return null;
+	const raw = process.env.OPENCODE_TEST_FETCH_MOCKS;
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw);
+		return parsed && typeof parsed === "object" ? parsed : null;
+	} catch {
+		return null;
+	}
+})();
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -115,6 +175,103 @@ function removePluginEntries(list) {
 			(alias) => matchesPluginAlias(entry, alias),
 		);
 	});
+}
+
+function isObject(value) {
+	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidRemoteTemplate(template) {
+	if (!isObject(template)) return false;
+	const provider = template.provider;
+	if (!isObject(provider)) return false;
+	const openai = provider.openai;
+	if (!isObject(openai)) return false;
+	if (openai.options !== undefined && !isObject(openai.options)) return false;
+	const models = openai.models;
+	if (!isObject(models)) return false;
+	if (Object.keys(models).length === 0) return false;
+	for (const modelConfig of Object.values(models)) {
+		if (!isObject(modelConfig)) return false;
+		if (modelConfig.options !== undefined && !isObject(modelConfig.options)) {
+			return false;
+		}
+	}
+	const schema = template.$schema;
+	if (schema !== undefined && typeof schema !== "string") return false;
+	return true;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = ONLINE_FETCH_TIMEOUT_MS) {
+	if (TEST_FETCH_MOCKS && Object.prototype.hasOwnProperty.call(TEST_FETCH_MOCKS, url)) {
+		const entry = TEST_FETCH_MOCKS[url];
+		if (entry && typeof entry === "object") {
+			const status = typeof entry.status === "number" ? entry.status : 200;
+			const headers = entry.headers && typeof entry.headers === "object" ? entry.headers : {};
+			const body =
+				typeof entry.body === "string"
+					? entry.body
+					: JSON.stringify(entry.body ?? entry.json ?? {});
+			return new Response(body, { status, headers });
+		}
+		return new Response(String(entry ?? ""), { status: 200 });
+	}
+
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...options, signal: controller.signal });
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+async function fetchLatestReleaseTag() {
+	const response = await fetchWithTimeout(TEMPLATE_RELEASE_API);
+	if (!response.ok) {
+		throw new Error(`release lookup failed: HTTP ${response.status}`);
+	}
+	const payload = await response.json();
+	const tag = payload?.tag_name;
+	if (typeof tag !== "string" || !tag.trim()) {
+		throw new Error("release lookup returned invalid tag");
+	}
+	return tag.trim();
+}
+
+async function fetchRemoteTemplate(useLegacyTemplate) {
+	// Keep tests deterministic and fast unless explicitly enabled for integration tests.
+	if (process.env.VITEST && process.env.OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE !== "1") {
+		return null;
+	}
+
+	const fileName = useLegacyTemplate ? "opencode-legacy.json" : "opencode-modern.json";
+	const candidateUrls = [];
+	try {
+		const latestTag = await fetchLatestReleaseTag();
+		candidateUrls.push(
+			`${TEMPLATE_RAW_BASE.replace(/\/$/, "")}/${GITHUB_REPO}/${latestTag}/config/${fileName}`,
+		);
+	} catch {
+	}
+	candidateUrls.push(
+		`${TEMPLATE_RAW_BASE.replace(/\/$/, "")}/${GITHUB_REPO}/main/config/${fileName}`,
+	);
+
+	for (const url of candidateUrls) {
+		try {
+			const response = await fetchWithTimeout(url);
+			if (!response.ok) continue;
+			const parsed = await response.json();
+			if (isValidRemoteTemplate(parsed)) {
+				log(`Using online ${useLegacyTemplate ? "legacy" : "modern"} template from ${url}`);
+				return parsed;
+			}
+			log(`Ignoring invalid online template payload from ${url}`);
+		} catch {
+		}
+	}
+	return null;
 }
 
 function mergeOpenAIConfig(existingOpenAI, templateOpenAI) {
@@ -321,8 +478,7 @@ async function clearPluginArtifacts() {
 		"gpt-5.2-instructions-meta.json",
 		"gpt-5.2-codex-instructions.md",
 		"gpt-5.2-codex-instructions-meta.json",
-		"opencode-codex.txt",
-		"opencode-codex-meta.json",
+		"codex-models-cache.json",
 	];
 
 	for (const file of cacheFiles) {
@@ -421,7 +577,8 @@ async function main() {
 		return;
 	}
 
-	const template = await readJson(templatePath);
+	const onlineTemplate = await fetchRemoteTemplate(useLegacy);
+	const template = onlineTemplate ?? (await readJson(templatePath));
 	template.plugin = [PLUGIN_ENTRY_LATEST];
 
 	let nextConfig = template;

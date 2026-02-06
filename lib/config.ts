@@ -43,10 +43,10 @@ function migrateLegacyConfigIfNeeded(): void {
 
 /**
  * Default plugin configuration
- * CODEX_MODE enabled by default for Codex CLI parity
+ * Bridge mode is legacy and no longer affects runtime prompt behavior.
  */
 const DEFAULT_CONFIG: PluginConfig = {
-	codexMode: true,
+	codexMode: false,
 	accountSelectionStrategy: "sticky",
 	pidOffsetEnabled: true,
 	quietMode: false,
@@ -144,15 +144,10 @@ function resolveNumberSetting(
 }
 
 /**
- * Get effective CODEX_MODE setting
- * Priority: env var > config file > default (true)
+ * Legacy no-op: bridge mode has been removed.
  */
-export function getCodexMode(pluginConfig: PluginConfig): boolean {
-	return resolveBooleanSetting(
-		["CODEX_AUTH_MODE", "CODEX_MODE"],
-		pluginConfig.codexMode,
-		true,
-	);
+export function getCodexMode(_pluginConfig: PluginConfig): boolean {
+	return false;
 }
 
 export function getPerProjectAccounts(pluginConfig: PluginConfig): boolean {
