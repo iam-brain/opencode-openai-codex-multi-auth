@@ -47,11 +47,50 @@ const skipCacheClear = args.has("--no-cache-clear");
 const ONLINE_FETCH_TIMEOUT_MS = 1500;
 const GITHUB_REPO = "iam-brain/opencode-openai-codex-multi-auth";
 const GITHUB_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-const TEMPLATE_RELEASE_API =
-	process.env.OPENCODE_TEMPLATE_RELEASE_API || GITHUB_RELEASE_API;
-const TEMPLATE_RAW_BASE =
-	process.env.OPENCODE_TEMPLATE_RAW_BASE || "https://raw.githubusercontent.com";
+const IS_TEST_MODE = Boolean(
+	process.env.VITEST || process.env.OPENCODE_INSTALLER_TEST_MODE === "1",
+);
+const RELEASE_HOST_ALLOWLIST = new Set(["api.github.com", "localhost", "127.0.0.1"]);
+const RAW_HOST_ALLOWLIST = new Set([
+	"raw.githubusercontent.com",
+	"localhost",
+	"127.0.0.1",
+]);
+
+function isAllowedHost(urlString, allowlist) {
+	try {
+		const host = new URL(urlString).hostname.toLowerCase();
+		return allowlist.has(host);
+	} catch {
+		return false;
+	}
+}
+
+function resolveEndpointOverride(envValue, defaultValue, allowlist, label) {
+	if (!IS_TEST_MODE || !envValue) {
+		return defaultValue;
+	}
+	if (!isAllowedHost(envValue, allowlist)) {
+		log(`Ignoring ${label} override with disallowed host: ${envValue}`);
+		return defaultValue;
+	}
+	return envValue;
+}
+
+const TEMPLATE_RELEASE_API = resolveEndpointOverride(
+	process.env.OPENCODE_TEMPLATE_RELEASE_API,
+	GITHUB_RELEASE_API,
+	RELEASE_HOST_ALLOWLIST,
+	"release endpoint",
+);
+const TEMPLATE_RAW_BASE = resolveEndpointOverride(
+	process.env.OPENCODE_TEMPLATE_RAW_BASE,
+	"https://raw.githubusercontent.com",
+	RAW_HOST_ALLOWLIST,
+	"raw endpoint",
+);
 const TEST_FETCH_MOCKS = (() => {
+	if (!IS_TEST_MODE) return null;
 	const raw = process.env.OPENCODE_TEST_FETCH_MOCKS;
 	if (!raw) return null;
 	try {
@@ -134,6 +173,31 @@ function removePluginEntries(list) {
 	});
 }
 
+function isObject(value) {
+	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidRemoteTemplate(template) {
+	if (!isObject(template)) return false;
+	const provider = template.provider;
+	if (!isObject(provider)) return false;
+	const openai = provider.openai;
+	if (!isObject(openai)) return false;
+	if (openai.options !== undefined && !isObject(openai.options)) return false;
+	const models = openai.models;
+	if (!isObject(models)) return false;
+	if (Object.keys(models).length === 0) return false;
+	for (const modelConfig of Object.values(models)) {
+		if (!isObject(modelConfig)) return false;
+		if (modelConfig.options !== undefined && !isObject(modelConfig.options)) {
+			return false;
+		}
+	}
+	const schema = template.$schema;
+	if (schema !== undefined && typeof schema !== "string") return false;
+	return true;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = ONLINE_FETCH_TIMEOUT_MS) {
 	if (TEST_FETCH_MOCKS && Object.prototype.hasOwnProperty.call(TEST_FETCH_MOCKS, url)) {
 		const entry = TEST_FETCH_MOCKS[url];
@@ -195,11 +259,11 @@ async function fetchRemoteTemplate(useLegacyTemplate) {
 			const response = await fetchWithTimeout(url);
 			if (!response.ok) continue;
 			const parsed = await response.json();
-			const hasModels = parsed?.provider?.openai?.models && typeof parsed.provider.openai.models === "object";
-			if (hasModels) {
+			if (isValidRemoteTemplate(parsed)) {
 				log(`Using online ${useLegacyTemplate ? "legacy" : "modern"} template from ${url}`);
 				return parsed;
 			}
+			log(`Ignoring invalid online template payload from ${url}`);
 		} catch {
 		}
 	}

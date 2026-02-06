@@ -130,6 +130,39 @@ describe('Install script', () => {
 		expect(data.provider.openai.models['online-only-model']).toBeDefined();
 	});
 
+	it('falls back to static template when online template payload is malformed', () => {
+		const homeDir = makeHome();
+		const releaseApiUrl =
+			'https://api.github.com/repos/iam-brain/opencode-openai-codex-multi-auth/releases/latest';
+		const templateUrl =
+			'https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/vtest/config/opencode-modern.json';
+
+		runInstaller(['--no-cache-clear'], homeDir, {
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_TEST_FETCH_MOCKS: JSON.stringify({
+				[releaseApiUrl]: {
+					status: 200,
+					json: { tag_name: 'vtest' },
+				},
+				[templateUrl]: {
+					status: 200,
+					json: {
+						provider: {
+							openai: {
+								models: [],
+							},
+						},
+					},
+				},
+			}),
+		});
+
+		const configPath = join(homeDir, '.config', 'opencode', 'opencode.jsonc');
+		const { data } = readJsoncFile(configPath);
+		expect(data.provider.openai.models['online-only-model']).toBeUndefined();
+		expect(data.provider.openai.models['gpt-5.2']).toBeDefined();
+	});
+
 	it('preserves pinned plugin versions', () => {
 		const homeDir = makeHome();
 		const configPath = writeConfig(
