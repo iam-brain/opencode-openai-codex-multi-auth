@@ -40,7 +40,7 @@ This document explains the technical design decisions, architecture, and impleme
 │  - OAuth authentication      │
 │  - Request transformation    │
 │  - store:false handling      │
-│  - Codex bridge prompts      │
+│  - Codex model metadata      │
 └──────┬───────────────────────┘
        │
        │ HTTP POST with OAuth
@@ -277,10 +277,10 @@ let include: Vec<String> = if reasoning.is_some() {
    ├─ Log original IDs for debugging
    └─ Verify no IDs remain
 
-5. System Prompt Handling (CODEX_MODE)
-   ├─ Filter out OpenCode system prompts
-   ├─ Preserve OpenCode env + AGENTS instructions when concatenated
-   └─ Add Codex-OpenCode bridge prompt
+5. System Prompt Handling
+   ├─ Preserve OpenCode env + AGENTS/runtime metadata messages
+   ├─ Replace instructions with Codex prompt + personality rendering
+   └─ Do not inject bridge/tool-remap overlays
 
 6. Orphan Tool Output Handling
    ├─ Match function_call_output to function_call OR local_shell_call
@@ -300,7 +300,7 @@ let include: Vec<String> = if reasoning.is_some() {
 9. Final Body
    ├─ store: false
    ├─ stream: true
-   ├─ instructions: Codex system prompt
+   ├─ instructions: Codex system prompt (+ personality if configured)
    ├─ input: Filtered messages (no IDs)
    ├─ reasoning: { effort, summary }
    ├─ text: { verbosity }
@@ -373,20 +373,19 @@ let include: Vec<String> = if reasoning.is_some() {
 - Simpler implementation (no pattern matching)
 - Clearer semantics (stateless = no IDs)
 
-### Why Codex-OpenCode Bridge?
+### Why Bridge Removal?
 
-**Problem**: OpenCode's system prompts are optimized for OpenCode's tool set and behavior patterns.
+**Problem**: The legacy bridge duplicated tool/runtime instructions and drifted out of sync.
 
-**Solution**: Replace OpenCode prompts with Codex-specific instructions.
+**Solution**: Remove bridge injection entirely and rely on:
+- Codex `instructions`
+- OpenCode runtime metadata (environment + AGENTS/custom instructions)
+- Live tool schemas
 
 **Benefits**:
-- ✅ Explains tool name differences (apply_patch → edit)
-- ✅ Documents available tools
-- ✅ Maintains OpenCode working style
-- ✅ Preserves Codex best practices
-- ✅ 90% reduction in prompt tokens
-
-**Source**: `lib/prompts/codex-opencode-bridge.ts`
+- ✅ No stale tool-contract prose
+- ✅ Fewer conflicting top-priority instruction layers
+- ✅ Better parity with real Codex runtime behavior
 
 ### Why Per-Model Config Options?
 

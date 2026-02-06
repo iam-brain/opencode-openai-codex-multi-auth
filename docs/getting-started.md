@@ -271,13 +271,49 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
   - ✅ All visible in OpenCode model selector
   - ✅ Optimal settings for each reasoning level
 
+**Optional: Personality configuration**
+
+You can set personality globally and override it per model:
+
+```json
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "detailed",
+        "textVerbosity": "medium",
+        "include": [
+          "reasoning.encrypted_content"
+        ],
+        "store": false,
+        "personality": "friendly"
+      },
+      "models": {
+        "gpt-5.3-codex": {
+          "options": {
+            "personality": "pragmatic"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Accepted values are `none`, `friendly`, and `pragmatic` (case-insensitive).
+
 > **Note**: All `gpt-5.1-codex-mini*` presets use 272k context / 128k output limits.
 >
 > **Note**: Codex Max presets map to the `gpt-5.1-codex-max` slug with 272k context and 128k output. Use `gpt-5.1-codex-max-low/medium/high/xhigh` to pick the reasoning level (only `-xhigh` uses `xhigh` reasoning).
 >
 > **Note**: GPT 5.2 and GPT 5.2 Codex support `xhigh` reasoning. Use explicit reasoning levels (e.g., `gpt-5.2-xhigh`, `gpt-5.2-codex-xhigh`) for precise control.
 
-Prompt caching is enabled out of the box: when OpenCode sends its session identifier as `prompt_cache_key`, the plugin forwards it untouched so multi-turn runs reuse prior work. The CODEX_MODE bridge prompt bundled with the plugin is kept in sync with the latest Codex CLI release, so the OpenCode UI and Codex share the same tool contract. If you hit your ChatGPT subscription limits, the plugin returns a friendly Codex-style message with the 5-hour and weekly usage windows so you know when capacity resets.
+Prompt caching is enabled out of the box: when OpenCode sends its session identifier as `prompt_cache_key`, the plugin forwards it untouched so multi-turn runs reuse prior work. If you hit your ChatGPT subscription limits, the plugin returns a friendly Codex-style message with the 5-hour and weekly usage windows so you know when capacity resets.
+
+### Migration Note: Legacy `codexMode`
+
+The old bridge-mode behavior has been removed. `codexMode` is now legacy-only and no longer changes request prompt/tool behavior. The runtime now relies on Codex instructions, OpenCode harness metadata, and live tool schemas.
 
 > **⚠️ CRITICAL:** This full configuration is REQUIRED. OpenCode's context auto-compaction and usage sidebar only work with this full configuration. GPT 5 models are temperamental and need proper setup - minimal configurations are NOT supported.
 

@@ -74,6 +74,31 @@ opencode auth login
 - Legacy (OpenCode v1.0.209 and below): `config/opencode-legacy.json`
 
 Minimal configs are not supported for GPT‑5.x; use the full configs above.
+
+Personality is supported for all current and future models via `options.personality`:
+
+```json
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "personality": "friendly"
+      },
+      "models": {
+        "gpt-5.3-codex": {
+          "options": {
+            "personality": "pragmatic"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Accepted values: `none`, `friendly`, `pragmatic` (case-insensitive).
+
+Legacy note: `codexMode` no longer changes bridge/tool-remap behavior.
 ---
 ## ⌨️ Slash Commands (TUI)
 In the OpenCode TUI, you can use these commands to manage your accounts and monitor usage:
