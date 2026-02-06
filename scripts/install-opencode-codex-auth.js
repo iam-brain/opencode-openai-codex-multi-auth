@@ -67,7 +67,11 @@ function isAllowedHost(urlString, allowlist) {
 }
 
 function resolveEndpointOverride(envValue, defaultValue, allowlist, label) {
-	if (!IS_TEST_MODE || !envValue) {
+	if (!envValue) {
+		return defaultValue;
+	}
+	if (!IS_TEST_MODE) {
+		log(`Ignoring ${label} override outside test mode`);
 		return defaultValue;
 	}
 	if (!isAllowedHost(envValue, allowlist)) {

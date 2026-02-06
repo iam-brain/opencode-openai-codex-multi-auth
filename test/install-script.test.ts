@@ -13,9 +13,10 @@ const runInstaller = (
 	homeDir: string,
 	envOverrides: Record<string, string> = {},
 ) => {
-	execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
+	return execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
 		env: { ...process.env, HOME: homeDir, ...envOverrides },
 		stdio: 'pipe',
+		encoding: 'utf8',
 	});
 };
 
@@ -161,6 +162,33 @@ describe('Install script', () => {
 		const { data } = readJsoncFile(configPath);
 		expect(data.provider.openai.models['online-only-model']).toBeUndefined();
 		expect(data.provider.openai.models['gpt-5.2']).toBeDefined();
+	});
+
+	it('rejects disallowed endpoint override hosts in test mode', () => {
+		const homeDir = makeHome();
+		const output = runInstaller(['--no-cache-clear'], homeDir, {
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_INSTALLER_TEST_MODE: '1',
+			OPENCODE_TEMPLATE_RELEASE_API: 'https://evil.example/releases/latest',
+			OPENCODE_TEMPLATE_RAW_BASE: 'https://evil.example',
+		});
+
+		expect(output).toContain('Ignoring release endpoint override with disallowed host');
+		expect(output).toContain('Ignoring raw endpoint override with disallowed host');
+	});
+
+	it('ignores endpoint overrides outside test mode', () => {
+		const homeDir = makeHome();
+		const output = runInstaller(['--no-cache-clear'], homeDir, {
+			VITEST: '',
+			OPENCODE_INSTALLER_TEST_MODE: '0',
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_TEMPLATE_RELEASE_API: 'http://localhost:7777/releases/latest',
+			OPENCODE_TEMPLATE_RAW_BASE: 'http://localhost:7777',
+		});
+
+		expect(output).toContain('Ignoring release endpoint override outside test mode');
+		expect(output).toContain('Ignoring raw endpoint override outside test mode');
 	});
 
 	it('preserves pinned plugin versions', () => {

@@ -31,17 +31,79 @@
       "default": false,
       "description": "Suppress most toast notifications."
     },
+    "perProjectAccounts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Store account state per project when repo-local storage is enabled."
+    },
     "tokenRefreshSkewMs": {
       "type": "number",
       "minimum": 0,
       "default": 60000,
       "description": "Milliseconds before token expiry to refresh proactively."
     },
+    "proactiveTokenRefresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable background proactive token refresh scheduling."
+    },
+    "authDebug": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable auth debug logging for troubleshooting."
+    },
     "rateLimitToastDebounceMs": {
       "type": "number",
       "minimum": 0,
       "default": 60000,
       "description": "Debounce interval for account-related toasts."
+    },
+    "schedulingMode": {
+      "type": "string",
+      "enum": ["cache_first", "balance", "performance_first"],
+      "default": "cache_first",
+      "description": "Rate-limit scheduling strategy used when selecting accounts."
+    },
+    "maxCacheFirstWaitSeconds": {
+      "type": "number",
+      "minimum": 0,
+      "default": 60,
+      "description": "Maximum cache-first wait time (seconds) before switching strategy."
+    },
+    "switchOnFirstRateLimit": {
+      "type": "boolean",
+      "default": true,
+      "description": "Switch accounts immediately on first rate-limit when possible."
+    },
+    "rateLimitDedupWindowMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 2000,
+      "description": "Window (ms) used to deduplicate repeated rate-limit events."
+    },
+    "rateLimitStateResetMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 120000,
+      "description": "Delay (ms) before stale rate-limit state is reset."
+    },
+    "defaultRetryAfterMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 60000,
+      "description": "Default retry-after delay (ms) when headers are missing."
+    },
+    "maxBackoffMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 120000,
+      "description": "Maximum backoff delay (ms) applied by retry logic."
+    },
+    "requestJitterMaxMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 1000,
+      "description": "Maximum random jitter (ms) applied to outbound requests."
     },
     "retryAllAccountsRateLimited": {
       "type": "boolean",

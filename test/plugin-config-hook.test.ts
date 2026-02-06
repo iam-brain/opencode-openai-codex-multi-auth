@@ -261,4 +261,53 @@ describe("OpenAIAuthPlugin config hook", () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("prefers existing base variant values over suffixed metadata on key conflicts", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-variant-precedence-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			const plugin = await OpenAIAuthPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const cfg: any = {
+				provider: {
+					openai: {
+						models: {
+							"gpt-5.3-codex": {
+								id: "gpt-5.3-codex",
+								variants: {
+									high: {
+										reasoningEffort: "high",
+										textVerbosity: "medium",
+										reasoningSummary: "concise",
+									},
+								},
+							},
+							"gpt-5.3-codex-high": {
+								id: "gpt-5.3-codex-high",
+								textVerbosity: "high",
+								reasoningSummary: "detailed",
+							},
+						},
+					},
+				},
+				experimental: {},
+			};
+
+			await (plugin as any).config(cfg);
+
+			expect(cfg.provider.openai.models["gpt-5.3-codex"].variants.high).toMatchObject({
+				reasoningEffort: "high",
+				textVerbosity: "medium",
+				reasoningSummary: "concise",
+			});
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

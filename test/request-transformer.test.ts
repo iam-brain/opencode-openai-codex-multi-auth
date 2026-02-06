@@ -1083,6 +1083,47 @@ describe('Request Transformer Module', () => {
 				}
 			});
 
+			it('logs invalid global personality once per process while coercing to none', async () => {
+				const previousLogging = process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
+				process.env.ENABLE_PLUGIN_REQUEST_LOGGING = '1';
+				const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+				try {
+					vi.resetModules();
+					const dynamicModule = await import('../lib/request/request-transformer.js');
+					const dynamicTransform = dynamicModule.transformRequestBody;
+					const body: RequestBody = {
+						model: 'gpt-5.4-codex',
+						input: [],
+					};
+					const userConfig: UserConfig = {
+						global: { personality: 'INVALID_GLOBAL' } as any,
+						models: {},
+					};
+
+					const first = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
+					const second = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
+
+					expect(first.instructions).toBe('BASE INSTRUCTIONS');
+					expect(second.instructions).toBe('BASE INSTRUCTIONS');
+
+					const invalidLogs = logSpy.mock.calls.filter((call) =>
+						call.some((part) =>
+							String(part).includes('Invalid global personality "INVALID_GLOBAL" detected; coercing to "none"'),
+						),
+					);
+					expect(invalidLogs).toHaveLength(1);
+				} finally {
+					if (previousLogging === undefined) {
+						delete process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
+					} else {
+						process.env.ENABLE_PLUGIN_REQUEST_LOGGING = previousLogging;
+					}
+					vi.restoreAllMocks();
+					vi.resetModules();
+				}
+			});
+
 			it('applies global personality when runtime defaults only provide template messages', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5.3-codex',
