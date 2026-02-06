@@ -44,6 +44,9 @@ const uninstallRequested = args.has("--uninstall") || args.has("--all");
 const uninstallAll = args.has("--all");
 const dryRun = args.has("--dry-run");
 const skipCacheClear = args.has("--no-cache-clear");
+const ONLINE_FETCH_TIMEOUT_MS = 1500;
+const GITHUB_REPO = "iam-brain/opencode-openai-codex-multi-auth";
+const GITHUB_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -115,6 +118,62 @@ function removePluginEntries(list) {
 			(alias) => matchesPluginAlias(entry, alias),
 		);
 	});
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = ONLINE_FETCH_TIMEOUT_MS) {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...options, signal: controller.signal });
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+async function fetchLatestReleaseTag() {
+	const response = await fetchWithTimeout(GITHUB_RELEASE_API);
+	if (!response.ok) {
+		throw new Error(`release lookup failed: HTTP ${response.status}`);
+	}
+	const payload = await response.json();
+	const tag = payload?.tag_name;
+	if (typeof tag !== "string" || !tag.trim()) {
+		throw new Error("release lookup returned invalid tag");
+	}
+	return tag.trim();
+}
+
+async function fetchRemoteTemplate(useLegacyTemplate) {
+	// Keep tests deterministic and fast.
+	if (process.env.VITEST) return null;
+
+	const fileName = useLegacyTemplate ? "opencode-legacy.json" : "opencode-modern.json";
+	const candidateUrls = [];
+	try {
+		const latestTag = await fetchLatestReleaseTag();
+		candidateUrls.push(
+			`https://raw.githubusercontent.com/${GITHUB_REPO}/${latestTag}/config/${fileName}`,
+		);
+	} catch {
+	}
+	candidateUrls.push(
+		`https://raw.githubusercontent.com/${GITHUB_REPO}/main/config/${fileName}`,
+	);
+
+	for (const url of candidateUrls) {
+		try {
+			const response = await fetchWithTimeout(url);
+			if (!response.ok) continue;
+			const parsed = await response.json();
+			const hasModels = parsed?.provider?.openai?.models && typeof parsed.provider.openai.models === "object";
+			if (hasModels) {
+				log(`Using online ${useLegacyTemplate ? "legacy" : "modern"} template from ${url}`);
+				return parsed;
+			}
+		} catch {
+		}
+	}
+	return null;
 }
 
 function mergeOpenAIConfig(existingOpenAI, templateOpenAI) {
@@ -321,8 +380,7 @@ async function clearPluginArtifacts() {
 		"gpt-5.2-instructions-meta.json",
 		"gpt-5.2-codex-instructions.md",
 		"gpt-5.2-codex-instructions-meta.json",
-		"opencode-codex.txt",
-		"opencode-codex-meta.json",
+		"codex-models-cache.json",
 	];
 
 	for (const file of cacheFiles) {
@@ -421,7 +479,8 @@ async function main() {
 		return;
 	}
 
-	const template = await readJson(templatePath);
+	const onlineTemplate = await fetchRemoteTemplate(useLegacy);
+	const template = onlineTemplate ?? (await readJson(templatePath));
 	template.plugin = [PLUGIN_ENTRY_LATEST];
 
 	let nextConfig = template;
