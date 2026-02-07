@@ -1,32 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { FetchOrchestrator, FetchOrchestratorConfig, __internal } from '../lib/fetch-orchestrator.js';
 import { AccountManager, formatAccountLabel } from '../lib/accounts.js';
 import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
 import { PluginConfig } from '../lib/types.js';
-import {
-	ModelCatalogUnavailableError,
-	UnknownModelError,
-} from '../lib/request/errors.js';
-import { getCodexModelRuntimeDefaults } from '../lib/prompts/codex-models.js';
+import { __internal as modelsInternal } from '../lib/prompts/codex-models.js';
 
 vi.mock('../lib/storage.js', () => ({
 	quarantineAccountsByRefreshToken: vi.fn(),
 	replaceAccountsFile: vi.fn(),
 }));
 
-vi.mock('../lib/prompts/codex-models.js', async () => {
-	const actual = await vi.importActual<typeof import('../lib/prompts/codex-models.js')>(
-		'../lib/prompts/codex-models.js',
-	);
-	return {
-		...actual,
-		getCodexModelRuntimeDefaults: vi.fn().mockResolvedValue({
-			staticDefaultPersonality: 'pragmatic',
-		}),
-	};
-});
+const MODELS_CACHE_FIXTURE = JSON.parse(
+	readFileSync(new URL('./fixtures/codex-models-cache.json', import.meta.url), 'utf-8'),
+);
+
+function seedModelsCache(accountId: string, fetchedAt = Date.now()): void {
+	const cacheFile = modelsInternal.getModelsCacheFile(accountId);
+	mkdirSync(dirname(cacheFile), { recursive: true });
+	const payload = { ...MODELS_CACHE_FIXTURE, fetchedAt };
+	writeFileSync(cacheFile, JSON.stringify(payload), 'utf8');
+}
 
 describe('FetchOrchestrator', () => {
 	let config: FetchOrchestratorConfig;
@@ -38,13 +36,28 @@ describe('FetchOrchestrator', () => {
 	let codexStatus: any;
 	let pluginConfig: PluginConfig;
 	let quarantineAccountsByRefreshToken: any;
+	let configRoot: string;
+	let primaryAccountId: string;
+	let secondaryAccountId: string;
+	let previousXdgConfigHome: string | undefined;
+	let previousOpencodeHome: string | undefined;
+	let accountCounter = 0;
 
 	const mockFetch = vi.fn();
-	const mockedDefaults = vi.mocked(getCodexModelRuntimeDefaults);
 
 	beforeEach(async () => {
 		vi.useFakeTimers();
 		vi.resetAllMocks();
+		accountCounter += 1;
+		primaryAccountId = `acc-${accountCounter}`;
+		secondaryAccountId = `acc-${accountCounter}-2`;
+		configRoot = mkdtempSync(join(tmpdir(), 'fetch-orchestrator-config-'));
+		previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+		previousOpencodeHome = process.env.OPENCODE_HOME;
+		process.env.XDG_CONFIG_HOME = configRoot;
+		delete process.env.OPENCODE_HOME;
+		seedModelsCache(primaryAccountId);
+		seedModelsCache(secondaryAccountId);
 		const storageModule = (await import('../lib/storage.js')) as any;
 		quarantineAccountsByRefreshToken = vi.mocked(
 			storageModule.quarantineAccountsByRefreshToken,
@@ -130,11 +143,22 @@ describe('FetchOrchestrator', () => {
 	afterEach(() => {
 		vi.clearAllMocks();
 		vi.useRealTimers();
+		if (previousXdgConfigHome === undefined) {
+			delete process.env.XDG_CONFIG_HOME;
+		} else {
+			process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+		}
+		if (previousOpencodeHome === undefined) {
+			delete process.env.OPENCODE_HOME;
+		} else {
+			process.env.OPENCODE_HOME = previousOpencodeHome;
+		}
+		rmSync(configRoot, { recursive: true, force: true });
 	});
 
 	it('should execute a successful request', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
 			expires: Date.now() + 100000,
@@ -155,7 +179,7 @@ describe('FetchOrchestrator', () => {
 
 	it('should handle 401 Unauthorized and recover', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'expired-token',
 			expires: Date.now() + 100000,
@@ -186,8 +210,8 @@ describe('FetchOrchestrator', () => {
 		
 		// First account
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -231,8 +255,8 @@ describe('FetchOrchestrator', () => {
 	it('recomputes request transform when account switches', async () => {
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
 			expires: Date.now() + 100000,
@@ -268,10 +292,10 @@ describe('FetchOrchestrator', () => {
 		expect(response.status).toBe(200);
 		expect(transformSpy).toHaveBeenCalledTimes(2);
 		expect(transformSpy.mock.calls[0]?.[3]).toEqual(
-			expect.objectContaining({ accountId: 'acc1' }),
+				expect.objectContaining({ accountId: primaryAccountId }),
 		);
 		expect(transformSpy.mock.calls[1]?.[3]).toEqual(
-			expect.objectContaining({ accountId: 'acc2' }),
+				expect.objectContaining({ accountId: secondaryAccountId }),
 		);
 	});
 
@@ -280,8 +304,8 @@ describe('FetchOrchestrator', () => {
 		accountManager.shouldShowAccountToast.mockReturnValue(true);
 
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -313,7 +337,7 @@ describe('FetchOrchestrator', () => {
 		accountManager.getAccountCount.mockReturnValue(1);
 		accountManager.getCurrentOrNextForFamily.mockReturnValue({
 			index: 0,
-			accountId: 'acc1',
+			accountId: primaryAccountId,
 			email: 'test@example.com',
 		});
 		accountManager.toAuthDetails.mockReturnValue({
@@ -356,7 +380,7 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when a new chat starts', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		const account = { index: 0, accountId: 'acc1', email: 'test@example.com', plan: 'Pro' };
+		const account = { index: 0, accountId: primaryAccountId, email: 'test@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
@@ -375,7 +399,7 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when switching to an existing session', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		const account = { index: 0, accountId: 'acc1', email: 'test@example.com', plan: 'Pro' };
+		const account = { index: 0, accountId: primaryAccountId, email: 'test@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
@@ -402,8 +426,8 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when the account changes', async () => {
 		accountManager.getAccountCount.mockReturnValue(2);
-		const first = { index: 0, accountId: 'acc1', email: 'one@example.com', plan: 'Pro' };
-		const second = { index: 1, accountId: 'acc2', email: 'two@example.com', plan: 'Pro' };
+		const first = { index: 0, accountId: primaryAccountId, email: 'one@example.com', plan: 'Pro' };
+		const second = { index: 1, accountId: secondaryAccountId, email: 'two@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily
 			.mockReturnValueOnce(first)
 			.mockReturnValueOnce(second);
@@ -431,12 +455,12 @@ describe('FetchOrchestrator', () => {
 		// Use 2 accounts to force "switch" action instead of "wait" (infinite loop for 1 account)
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 
 		accountManager.getAccountsSnapshot.mockReturnValue([
-			{ index: 0, accountId: 'acc1', email: 'acc1@example.com', enabled: true },
-			{ index: 1, accountId: 'acc2', email: 'acc2@example.com', enabled: true }
+			{ index: 0, accountId: primaryAccountId, email: 'acc1@example.com', enabled: true },
+			{ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com', enabled: true }
 		]);
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -461,11 +485,11 @@ describe('FetchOrchestrator', () => {
 	it('hard-stops when all accounts rate-limited beyond max wait', async () => {
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 		accountManager.getAccountsSnapshot.mockReturnValue([
-			{ index: 0, accountId: 'acc1', email: 'acc1@example.com', enabled: true },
-			{ index: 1, accountId: 'acc2', email: 'acc2@example.com', enabled: true }
+			{ index: 0, accountId: primaryAccountId, email: 'acc1@example.com', enabled: true },
+			{ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com', enabled: true }
 		]);
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -490,7 +514,7 @@ describe('FetchOrchestrator', () => {
 		accountManager.getAccountCount.mockReturnValue(1);
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(null);
 		accountManager.getAccountsSnapshot.mockReturnValue([
-			{ index: 0, accountId: 'acc1', email: 'acc1@example.com', enabled: true, cooldownReason: 'auth-failure' }
+			{ index: 0, accountId: primaryAccountId, email: 'acc1@example.com', enabled: true, cooldownReason: 'auth-failure' }
 		]);
 		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(60000);
 		accountManager.allAccountsCoolingDown.mockReturnValue(true);
@@ -507,16 +531,13 @@ describe('FetchOrchestrator', () => {
 		accountManager.getAccountCount.mockReturnValue(1);
 		accountManager.getCurrentOrNextForFamily.mockReturnValue({
 			index: 0,
-			accountId: 'acc1',
+			accountId: primaryAccountId,
 			email: 'acc1@example.com',
 		});
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
 			expires: Date.now() + 100000,
 		});
-		mockedDefaults.mockRejectedValueOnce(
-			new UnknownModelError('gpt-0.0-bad', ['gpt-5.1']),
-		);
 
 		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
 			method: 'POST',
@@ -531,17 +552,18 @@ describe('FetchOrchestrator', () => {
 	});
 
 	it('hard-stops when model catalog is unavailable', async () => {
+		const missingAccountId = `${primaryAccountId}-missing`;
 		accountManager.getAccountCount.mockReturnValue(1);
 		accountManager.getCurrentOrNextForFamily.mockReturnValue({
 			index: 0,
-			accountId: 'acc1',
+			accountId: missingAccountId,
 			email: 'acc1@example.com',
 		});
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
 			expires: Date.now() + 100000,
 		});
-		mockedDefaults.mockRejectedValueOnce(new ModelCatalogUnavailableError());
+		mockFetch.mockRejectedValue(new Error('offline'));
 
 		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
 			method: 'POST',
@@ -558,7 +580,7 @@ describe('FetchOrchestrator', () => {
 
 	it('should not loop infinitely on persistent 401', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({ access: 'bad-token', expires: Date.now() + 100000 });
 
 		// Use mockImplementation to return a NEW Response each time
@@ -580,7 +602,7 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when auth fails', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		const account = { index: 0, accountId: 'acc1', email: 'fail@example.com', plan: 'Pro' };
+		const account = { index: 0, accountId: primaryAccountId, email: 'fail@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'bad-token', expires: Date.now() + 100000 });
 		accountManager.getAccountsSnapshot.mockReturnValue([account]);
@@ -611,7 +633,7 @@ describe('FetchOrchestrator', () => {
 			.mockReturnValueOnce(1)
 			.mockReturnValueOnce(0);
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
 			.mockReturnValueOnce(null);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		accountManager.getAccountsSnapshot.mockReturnValue([]);
@@ -690,7 +712,7 @@ describe('FetchOrchestrator', () => {
 
 	it('should handle non-JSON or non-string bodies gracefully', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		mockFetch.mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })));
 
