@@ -19,6 +19,7 @@ vi.mock('../lib/storage.js', () => ({
 const MODELS_CACHE_FIXTURE = JSON.parse(
 	readFileSync(new URL('./fixtures/codex-models-cache.json', import.meta.url), 'utf-8'),
 );
+const DEFAULT_CACHE_DIR = getOpencodeCacheDir();
 
 function seedModelsCache(accountId: string, fetchedAt = Date.now()): void {
 	const cacheFile = modelsInternal.getModelsCacheFile(accountId);
@@ -28,7 +29,7 @@ function seedModelsCache(accountId: string, fetchedAt = Date.now()): void {
 }
 
 function seedInstructionsCache(modelFamily: 'gpt-5.3-codex' | 'gpt-5.1'): void {
-	const cacheDir = getOpencodeCacheDir();
+	const cacheDir = DEFAULT_CACHE_DIR;
 	mkdirSync(cacheDir, { recursive: true });
 	const fileName =
 		modelFamily === 'gpt-5.3-codex'
