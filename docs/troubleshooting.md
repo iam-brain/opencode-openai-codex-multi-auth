@@ -162,6 +162,30 @@ opencode auth login
 **4. For parallel agents, keep PID offset enabled:**
 - `pidOffsetEnabled: true` helps parallel OpenCode sessions start on different accounts
 
+### Hard-stop: all accounts unavailable
+
+**Symptoms:**
+- Requests fail with HTTP 429 and error type `all_accounts_rate_limited`
+
+**What this means:**
+- All accounts are rate-limited beyond the hard-stop wait threshold.
+
+**Solutions:**
+- Increase `hardStopMaxWaitMs` in `~/.config/opencode/openai-codex-auth-config.json`
+- Set `hardStopMaxWaitMs: 0` to disable the hard-stop and allow longer waits
+- Add another account (`opencode auth login`)
+
+### Hard-stop: all accounts auth-failed
+
+**Symptoms:**
+- Requests fail with HTTP 401 and error type `all_accounts_auth_failed`
+
+**What this means:**
+- All accounts are in auth-failure cooldown.
+
+**Solutions:**
+- Re-authenticate: `opencode auth login`
+
 ### Reset Accounts
 
 If tokens were revoked or you want to start over:
@@ -219,6 +243,31 @@ model: gpt-5.3-codex-low
 model: openai/gpt-5.3-codex
 variant: low
 ```
+
+### Hard-stop: unsupported model
+
+**Symptoms:**
+- Requests fail with HTTP 400 and error type `unsupported_model`
+
+**What this means:**
+- The requested model is not in the server catalog. Custom model IDs are rejected.
+
+**Solutions:**
+- Use a model ID that appears in `/codex/models`
+- Update your config to match the catalog model IDs (see `config/opencode-modern.json`)
+
+### Hard-stop: model catalog unavailable
+
+**Symptoms:**
+- Requests fail with HTTP 400 and error type `unsupported_model`
+- Error message mentions the model catalog being unavailable
+
+**What this means:**
+- The plugin cannot access `/codex/models` and has no cached catalog.
+
+**Solutions:**
+- Run once with network access to seed the catalog cache
+- Retry after the catalog cache is available
 
 ### Per-Model Options Not Applied
 
