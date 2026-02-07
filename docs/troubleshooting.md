@@ -433,7 +433,7 @@ Using cached instructions
 ls -lt ~/.config/opencode/cache/*-instructions-meta.json
 
 # Check lastChecked timestamp (example family)
-cat ~/.config/opencode/cache/gpt-5.3-codex-instructions-meta.json | jq '.lastChecked'
+cat ~/.config/opencode/cache/gpt-5.2-codex-instructions-meta.json | jq '.lastChecked'
 
 # Check runtime model metadata fallback cache
 ls -lt ~/.config/opencode/cache/codex-models-cache-*.json

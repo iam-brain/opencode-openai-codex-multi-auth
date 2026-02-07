@@ -1575,4 +1575,33 @@ describe("codex model metadata resolver", () => {
 		vi.useRealTimers();
 		rmSync(root, { recursive: true, force: true });
 	});
+
+	it("prunes model cache files for removed accounts", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-prune-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { __internal, pruneCodexModelsCacheFiles } = await loadModule();
+
+		const cacheDir = dirname(__internal.getModelsCacheFile("account-one"));
+		mkdirSync(cacheDir, { recursive: true });
+
+		const keepA = __internal.getModelsCacheFile("account-one");
+		const keepB = __internal.getModelsCacheFile("account-two");
+		const stale = join(cacheDir, "codex-models-cache-deadbeefdeadbeef.json");
+		const payload = JSON.stringify({
+			fetchedAt: Date.now(),
+			source: "server",
+			models: [],
+		});
+		writeFileSync(keepA, payload, "utf8");
+		writeFileSync(keepB, payload, "utf8");
+		writeFileSync(stale, payload, "utf8");
+
+		await pruneCodexModelsCacheFiles(["account-one", "account-two"]);
+
+		expect(existsSync(keepA)).toBe(true);
+		expect(existsSync(keepB)).toBe(true);
+		expect(existsSync(stale)).toBe(false);
+
+		rmSync(root, { recursive: true, force: true });
+	});
 });

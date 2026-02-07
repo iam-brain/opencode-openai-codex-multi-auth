@@ -14,6 +14,7 @@ import { backupAccountsFile, loadAccounts, saveAccounts, saveAccountsWithLock } 
 import { getHealthTracker, getTokenTracker, selectHybridAccount, type TokenBucketTracker } from "./rotation.js";
 import { findAccountMatchIndex } from "./account-matching.js";
 import { normalizePlanType } from "./plan-utils.js";
+import { pruneCodexModelsCacheFiles } from "./prompts/codex-models.js";
 
 export type BaseQuotaKey = ModelFamily;
 export type QuotaKey = BaseQuotaKey | `${BaseQuotaKey}:${string}`;
@@ -320,7 +321,13 @@ export class AccountManager {
 
 	static async loadFromDisk(authFallback?: OAuthAuthDetails): Promise<AccountManager> {
 		const stored = await loadAccounts();
-		return new AccountManager(authFallback, stored);
+		const manager = new AccountManager(authFallback, stored);
+		const accountIds = manager
+			.getAccountsSnapshot()
+			.map((account) => account.accountId)
+			.filter((accountId): accountId is string => Boolean(accountId));
+		void pruneCodexModelsCacheFiles(accountIds);
+		return manager;
 	}
 
 	constructor(authFallback?: OAuthAuthDetails, stored?: AccountStorageV3 | null) {

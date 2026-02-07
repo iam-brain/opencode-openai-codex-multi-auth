@@ -2,13 +2,14 @@ import {
 	chmodSync,
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	renameSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import lockfile from "proper-lockfile";
 import type { ConfigOptions } from "../types.js";
@@ -92,6 +93,10 @@ export interface ModelsFetchOptions {
 
 const CACHE_DIR = getOpencodeCacheDir();
 const MODELS_CACHE_FILE_BASE = join(CACHE_DIR, "codex-models-cache");
+const MODELS_CACHE_FILE_PREFIX = `${basename(MODELS_CACHE_FILE_BASE)}-`;
+const MODELS_CACHE_FILE_REGEX = new RegExp(
+	`^${MODELS_CACHE_FILE_PREFIX}([a-f0-9]{16})\\.json$`,
+);
 const CLIENT_VERSION_CACHE_FILE = join(CACHE_DIR, "codex-client-version.json");
 const MODELS_FETCH_TIMEOUT_MS = 5_000;
 const MODELS_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -135,6 +140,41 @@ function getModelsCacheFile(accountId?: string): string {
 
 function hashAccountId(accountId: string): string {
 	return createHash("sha256").update(accountId).digest("hex").slice(0, 16);
+}
+
+export async function pruneCodexModelsCacheFiles(
+	accountIds: string[],
+): Promise<void> {
+	const keepHashes = new Set(
+		accountIds
+			.map((accountId) => accountId?.trim())
+			.filter((accountId): accountId is string => Boolean(accountId))
+			.map((accountId) => hashAccountId(accountId)),
+	);
+	if (keepHashes.size === 0) return;
+	if (!existsSync(CACHE_DIR)) return;
+
+	let release: (() => Promise<void>) | null = null;
+	try {
+		release = await lockfile.lock(CACHE_DIR, LOCK_OPTIONS);
+		for (const entry of readdirSync(CACHE_DIR)) {
+			const match = entry.match(MODELS_CACHE_FILE_REGEX);
+			if (!match) continue;
+			const hash = match[1];
+			if (keepHashes.has(hash)) continue;
+			try {
+				unlinkSync(join(CACHE_DIR, entry));
+			} catch {
+				// Best-effort cleanup.
+			}
+		}
+	} catch (error) {
+		logWarn("Failed to prune codex model cache files", error);
+	} finally {
+		if (release) {
+			await release().catch(() => undefined);
+		}
+	}
 }
 
 const LOCK_OPTIONS = {
