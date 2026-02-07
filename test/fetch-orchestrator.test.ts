@@ -9,6 +9,7 @@ import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
 import { PluginConfig } from '../lib/types.js';
 import { __internal as modelsInternal } from '../lib/prompts/codex-models.js';
+import { getOpencodeCacheDir } from '../lib/paths.js';
 
 vi.mock('../lib/storage.js', () => ({
 	quarantineAccountsByRefreshToken: vi.fn(),
@@ -24,6 +25,28 @@ function seedModelsCache(accountId: string, fetchedAt = Date.now()): void {
 	mkdirSync(dirname(cacheFile), { recursive: true });
 	const payload = { ...MODELS_CACHE_FIXTURE, fetchedAt };
 	writeFileSync(cacheFile, JSON.stringify(payload), 'utf8');
+}
+
+function seedInstructionsCache(modelFamily: 'gpt-5.3-codex' | 'gpt-5.1'): void {
+	const cacheDir = getOpencodeCacheDir();
+	mkdirSync(cacheDir, { recursive: true });
+	const fileName =
+		modelFamily === 'gpt-5.3-codex'
+			? 'gpt-5.3-codex-instructions.md'
+			: 'gpt-5.1-instructions.md';
+	const cacheFile = join(cacheDir, fileName);
+	const metaFile = join(cacheDir, fileName.replace('.md', '-meta.json'));
+	writeFileSync(cacheFile, `# ${modelFamily} instructions`, 'utf8');
+	writeFileSync(
+		metaFile,
+		JSON.stringify({
+			etag: null,
+			tag: 'test',
+			lastChecked: Date.now(),
+			url: 'https://example.com',
+		}),
+		'utf8',
+	);
 }
 
 describe('FetchOrchestrator', () => {
@@ -58,6 +81,8 @@ describe('FetchOrchestrator', () => {
 		delete process.env.OPENCODE_HOME;
 		seedModelsCache(primaryAccountId);
 		seedModelsCache(secondaryAccountId);
+		seedInstructionsCache('gpt-5.1');
+		seedInstructionsCache('gpt-5.3-codex');
 		const storageModule = (await import('../lib/storage.js')) as any;
 		quarantineAccountsByRefreshToken = vi.mocked(
 			storageModule.quarantineAccountsByRefreshToken,
