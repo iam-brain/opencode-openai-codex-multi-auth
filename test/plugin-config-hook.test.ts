@@ -422,4 +422,29 @@ describe("OpenAIAuthPlugin config hook", () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("registers codex-auth command and removes legacy codex commands", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-codex-auth-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			const plugin = await OpenAIAuthPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const cfg: any = { provider: { openai: {} }, experimental: {} };
+			await (plugin as any).config(cfg);
+
+			expect(cfg.command["codex-auth"]).toBeDefined();
+			expect(cfg.command["codex-status"]).toBeUndefined();
+			expect(cfg.command["codex-switch-accounts"]).toBeUndefined();
+			expect(cfg.command["codex-toggle-account"]).toBeUndefined();
+			expect(cfg.command["codex-remove-account"]).toBeUndefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

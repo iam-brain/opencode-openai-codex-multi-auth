@@ -165,6 +165,25 @@ describe("OpenAIAuthPlugin loader", () => {
 		}
 	});
 
+	it("codex-auth tool reports non-tty requirement", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-codex-auth-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const originalIsTTY = process.stdin.isTTY;
+		try {
+			Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+			const client = {
+				tui: { showToast: vi.fn() },
+				auth: { set: vi.fn() },
+			};
+			const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
+			const result = await (plugin as any).tool["codex-auth"].execute({});
+			expect(result).toContain("TTY");
+		} finally {
+			Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("codex-status highlights active account for default family", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-status-active-"));
 		process.env.XDG_CONFIG_HOME = root;
