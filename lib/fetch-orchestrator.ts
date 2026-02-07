@@ -63,6 +63,9 @@ const debugAuth = (...args: unknown[]): void => {
 	console.debug(...args);
 };
 
+const SESSION_KEY_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_SESSION_KEYS = 200;
+
 function shouldRefreshToken(auth: OAuthAuthDetails, skewMs: number): boolean {
 	return !auth.access || auth.expires <= Date.now() + Math.max(0, Math.floor(skewMs));
 }
@@ -105,10 +108,39 @@ export interface FetchOrchestratorConfig {
 
 export class FetchOrchestrator {
 	private lastSessionKey: string | null = null;
-	private readonly seenSessionKeys = new Set<string>();
+	private readonly seenSessionKeys = new Map<string, number>();
 	private lastAccountIndex: number | null = null;
 
 	constructor(private config: FetchOrchestratorConfig) { }
+
+	private touchSessionKey(sessionKey: string): boolean {
+		const now = Date.now();
+		this.pruneSessionKeys(now);
+		const hasSeen = this.seenSessionKeys.has(sessionKey);
+		if (hasSeen) {
+			this.seenSessionKeys.delete(sessionKey);
+		}
+		this.seenSessionKeys.set(sessionKey, now);
+		this.enforceSessionKeyLimit();
+		return hasSeen;
+	}
+
+	private pruneSessionKeys(now: number): void {
+		if (this.seenSessionKeys.size === 0) return;
+		for (const [key, lastSeen] of this.seenSessionKeys) {
+			if (now - lastSeen > SESSION_KEY_TTL_MS) {
+				this.seenSessionKeys.delete(key);
+			}
+		}
+	}
+
+	private enforceSessionKeyLimit(): void {
+		while (this.seenSessionKeys.size > MAX_SESSION_KEYS) {
+			const oldest = this.seenSessionKeys.keys().next().value as string | undefined;
+			if (!oldest) break;
+			this.seenSessionKeys.delete(oldest);
+		}
+	}
 
 	async execute(input: Request | string | URL, init?: RequestInit): Promise<Response> {
 		const {
@@ -147,6 +179,7 @@ export class FetchOrchestrator {
 		let transformation:
 			| Awaited<ReturnType<typeof transformRequestForCodex>>
 			| undefined;
+		let transformationAccountId: string | null = null;
 		let requestInit = init;
 		let model: string | undefined = initialModel;
 		const modelFamily: ModelFamily = model
@@ -160,10 +193,9 @@ export class FetchOrchestrator {
 		const sessionKey = resolveSessionKey(sessionBody);
 		let sessionEvent: "new" | "switch" | null = null;
 		if (sessionKey) {
-			const hasSeen = this.seenSessionKeys.has(sessionKey);
+			const hasSeen = this.touchSessionKey(sessionKey);
 			if (!hasSeen) {
 				sessionEvent = "new";
-				this.seenSessionKeys.add(sessionKey);
 			} else if (this.lastSessionKey && this.lastSessionKey !== sessionKey) {
 				sessionEvent = "switch";
 			}
@@ -260,12 +292,13 @@ export class FetchOrchestrator {
 				}
 				account.accountId = accountId;
 
-				if (!transformation) {
+				if (!transformation || transformationAccountId !== accountId) {
 					transformation = await transformRequestForCodex(init, url, userConfig, {
 						accessToken: accountAuth.access,
 						accountId,
 						pluginConfig,
 					});
+					transformationAccountId = accountId;
 					requestInit = transformation?.updatedInit ?? init;
 					model = transformation?.body.model ?? model;
 				}
@@ -428,3 +461,8 @@ export class FetchOrchestrator {
 		}
 	}
 }
+
+export const __internal = {
+	SESSION_KEY_TTL_MS,
+	MAX_SESSION_KEYS,
+};

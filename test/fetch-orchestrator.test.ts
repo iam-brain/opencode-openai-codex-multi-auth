@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
-import { FetchOrchestrator, FetchOrchestratorConfig } from '../lib/fetch-orchestrator.js';
+import { FetchOrchestrator, FetchOrchestratorConfig, __internal } from '../lib/fetch-orchestrator.js';
 import { AccountManager, formatAccountLabel } from '../lib/accounts.js';
 import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
@@ -209,6 +209,53 @@ describe('FetchOrchestrator', () => {
 		expect(mockFetch).toHaveBeenCalledTimes(2);
 	});
 
+	it('recomputes request transform when account switches', async () => {
+		accountManager.getAccountCount.mockReturnValue(2);
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		const fetchHelpers = await import('../lib/request/fetch-helpers.js');
+		const transformSpy = vi
+			.spyOn(fetchHelpers, 'transformRequestForCodex')
+			.mockResolvedValue({
+				body: { model: 'gpt-5.3-codex', prompt_cache_key: 'session' },
+				updatedInit: { method: 'POST', body: '{}' },
+			} as any);
+
+		mockFetch.mockResolvedValueOnce(new Response('Rate limit', {
+			status: 429,
+			headers: { 'retry-after': '60' }
+		}));
+		rateLimitTracker.getBackoff.mockReturnValue({
+			delayMs: 60000,
+			attempt: 1,
+			isDuplicate: false,
+		});
+		mockFetch.mockResolvedValueOnce(new Response('{"success":true}', {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		}));
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.3-codex' }),
+		});
+
+		expect(response.status).toBe(200);
+		expect(transformSpy).toHaveBeenCalledTimes(2);
+		expect(transformSpy.mock.calls[0]?.[3]).toEqual(
+			expect.objectContaining({ accountId: 'acc1' }),
+		);
+		expect(transformSpy.mock.calls[1]?.[3]).toEqual(
+			expect.objectContaining({ accountId: 'acc2' }),
+		);
+	});
+
 	it('passes quiet mode to rate-limit toast', async () => {
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.shouldShowAccountToast.mockReturnValue(true);
@@ -241,6 +288,51 @@ describe('FetchOrchestrator', () => {
 		await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
 
 		expect(config.showToast).toHaveBeenCalledWith('Rate limited - switching account', 'warning', true);
+	});
+
+	it('caps seen session keys by max size and TTL', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({
+			index: 0,
+			accountId: 'acc1',
+			email: 'test@example.com',
+		});
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		mockFetch.mockImplementation(() =>
+			Promise.resolve(
+				new Response('{"success":true}', {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				}),
+			),
+		);
+
+		const start = new Date('2026-02-06T00:00:00.000Z');
+		vi.setSystemTime(start);
+
+		for (let i = 0; i < __internal.MAX_SESSION_KEYS + 1; i += 1) {
+			await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+				method: 'POST',
+				body: JSON.stringify({ prompt_cache_key: `session-${i}` }),
+			});
+		}
+
+		const seenSize = (orchestrator as any).seenSessionKeys.size;
+		expect(seenSize).toBeLessThanOrEqual(__internal.MAX_SESSION_KEYS);
+
+		vi.setSystemTime(
+			new Date(start.getTime() + __internal.SESSION_KEY_TTL_MS + 1),
+		);
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ prompt_cache_key: 'session-new' }),
+		});
+		const postTtlSize = (orchestrator as any).seenSessionKeys.size;
+		expect(postTtlSize).toBe(1);
 	});
 
 	it('shows a toast when a new chat starts', async () => {

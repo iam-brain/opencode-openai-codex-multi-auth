@@ -405,6 +405,8 @@ Personality descriptions come from:
 
 The filename (case-insensitive) defines the personality key (e.g., `Friendly.md` matches `friendly`). The file contents are used verbatim as the personality specification.
 
+The plugin also seeds `Friendly.md` and `Pragmatic.md` in the global directory from server-derived runtime defaults. These files are treated as a cache and are only updated when the existing file is managed by the plugin (identified by an internal marker). User-managed files are never overwritten.
+
 Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching `.md` file in one of the locations above.
 
 ### Legacy `codexMode` (No-op)
@@ -507,9 +509,11 @@ CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
   - bundled static template fallback
 - Runtime model metadata is online-first:
   - Codex `/backend-api/codex/models`
-  - local `codex-models-cache.json` fallback
+  - local `codex-models-cache-<hash>.json` per-account fallback
   - Codex GitHub `models.json` fallback (`latest release` then `main`)
   - static template defaults as final fallback
+
+Note: legacy `codex-models-cache.json` files are ignored after the per-account cache change; the first refresh will recreate the new cache files.
 
 ---
 

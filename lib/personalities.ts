@@ -10,6 +10,7 @@ type CachedPersonality = {
 
 const PERSONALITY_DIR_NAME = "Personalities";
 const PERSONALITY_CACHE = new Map<string, CachedPersonality>();
+const PERSONALITY_CACHE_MARKER = "<!-- opencode personality cache -->";
 
 function resolveProjectPersonalityDir(projectRoot: string): string {
 	return join(projectRoot, ".opencode", PERSONALITY_DIR_NAME);
@@ -26,6 +27,7 @@ function resolvePersonalityFile(
 	if (!existsSync(directory)) return null;
 	const normalized = personality.trim();
 	if (!normalized) return null;
+	if (!isSafePersonalityKey(normalized)) return null;
 	const direct = join(directory, `${normalized}.md`);
 	if (existsSync(direct)) return direct;
 	const lowerTarget = `${normalized.toLowerCase()}.md`;
@@ -42,14 +44,25 @@ function resolvePersonalityFile(
 	return null;
 }
 
+function isSafePersonalityKey(personality: string): boolean {
+	return !(
+		personality.includes("/") ||
+		personality.includes("\\") ||
+		personality.includes("..")
+	);
+}
+
 function readPersonalityFile(filePath: string): string | null {
 	try {
 		const stats = statSync(filePath);
 		const cached = PERSONALITY_CACHE.get(filePath);
 		if (cached && cached.mtimeMs === stats.mtimeMs) return cached.content;
 		const content = readFileSync(filePath, "utf8");
-		PERSONALITY_CACHE.set(filePath, { content, mtimeMs: stats.mtimeMs });
-		return content;
+		const normalized = content.startsWith(PERSONALITY_CACHE_MARKER)
+			? content.slice(PERSONALITY_CACHE_MARKER.length).trimStart()
+			: content;
+		PERSONALITY_CACHE.set(filePath, { content: normalized, mtimeMs: stats.mtimeMs });
+		return normalized;
 	} catch (error) {
 		logDebug("Failed to read personality file", error);
 		return null;

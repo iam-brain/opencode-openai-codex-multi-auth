@@ -214,8 +214,8 @@ function codexVariantSet(baseId: string): readonly string[] {
  * Get available model slugs from the cached server response.
  * Falls back to FALLBACK_MODEL_SLUGS when cache is empty.
  */
-function getAvailableModelSlugs(): Set<string> {
-	const cached = getCachedVariantEfforts();
+function getAvailableModelSlugs(accountId?: string): Set<string> {
+	const cached = getCachedVariantEfforts(accountId);
 	if (cached.size > 0) {
 		return new Set(cached.keys());
 	}
@@ -226,9 +226,9 @@ function getAvailableModelSlugs(): Set<string> {
  * Upgrade legacy model slugs to their modern equivalents.
  * Uses dynamic resolution based on available models from server.
  */
-function upgradeLegacyModelSlug(modelId: string): string {
+function upgradeLegacyModelSlug(modelId: string, accountId?: string): string {
 	const normalized = modelId.toLowerCase().trim();
-	const available = getAvailableModelSlugs();
+	const available = getAvailableModelSlugs(accountId);
 	
 	for (const { pattern, upgrade } of LEGACY_MODEL_PATTERNS) {
 		if (pattern.test(normalized)) {
@@ -252,15 +252,15 @@ function upgradeLegacyModelSlug(modelId: string): string {
  * - Legacy slugs with effort suffixes like "gpt-5.2-high" (use variants instead)
  * - Old slugs like "gpt-5" or "gpt-5-codex" (auto-upgraded internally)
  */
-function isAllowedMetadataModel(modelId: string): boolean {
+function isAllowedMetadataModel(modelId: string, accountId?: string): boolean {
 	const normalized = modelId.toLowerCase().trim();
-	const available = getAvailableModelSlugs();
+	const available = getAvailableModelSlugs(accountId);
 	
 	// Check if it's directly available from server/fallback
 	if (available.has(normalized)) return true;
 	
 	// Check if it's a legacy slug that can be upgraded
-	const upgraded = upgradeLegacyModelSlug(normalized);
+	const upgraded = upgradeLegacyModelSlug(normalized, accountId);
 	if (upgraded !== normalized && available.has(upgraded)) return true;
 	
 	// Check if it matches the official format pattern (for new models from server)
@@ -316,7 +316,12 @@ function looksLikeModelMetadataRegistry(models: Record<string, unknown>): boolea
 
 function normalizeProviderModelMetadata(
 	models: Record<string, unknown>,
-	options?: { force?: boolean; variantEfforts?: Map<string, string[]> },
+	options?: {
+		force?: boolean;
+		variantEfforts?: Map<string, string[]>;
+		legacyEffortBases?: Set<string>;
+		accountId?: string;
+	},
 ): void {
 	if (!options?.force && !looksLikeModelMetadataRegistry(models)) return;
 
@@ -329,6 +334,7 @@ function normalizeProviderModelMetadata(
 			variantTemplates: Map<string, Record<string, unknown>>;
 		}
 	>();
+	const baseEntryPresent = new Set<string>();
 
 	for (const [modelId, metadata] of Object.entries(models)) {
 		const parsed = parseCodexMetadataModel(modelId);
@@ -340,6 +346,7 @@ function normalizeProviderModelMetadata(
 		};
 		if (modelId.toLowerCase() === parsed.baseId) {
 			entry.baseTemplate = metadata;
+			baseEntryPresent.add(parsed.baseId);
 		}
 		if (!entry.fallbackTemplate) {
 			entry.fallbackTemplate = metadata;
@@ -412,11 +419,34 @@ function normalizeProviderModelMetadata(
 	for (const modelId of Object.keys(models)) {
 		const parsed = parseCodexMetadataModel(modelId);
 		if (parsed?.effort) {
+			if (options?.legacyEffortBases?.has(parsed.baseId)) {
+				continue;
+			}
+			if (!baseEntryPresent.has(parsed.baseId)) {
+				continue;
+			}
 			delete models[modelId];
 			continue;
 		}
-		if (!isAllowedMetadataModel(modelId)) delete models[modelId];
+		if (!isAllowedMetadataModel(modelId, options?.accountId)) delete models[modelId];
 	}
+}
+
+function collectLegacyEffortBases(models?: Record<string, unknown>): Set<string> {
+	const bases = new Set<string>();
+	if (!models) return bases;
+	const baseEntries = new Set<string>();
+	for (const modelId of Object.keys(models)) {
+		const parsed = parseCodexMetadataModel(modelId);
+		if (!parsed) continue;
+		if (!parsed.effort) baseEntries.add(parsed.baseId);
+	}
+	for (const modelId of Object.keys(models)) {
+		const parsed = parseCodexMetadataModel(modelId);
+		if (!parsed?.effort) continue;
+		if (!baseEntries.has(parsed.baseId)) bases.add(parsed.baseId);
+	}
+	return bases;
 }
 
 
@@ -729,14 +759,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					const auth = await getAuth();
 					if (!isOAuthAuth(auth)) return {};
 					const providerConfig = provider as { options?: Record<string, unknown>; models?: UserConfig["models"] } | undefined;
-					if (providerConfig?.models && isObjectRecord(providerConfig.models)) {
-						const variantEfforts = getCachedVariantEfforts();
-						normalizeProviderModelMetadata(providerConfig.models, {
-							force: true,
-							variantEfforts,
-						});
-					}
-
 				const pluginConfig = loadPluginConfig();
 				configureStorageForPluginConfig(pluginConfig, process.cwd());
 				const quietMode = getQuietMode(pluginConfig);
@@ -748,6 +770,20 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				if (snapshotCount === 0) {
 					await autoQuarantineCorruptAccountsFile();
 					return {};
+				}
+
+				if (providerConfig?.models && isObjectRecord(providerConfig.models)) {
+					const legacyEffortBases = collectLegacyEffortBases(providerConfig.models);
+					const activeAccount = accountManager.getCurrentAccountForFamily(
+						DEFAULT_MODEL_FAMILY,
+					);
+					const variantEfforts = getCachedVariantEfforts(activeAccount?.accountId);
+					normalizeProviderModelMetadata(providerConfig.models, {
+						force: true,
+						variantEfforts,
+						legacyEffortBases,
+						accountId: activeAccount?.accountId,
+					});
 				}
 
 				const userConfig: UserConfig = { global: providerConfig?.options || {}, models: providerConfig?.models || {} };
@@ -837,6 +873,9 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 			cfg.provider = cfg.provider || {};
 			cfg.provider.openai = cfg.provider.openai || {};
 			const openAIConfig = cfg.provider.openai as { models?: unknown };
+			const legacyEffortBases = collectLegacyEffortBases(
+				isObjectRecord(openAIConfig.models) ? openAIConfig.models : undefined,
+			);
 			const internalDefaults = buildInternalModelDefaults();
 			openAIConfig.models = mergeModelDefaults(openAIConfig.models, internalDefaults);
 			if (isObjectRecord(openAIConfig.models)) {
@@ -844,6 +883,7 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 				normalizeProviderModelMetadata(openAIConfig.models, {
 					force: true,
 					variantEfforts,
+					legacyEffortBases,
 				});
 			}
 

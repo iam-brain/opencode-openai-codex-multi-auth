@@ -2,7 +2,7 @@
 
 Comprehensive testing matrix for all config scenarios and backwards compatibility.
 
-> Note: Some examples intentionally use legacy aliases (`gpt-5`, `gpt-5.1-codex`, etc.) to verify compatibility paths. Current runtime preserves unknown/legacy slugs (lowercased) unless they match the explicit model map.
+> Note: Some examples intentionally use legacy aliases (`gpt-5`, `gpt-5.1-codex`, etc.) to verify compatibility paths. Current runtime normalizes known legacy aliases to modern base slugs; unknown slugs are rejected during request transformation.
 
 ## Test Scenarios Matrix
 
@@ -25,7 +25,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 
 | User Selects | Plugin Receives | Normalizes To | Config Lookup | API Receives | Result |
 |--------------|-----------------|---------------|---------------|--------------|--------|
-| `openai/gpt-5` | `"gpt-5"` | `"gpt-5"` | `models["gpt-5"]` → undefined | `"gpt-5"` | ✅ Uses global options |
+| `openai/gpt-5` | `"gpt-5"` | `"gpt-5.1"` | `models["gpt-5"]` → undefined | `"gpt-5.1"` | ✅ Uses global options |
 | `openai/gpt-5.3-codex` | `"gpt-5.3-codex"` | `"gpt-5.3-codex"` | `models["gpt-5.3-codex"]` → undefined | `"gpt-5.3-codex"` | ✅ Uses global options |
 | `openai/gpt-5-mini` | `"gpt-5-mini"` | `"gpt-5-mini"` | `models["gpt-5-mini"]` → undefined | `"gpt-5-mini"` | ✅ Uses global options |
 | `openai/gpt-5-nano` | `"gpt-5-nano"` | `"gpt-5-nano"` | `models["gpt-5-nano"]` → undefined | `"gpt-5-nano"` | ✅ Uses global options |
@@ -575,17 +575,19 @@ opencode
 
 ### Test: normalizeModel() Coverage
 
+`normalizeModel()` lowercases unknown slugs for diagnostics only; requests still reject unknown models.
+
 ```typescript
 normalizeModel("gpt-5.3-codex")          // → "gpt-5.3-codex" ✅
 normalizeModel("gpt-5.2-codex-high")     // → "gpt-5.2-codex" ✅
 normalizeModel("gpt-5.2-xhigh")          // → "gpt-5.2" ✅
 normalizeModel("gpt-5.1-codex-max-xhigh") // → "gpt-5.1-codex-max" ✅
 normalizeModel("gpt-5.1-codex-mini-high") // → "gpt-5.1-codex-mini" ✅
-normalizeModel("codex-mini-latest")      // → "codex-mini-latest" ✅
+normalizeModel("codex-mini-latest")      // → "gpt-5.1-codex-mini" ✅
 normalizeModel("gpt-5.1-codex")          // → "gpt-5.1-codex" ✅
 normalizeModel("gpt-5.1")                // → "gpt-5.1" ✅
 normalizeModel("my-codex-model")         // → "my-codex-model" ✅
-normalizeModel("gpt-5")                  // → "gpt-5" ✅
+normalizeModel("gpt-5")                  // → "gpt-5.1" ✅
 normalizeModel("gpt-5-mini")             // → "gpt-5-mini" ✅
 normalizeModel("gpt-5-nano")             // → "gpt-5-nano" ✅
 normalizeModel("GPT 5 High")             // → "gpt 5 high" ✅
@@ -665,17 +667,17 @@ opencode run "test" --model=openai/gpt-5.3-codex
 ```typescript
 describe('normalizeModel', () => {
   test('handles all default models', () => {
-    expect(normalizeModel('gpt-5')).toBe('gpt-5')
+    expect(normalizeModel('gpt-5')).toBe('gpt-5.1')
     expect(normalizeModel('gpt-5.3-codex')).toBe('gpt-5.3-codex')
-    expect(normalizeModel('gpt-5.3-codex-mini')).toBe('codex-mini-latest')
+    expect(normalizeModel('gpt-5.3-codex-mini')).toBe('gpt-5.1-codex-mini')
     expect(normalizeModel('gpt-5-mini')).toBe('gpt-5-mini')
     expect(normalizeModel('gpt-5-nano')).toBe('gpt-5-nano')
   })
 
   test('handles custom preset names', () => {
     expect(normalizeModel('gpt-5.3-codex-low')).toBe('gpt-5.3-codex')
-    expect(normalizeModel('openai/gpt-5.3-codex-mini-high')).toBe('codex-mini-latest')
-    expect(normalizeModel('gpt-5-high')).toBe('gpt-5-high')
+    expect(normalizeModel('openai/gpt-5.3-codex-mini-high')).toBe('gpt-5.1-codex-mini')
+    expect(normalizeModel('gpt-5-high')).toBe('gpt-5.1')
   })
 
   test('handles legacy names', () => {

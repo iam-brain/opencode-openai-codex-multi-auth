@@ -26,14 +26,14 @@ opencode auth login
 
 **2. Check auth file exists:**
 ```bash
-cat ~/.config/opencode/auth/openai.json
-# Should show OAuth credentials
+cat ~/.config/opencode/openai-codex-accounts.json
+# Should show stored accounts with OAuth credentials
 ```
 
 **3. Check token expiration:**
 ```bash
 # Token has "expires" timestamp
-cat ~/.config/opencode/auth/openai.json | jq '.expires'
+cat ~/.config/opencode/openai-codex-accounts.json | jq '.accounts[]?.expires'
 
 # Compare to current time
 date +%s000  # Current timestamp in milliseconds
@@ -386,7 +386,7 @@ ls -lt ~/.config/opencode/cache/*-instructions-meta.json
 cat ~/.config/opencode/cache/gpt-5.3-codex-instructions-meta.json | jq '.lastChecked'
 
 # Check runtime model metadata fallback cache
-ls -lt ~/.config/opencode/cache/codex-models-cache.json
+ls -lt ~/.config/opencode/cache/codex-models-cache-*.json
 ```
 
 **Manual workaround** (if on old version):

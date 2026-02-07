@@ -75,14 +75,46 @@ export const MODEL_MAP: Record<string, string> = {
 	"gpt-5.1-chat-latest": "gpt-5.1",
 
 	// ============================================================================
-	// (Legacy gpt-5.* model aliases are intentionally not normalized.)
+	// GPT-5 lightweight aliases
+	// ============================================================================
+	"gpt-5-mini": "gpt-5-mini",
+	"gpt-5-nano": "gpt-5-nano",
+
+	// ============================================================================
+	// Legacy GPT-5 aliases (map to modern equivalents)
+	// ============================================================================
+	"gpt-5": "gpt-5.1",
+	"gpt-5-none": "gpt-5.1",
+	"gpt-5-minimal": "gpt-5.1",
+	"gpt-5-low": "gpt-5.1",
+	"gpt-5-medium": "gpt-5.1",
+	"gpt-5-high": "gpt-5.1",
+	"gpt-5-xhigh": "gpt-5.1",
+
+	"gpt-5-codex": "gpt-5.1-codex",
+	"gpt-5-codex-none": "gpt-5.1-codex",
+	"gpt-5-codex-minimal": "gpt-5.1-codex",
+	"gpt-5-codex-low": "gpt-5.1-codex",
+	"gpt-5-codex-medium": "gpt-5.1-codex",
+	"gpt-5-codex-high": "gpt-5.1-codex",
+	"gpt-5-codex-xhigh": "gpt-5.1-codex",
+
+	"codex-mini-latest": "gpt-5.1-codex-mini",
+	"codex-mini-latest-none": "gpt-5.1-codex-mini",
+	"codex-mini-latest-minimal": "gpt-5.1-codex-mini",
+	"codex-mini-latest-low": "gpt-5.1-codex-mini",
+	"codex-mini-latest-medium": "gpt-5.1-codex-mini",
+	"codex-mini-latest-high": "gpt-5.1-codex-mini",
+	"codex-mini-latest-xhigh": "gpt-5.1-codex-mini",
 };
 
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
 const GPT_CODEX_DYNAMIC_REGEX =
 	/^(gpt-5\.\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
+const GPT_GENERAL_PRO_DYNAMIC_REGEX =
+	/^(gpt-5\.\d+(?:\.\d+)*-pro)(?:-(?:none|low|medium|high|xhigh))?$/i;
 const GPT_GENERAL_DYNAMIC_REGEX =
-	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|minimal|low|medium|high|xhigh))$/i;
+	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|low|medium|high|xhigh))$/i;
 const LEGACY_DYNAMIC_ALIASES: Record<string, string> = {};
 
 function applyDynamicAlias(baseModel: string): string {
@@ -95,6 +127,11 @@ function getDynamicNormalizedModel(modelId: string): string | undefined {
 	const codexMatch = normalized.match(GPT_CODEX_DYNAMIC_REGEX);
 	if (codexMatch?.[1]) {
 		return applyDynamicAlias(codexMatch[1]);
+	}
+
+	const proMatch = normalized.match(GPT_GENERAL_PRO_DYNAMIC_REGEX);
+	if (proMatch?.[1]) {
+		return applyDynamicAlias(proMatch[1]);
 	}
 
 	const generalMatch = normalized.match(GPT_GENERAL_DYNAMIC_REGEX);

@@ -1,4 +1,5 @@
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
@@ -6,7 +7,7 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import lockfile from "proper-lockfile";
@@ -17,11 +18,14 @@ import {
 	OPENAI_HEADER_VALUES,
 	URL_PATHS,
 } from "../constants.js";
-import { getOpencodeCacheDir } from "../paths.js";
+import { getOpencodeCacheDir, getOpencodeConfigDir } from "../paths.js";
 import { logDebug, logWarn } from "../logger.js";
 import { getLatestReleaseTag } from "./codex.js";
 
 type PersonalityOption = "none" | "friendly" | "pragmatic";
+
+const PERSONALITY_DIR_NAME = "Personalities";
+const PERSONALITY_CACHE_MARKER = "<!-- opencode personality cache -->";
 
 interface ModelInstructionsVariables {
 	personality?: string | null;
@@ -122,9 +126,11 @@ let cachedClientVersionAt: number | null = null;
  */
 function getModelsCacheFile(accountId?: string): string {
 	if (!accountId) return `${MODELS_CACHE_FILE_BASE}.json`;
-	// Use first 16 chars of accountId hash to avoid path issues
-	const sanitized = accountId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 16);
-	return `${MODELS_CACHE_FILE_BASE}-${sanitized}.json`;
+	return `${MODELS_CACHE_FILE_BASE}-${hashAccountId(accountId)}.json`;
+}
+
+function hashAccountId(accountId: string): string {
+	return createHash("sha256").update(accountId).digest("hex").slice(0, 16);
 }
 
 const LOCK_OPTIONS = {
@@ -308,8 +314,8 @@ function extractVariantEfforts(models: ModelInfo[]): Map<string, string[]> {
 	return efforts;
 }
 
-export function getCachedVariantEfforts(): Map<string, string[]> {
-	const cached = readSessionModelsCache();
+export function getCachedVariantEfforts(accountId?: string): Map<string, string[]> {
+	const cached = readSessionModelsCache(accountId);
 	if (!cached?.models) return new Map();
 	return extractVariantEfforts(cached.models);
 }
@@ -502,12 +508,22 @@ function readStaticTemplateDefaults(moduleDir: string = __dirname): Map<string, 
 
 async function loadServerAndCacheCatalog(
 	options: ModelsFetchOptions,
-): Promise<{ serverModels?: ModelInfo[]; cachedModels?: ModelInfo[] }> {
+): Promise<{
+	serverModels?: ModelInfo[];
+	cachedModels?: ModelInfo[];
+	cachedSource?: ModelsCache["source"];
+	serverIsCache?: boolean;
+}> {
 	const accountId = options.accountId;
 	const cached = readSessionModelsCache(accountId);
 	const cacheIsFresh = isCacheFresh(cached);
 	if (cached && cacheIsFresh && !options.forceRefresh) {
-		return { serverModels: cached.models, cachedModels: cached.models };
+		return {
+			serverModels: cached.models,
+			cachedModels: cached.models,
+			cachedSource: cached.source,
+			serverIsCache: true,
+		};
 	}
 	
 	// Build auth key for backoff tracking (per-account or shared "auth" bucket)
@@ -522,11 +538,16 @@ async function loadServerAndCacheCatalog(
 		if (lastAttempt && Date.now() - lastAttempt < MODELS_SERVER_RETRY_BACKOFF_MS) {
 			// Return cached if available, otherwise signal to use GitHub/static fallback
 			if (cached?.models) {
-				return { serverModels: cached.models, cachedModels: cached.models };
+				return {
+					serverModels: cached.models,
+					cachedModels: cached.models,
+					cachedSource: cached.source,
+					serverIsCache: true,
+				};
 			}
 			// No cache - caller should use GitHub fallback without server retry
 			logDebug(`Server backoff active for ${authKey}; skipping /models fetch`);
-			return { cachedModels: undefined };
+			return { cachedModels: undefined, cachedSource: cached?.source };
 		}
 	}
 
@@ -547,6 +568,8 @@ async function loadServerAndCacheCatalog(
 			return {
 				serverModels: cached.models,
 				cachedModels: cached.models,
+				cachedSource: cached?.source,
+				serverIsCache: true,
 			};
 		}
 		if (server) {
@@ -561,6 +584,8 @@ async function loadServerAndCacheCatalog(
 			return {
 				serverModels: server.models,
 				cachedModels: cached?.models,
+				cachedSource: cached?.source,
+				serverIsCache: false,
 			};
 		}
 	} catch (error) {
@@ -568,7 +593,7 @@ async function loadServerAndCacheCatalog(
 		logDebug("Server /models fetch failed; attempting fallbacks", error);
 	}
 
-	return { cachedModels: cached?.models };
+	return { cachedModels: cached?.models, cachedSource: cached?.source };
 }
 
 function resolveModelInfo(
@@ -585,11 +610,23 @@ export async function getCodexModelRuntimeDefaults(
 	options: ModelsFetchOptions = {},
 ): Promise<CodexModelRuntimeDefaults> {
 	const accountId = options.accountId;
-	const { serverModels, cachedModels } = await loadServerAndCacheCatalog(options);
+	const { serverModels, cachedModels, cachedSource, serverIsCache } =
+		await loadServerAndCacheCatalog(options);
+	let modelSource: "server" | "cache" | "github" | "static" = "static";
 	let model = resolveModelInfo(serverModels ?? [], normalizedModel);
+	if (model) {
+		if (serverIsCache) {
+			modelSource = cachedSource === "github" ? "github" : "cache";
+		} else {
+			modelSource = "server";
+		}
+	}
 
 	if (!model && cachedModels) {
 		model = resolveModelInfo(cachedModels, normalizedModel);
+		if (model) {
+			modelSource = cachedSource === "github" ? "github" : "cache";
+		}
 	}
 
 	if (!model) {
@@ -605,6 +642,7 @@ export async function getCodexModelRuntimeDefaults(
 				writeInMemoryModelsCache(updated, accountId);
 				await writeModelsCache(updated, accountId);
 				model = resolveModelInfo(githubModels, normalizedModel);
+				if (model) modelSource = "github";
 			}
 		} catch (error) {
 			logDebug("GitHub models fallback failed; using static template defaults", error);
@@ -622,6 +660,7 @@ export async function getCodexModelRuntimeDefaults(
 		instructionsVariables?.personality,
 	);
 	const personalityMessages = extractPersonalityMessages(instructionsVariables);
+	seedPersonalityCache(personalityMessages, modelSource);
 	const supportedReasoningEfforts = (model?.supported_reasoning_levels ?? [])
 		.map((level) => level?.effort)
 		.filter((effort): effort is string => typeof effort === "string")
@@ -664,6 +703,51 @@ export async function getCodexModelRuntimeDefaults(
 	};
 }
 
+function seedPersonalityCache(
+	personalityMessages: Record<string, string | null> | undefined,
+	modelSource: "server" | "cache" | "github" | "static",
+): void {
+	if (!personalityMessages) return;
+	if (modelSource !== "server" && modelSource !== "cache") return;
+
+	const personalityDir = join(getOpencodeConfigDir(), PERSONALITY_DIR_NAME);
+	const entries = [
+		{ key: "friendly", fileName: "Friendly.md" },
+		{ key: "pragmatic", fileName: "Pragmatic.md" },
+	];
+
+	for (const entry of entries) {
+		const message = personalityMessages[entry.key];
+		if (typeof message !== "string") continue;
+		const content = message.trim();
+		if (!content) continue;
+		const filePath = join(personalityDir, entry.fileName);
+		try {
+			mkdirSync(personalityDir, { recursive: true });
+			if (existsSync(filePath)) {
+				const existing = readFileSync(filePath, "utf8");
+				if (!existing.startsWith(PERSONALITY_CACHE_MARKER)) {
+					continue;
+				}
+				const trimmed = existing
+					.slice(PERSONALITY_CACHE_MARKER.length)
+					.trimStart();
+				if (trimmed === content) continue;
+			}
+			const payload = `${PERSONALITY_CACHE_MARKER}\n${content}`;
+			writeFileSync(filePath, payload, "utf8");
+			try {
+				chmodSync(filePath, 0o600);
+			} catch {
+				// Best-effort permissions.
+			}
+		} catch (error) {
+			logWarn("Failed to update personality cache file");
+			logDebug("Personality cache update failed", { filePath, error });
+		}
+	}
+}
+
 export async function warmCodexModelCatalog(
 	options: ModelsFetchOptions = {},
 ): Promise<void> {
@@ -684,6 +768,7 @@ export async function warmCodexModelCatalog(
 export const __internal = {
 	MODELS_CACHE_FILE_BASE,
 	getModelsCacheFile,
+	hashAccountId,
 	CLIENT_VERSION_CACHE_FILE,
 	readStaticTemplateDefaults,
 	resolveStaticTemplateFiles,

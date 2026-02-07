@@ -170,6 +170,41 @@ describe("OpenAIAuthPlugin config hook", () => {
 		}
 	});
 
+	it("preserves effort-suffixed models when base entry is missing", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-legacy-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			vi.resetModules();
+			const { OpenAIAuthPlugin: FreshPlugin } = await import("../index.js");
+			const plugin = await FreshPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const cfg: any = {
+				provider: {
+					openai: {
+						models: {
+							"gpt-5.3-codex-low": { id: "gpt-5.3-codex-low" },
+							"gpt-5.3-codex-high": { id: "gpt-5.3-codex-high" },
+						},
+					},
+				},
+				experimental: {},
+			};
+
+			await (plugin as any).config(cfg);
+
+			expect(cfg.provider.openai.models["gpt-5.3-codex-low"]).toBeDefined();
+			expect(cfg.provider.openai.models["gpt-5.3-codex-high"]).toBeDefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("uses cached supported_reasoning_levels for codex variants", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-cache-"));
 		process.env.XDG_CONFIG_HOME = root;

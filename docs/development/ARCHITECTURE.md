@@ -287,7 +287,9 @@ let include: Vec<String> = if reasoning.is_some() {
    │   custom_settings model override → custom_settings global → pragmatic (fallback)
    ├─ Resolve personality message from:
    │   Personalities/*.md → runtime instructions_variables.personalities → built-ins
-   │   (Key "default" uses model runtime defaults; fallback is "pragmatic" if unset)
+   │   (Key "default" uses runtime defaults: personality_default message if present,
+   │    otherwise the onlineDefaultPersonality key from instructions_variables.personality,
+   │    with pragmatic fallback)
    ├─ Apply instructions template (replace `{{ personality }}` or append spec)
    └─ Do not inject bridge/tool-remap overlays
 

@@ -4,6 +4,7 @@ import {
 	getModelConfig,
 	filterInput,
 	transformRequestBody,
+	UnknownModelError,
 } from '../lib/request/request-transformer.js';
 import type { RequestBody, UserConfig, InputItem } from '../lib/types.js';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,11 +23,16 @@ describe('Request Transformer Module', () => {
 			expect(normalizeModel('openai/gpt-5.1-high')).toBe('gpt-5.1');
 		});
 
+		it('should normalize legacy gpt-5 aliases', async () => {
+			expect(normalizeModel('gpt-5')).toBe('gpt-5.1');
+			expect(normalizeModel('gpt-5-codex')).toBe('gpt-5.1-codex');
+			expect(normalizeModel('gpt-5-codex-low')).toBe('gpt-5.1-codex');
+			expect(normalizeModel('codex-mini-latest')).toBe('gpt-5.1-codex-mini');
+		});
+
 		it('should leave unknown models untouched', async () => {
 			expect(normalizeModel('unknown-model')).toBe('unknown-model');
 			expect(normalizeModel('gpt-4')).toBe('gpt-4');
-			expect(normalizeModel('gpt-5-codex')).toBe('gpt-5-codex');
-			expect(normalizeModel('gpt-5')).toBe('gpt-5');
 		});
 
 		it('should default to gpt-5.1 when model is missing', async () => {
@@ -49,7 +55,7 @@ describe('Request Transformer Module', () => {
 				expect(normalizeModel('openai/gpt-5.1-codex-max-medium')).toBe('gpt-5.1-codex-max');
 			});
 
-				it('should normalize gpt-5.3 and gpt-5.2 codex presets', async () => {
+			it('should normalize gpt-5.3 and gpt-5.2 codex presets', async () => {
 					expect(normalizeModel('gpt-5.2-codex')).toBe('gpt-5.2-codex');
 					expect(normalizeModel('gpt-5.2-codex-low')).toBe('gpt-5.2-codex');
 					expect(normalizeModel('gpt-5.2-codex-medium')).toBe('gpt-5.2-codex');
@@ -71,6 +77,12 @@ describe('Request Transformer Module', () => {
 				expect(normalizeModel('gpt-5.1-codex-mini')).toBe('gpt-5.1-codex-mini');
 				expect(normalizeModel('gpt-5.1-codex-mini-high')).toBe('gpt-5.1-codex-mini');
 				expect(normalizeModel('openai/gpt-5.1-codex-mini-medium')).toBe('gpt-5.1-codex-mini');
+			});
+
+			it('should normalize gpt-5.2 pro presets', async () => {
+				expect(normalizeModel('gpt-5.2-pro')).toBe('gpt-5.2-pro');
+				expect(normalizeModel('gpt-5.2-pro-low')).toBe('gpt-5.2-pro');
+				expect(normalizeModel('openai/gpt-5.2-pro-high')).toBe('gpt-5.2-pro');
 			});
 
 			it('should normalize gpt-5.1 general-purpose slugs', async () => {
@@ -945,7 +957,7 @@ describe('Request Transformer Module', () => {
 			});
 		});
 
-		describe('personality resolution', () => {
+			describe('personality resolution', () => {
 			it('applies custom personality from local file', async () => {
 				const root = mkdtempSync(join(tmpdir(), 'personality-local-'));
 				const cwd = process.cwd();
@@ -991,6 +1003,125 @@ describe('Request Transformer Module', () => {
 				}
 			});
 
+			it('strips cache marker from personality files', async () => {
+				const root = mkdtempSync(join(tmpdir(), 'personality-marker-'));
+				const cwd = process.cwd();
+				process.chdir(root);
+				try {
+					const localDir = join(root, '.opencode', 'Personalities');
+					mkdirSync(localDir, { recursive: true });
+					writeFileSync(
+						join(localDir, 'Friendly.md'),
+						'<!-- opencode personality cache -->\nFriendly from cache',
+						'utf8',
+					);
+					const body: RequestBody = {
+						model: 'gpt-5.3-codex',
+						input: [],
+					};
+					const result = await transformRequestBody(
+						body,
+						'BASE INSTRUCTIONS',
+						{ global: {}, models: {} },
+						undefined,
+						{ custom_settings: { options: { personality: 'friendly' }, models: {} } } as any,
+					);
+					expect(result.instructions).toContain('Friendly from cache');
+					expect(result.instructions).not.toContain('opencode personality cache');
+				} finally {
+					process.chdir(cwd);
+					rmSync(root, { recursive: true, force: true });
+				}
+			});
+
+			it('rejects personality names with path traversal', async () => {
+				const root = mkdtempSync(join(tmpdir(), 'personality-traversal-'));
+				const cwd = process.cwd();
+				process.chdir(root);
+				try {
+					const localDir = join(root, '.opencode', 'Personalities');
+					mkdirSync(localDir, { recursive: true });
+					writeFileSync(
+						join(root, '.opencode', 'evil.md'),
+						'do not load',
+						'utf8',
+					);
+					const body: RequestBody = {
+						model: 'gpt-5.3-codex',
+						input: [],
+					};
+					const userConfig: UserConfig = { global: {}, models: {} };
+					const pluginConfig = {
+						custom_settings: {
+							options: { personality: '../evil' },
+							models: {},
+						},
+					};
+					const runtimeDefaults = {
+						instructionsTemplate: 'BASE INSTRUCTIONS\n\n{{ personality }}',
+						personalityMessages: {
+							pragmatic: 'Pragmatic from runtime',
+						},
+						staticDefaultPersonality: 'pragmatic',
+					};
+					const result = await transformRequestBody(
+						body,
+						'BASE INSTRUCTIONS',
+						userConfig,
+						runtimeDefaults as any,
+						pluginConfig as any,
+					);
+					expect(result.instructions).not.toContain('do not load');
+				} finally {
+					process.chdir(cwd);
+					rmSync(root, { recursive: true, force: true });
+				}
+			});
+
+			it('rejects personality names with Windows-style traversal', async () => {
+				const root = mkdtempSync(join(tmpdir(), 'personality-traversal-win-'));
+				const cwd = process.cwd();
+				process.chdir(root);
+				try {
+					const localDir = join(root, '.opencode', 'Personalities');
+					mkdirSync(localDir, { recursive: true });
+					writeFileSync(
+						join(root, '.opencode', 'evil.md'),
+						'do not load',
+						'utf8',
+					);
+					const body: RequestBody = {
+						model: 'gpt-5.3-codex',
+						input: [],
+					};
+					const userConfig: UserConfig = { global: {}, models: {} };
+					const pluginConfig = {
+						custom_settings: {
+							options: { personality: '..\\evil' },
+							models: {},
+						},
+					};
+					const runtimeDefaults = {
+						instructionsTemplate: 'BASE INSTRUCTIONS\n\n{{ personality }}',
+						personalityMessages: {
+							pragmatic: 'Pragmatic from runtime',
+						},
+						staticDefaultPersonality: 'pragmatic',
+					};
+					const result = await transformRequestBody(
+						body,
+						'BASE INSTRUCTIONS',
+						userConfig,
+						runtimeDefaults as any,
+						pluginConfig as any,
+					);
+					expect(result.instructions).not.toContain('do not load');
+				} finally {
+					process.chdir(cwd);
+					rmSync(root, { recursive: true, force: true });
+				}
+			});
+
 			it('defaults to pragmatic when no custom personality set', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5.3-codex',
@@ -1013,6 +1144,67 @@ describe('Request Transformer Module', () => {
 					{} as any,
 				);
 				expect(result.instructions).toContain('Pragmatic from runtime');
+			});
+
+			it('uses runtime default when personality is set to default', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5.3-codex',
+					input: [],
+				};
+				const userConfig: UserConfig = { global: {}, models: {} };
+				const pluginConfig = {
+					custom_settings: {
+						options: { personality: 'default' },
+						models: {},
+					},
+				};
+				const runtimeDefaults = {
+					instructionsTemplate: 'BASE INSTRUCTIONS\n\n{{ personality }}',
+					personalityMessages: {
+						friendly: 'Friendly from runtime',
+						pragmatic: 'Pragmatic from runtime',
+					},
+					onlineDefaultPersonality: 'friendly',
+					staticDefaultPersonality: 'pragmatic',
+				};
+				const result = await transformRequestBody(
+					body,
+					'BASE INSTRUCTIONS',
+					userConfig,
+					runtimeDefaults as any,
+					pluginConfig as any,
+				);
+				expect(result.instructions).toContain('Friendly from runtime');
+			});
+
+			it('uses explicit runtime default message when provided', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5.3-codex',
+					input: [],
+				};
+				const userConfig: UserConfig = { global: {}, models: {} };
+				const pluginConfig = {
+					custom_settings: {
+						options: { personality: 'default' },
+						models: {},
+					},
+				};
+				const runtimeDefaults = {
+					instructionsTemplate: 'BASE INSTRUCTIONS\n\n{{ personality }}',
+					personalityMessages: {
+						default: 'Default from runtime',
+						pragmatic: 'Pragmatic from runtime',
+					},
+					staticDefaultPersonality: 'pragmatic',
+				};
+				const result = await transformRequestBody(
+					body,
+					'BASE INSTRUCTIONS',
+					userConfig,
+					runtimeDefaults as any,
+					pluginConfig as any,
+				);
+				expect(result.instructions).toContain('Default from runtime');
 			});
 
 			it('logs invalid personality once per process while coercing to pragmatic', async () => {
@@ -1072,37 +1264,61 @@ describe('Request Transformer Module', () => {
 			});
 		});
 
+		describe('unknown model handling', () => {
+			it('rejects unknown models with a clear error', async () => {
+				const body: RequestBody = {
+					model: 'unknown-model',
+					input: [],
+				};
+				const userConfig: UserConfig = {
+					global: {},
+					models: {},
+				};
+
+				await expect(
+					transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig),
+				).rejects.toThrow(UnknownModelError);
+				await expect(
+					transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig),
+				).rejects.toThrow('Unknown model "unknown-model"');
+			});
+		});
+
 		// NEW: Integration tests for all config scenarios
 		describe('Integration: Complete Config Scenarios', () => {
 			describe('Scenario 1: Default models (no custom config)', () => {
-			it('should handle gpt-5-codex with global options only', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5-codex',
-					input: []
-				};
+				it('should handle gpt-5-codex with global options only', async () => {
+					const body: RequestBody = {
+						model: 'gpt-5-codex',
+						input: [],
+					};
 					const userConfig: UserConfig = {
 						global: { reasoningEffort: 'high' },
-						models: {}
+						models: {},
 					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
-				expect(result.model).toBe('gpt-5-codex');
-				expect(result.reasoning?.effort).toBe('high');  // From global
-				expect(result.store).toBe(false);
-			});
+					expect(result.model).toBe('gpt-5.1-codex');
+					expect(result.reasoning?.effort).toBe('high');  // From global
+					expect(result.store).toBe(false);
+				});
 
-			it('should handle gpt-5-mini normalizing to gpt-5.1', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5-mini',
-					input: []
-				};
+				it('should handle gpt-5-mini normalizing to gpt-5.1', async () => {
+					const body: RequestBody = {
+						model: 'gpt-5-mini',
+						input: [],
+					};
 
 					const result = await transformRequestBody(body, codexInstructions);
 
-				expect(result.model).toBe('gpt-5-mini');
-				expect(result.reasoning?.effort).toBe('low');  // Lightweight defaults
-			});
+					expect(result.model).toBe('gpt-5-mini');
+					expect(result.reasoning?.effort).toBe('low');  // Lightweight defaults
+				});
 			});
 
 			describe('Scenario 2: Custom preset names (new style)', () => {
@@ -1110,51 +1326,63 @@ describe('Request Transformer Module', () => {
 					global: { reasoningEffort: 'medium', include: ['reasoning.encrypted_content'] },
 					models: {
 						'gpt-5-codex-low': {
-							options: { reasoningEffort: 'low' }
+							options: { reasoningEffort: 'low' },
 						},
 						'gpt-5-codex-high': {
-							options: { reasoningEffort: 'high', reasoningSummary: 'detailed' }
-						}
-					}
+							options: { reasoningEffort: 'high', reasoningSummary: 'detailed' },
+						},
+					},
 				};
 
-			it('should apply per-model options for gpt-5-codex-low', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5-codex-low',
-					input: []
-				};
+				it('should apply per-model options for gpt-5-codex-low', async () => {
+					const body: RequestBody = {
+						model: 'gpt-5-codex-low',
+						input: [],
+					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
-				expect(result.model).toBe('gpt-5-codex-low');
-				expect(result.reasoning?.effort).toBe('low');  // From per-model
-				expect(result.include).toEqual(['reasoning.encrypted_content']);  // From global
-			});
+					expect(result.model).toBe('gpt-5.1-codex');
+					expect(result.reasoning?.effort).toBe('low');  // From per-model
+					expect(result.include).toEqual(['reasoning.encrypted_content']);  // From global
+				});
 
-			it('should apply per-model options for gpt-5-codex-high', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5-codex-high',
-					input: []
-				};
+				it('should apply per-model options for gpt-5-codex-high', async () => {
+					const body: RequestBody = {
+						model: 'gpt-5-codex-high',
+						input: [],
+					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
-				expect(result.model).toBe('gpt-5-codex-high');
-				expect(result.reasoning?.effort).toBe('high');  // From per-model
-				expect(result.reasoning?.summary).toBe('detailed');  // From per-model
-			});
+					expect(result.model).toBe('gpt-5.1-codex');
+					expect(result.reasoning?.effort).toBe('high');  // From per-model
+					expect(result.reasoning?.summary).toBe('detailed');  // From per-model
+				});
 
-			it('should use global options for default gpt-5-codex', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5-codex',
-					input: []
-				};
+				it('should use global options for default gpt-5-codex', async () => {
+					const body: RequestBody = {
+						model: 'gpt-5-codex',
+						input: [],
+					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
-				expect(result.model).toBe('gpt-5-codex');
-				expect(result.reasoning?.effort).toBe('medium');  // From global (no per-model)
-			});
+					expect(result.model).toBe('gpt-5.1-codex');
+					expect(result.reasoning?.effort).toBe('medium');  // From global (no per-model)
+				});
 			});
 
 			describe('Scenario 3: Backwards compatibility (old verbose names)', () => {
@@ -1162,23 +1390,21 @@ describe('Request Transformer Module', () => {
 					global: {},
 					models: {
 						'GPT 5 Codex Low (ChatGPT Subscription)': {
-							options: { reasoningEffort: 'low', textVerbosity: 'low' }
-						}
-					}
+							options: { reasoningEffort: 'low', textVerbosity: 'low' },
+						},
+					},
 				};
 
-			it('should find and apply old config format', async () => {
-				const body: RequestBody = {
-					model: 'GPT 5 Codex Low (ChatGPT Subscription)',
-					input: []
-				};
+				it('rejects legacy verbose model names', async () => {
+					const body: RequestBody = {
+						model: 'GPT 5 Codex Low (ChatGPT Subscription)',
+						input: [],
+					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
-
-				expect(result.model).toBe('gpt 5 codex low (chatgpt subscription)');
-				expect(result.reasoning?.effort).toBe('low');  // From per-model (old format)
-				expect(result.text?.verbosity).toBe('low');
-			});
+					await expect(
+						transformRequestBody(body, codexInstructions, userConfig),
+					).rejects.toThrow(UnknownModelError);
+				});
 			});
 
 			describe('Scenario 4: Mixed default + custom models', () => {
@@ -1186,18 +1412,22 @@ describe('Request Transformer Module', () => {
 					global: { reasoningEffort: 'medium' },
 					models: {
 						'gpt-5-codex-low': {
-							options: { reasoningEffort: 'low' }
-						}
-					}
+							options: { reasoningEffort: 'low' },
+						},
+					},
 				};
 
 				it('should use per-model for custom variant', async () => {
 					const body: RequestBody = {
 						model: 'gpt-5-codex-low',
-						input: []
+						input: [],
 					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
 					expect(result.reasoning?.effort).toBe('low');  // Per-model
 				});
@@ -1205,16 +1435,20 @@ describe('Request Transformer Module', () => {
 				it('should use global for default model', async () => {
 					const body: RequestBody = {
 						model: 'gpt-5',
-						input: []
+						input: [],
 					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
 					expect(result.reasoning?.effort).toBe('medium');  // Global
 				});
 			});
 
-			describe('Scenario 5: Message ID filtering with multi-turn', () => {
+				describe('Scenario 5: Message ID filtering with multi-turn', () => {
 				it('should remove ALL IDs in multi-turn conversation', async () => {
 					const body: RequestBody = {
 						model: 'gpt-5-codex',
@@ -1223,20 +1457,20 @@ describe('Request Transformer Module', () => {
 							{ id: 'rs_response1', type: 'message', role: 'assistant', content: 'response' },
 							{ id: 'msg_turn2', type: 'message', role: 'user', content: 'second' },
 							{ id: 'assistant_123', type: 'message', role: 'assistant', content: 'reply' },
-						]
+						],
 					};
 
 					const result = await transformRequestBody(body, codexInstructions);
 
 					// All items kept, ALL IDs removed
 					expect(result.input).toHaveLength(4);
-					expect(result.input!.every(item => !item.id)).toBe(true);
+					expect(result.input!.every((item) => !item.id)).toBe(true);
 					expect(result.store).toBe(false);  // Stateless mode
 					expect(result.include).toEqual(['reasoning.encrypted_content']);
 				});
 			});
 
-			describe('Scenario 6: Complete end-to-end transformation', () => {
+				describe('Scenario 6: Complete end-to-end transformation', () => {
 				it('should handle full transformation: custom model + IDs + tools', async () => {
 					const userConfig: UserConfig = {
 						global: { include: ['reasoning.encrypted_content'] },
@@ -1245,40 +1479,44 @@ describe('Request Transformer Module', () => {
 								options: {
 									reasoningEffort: 'low',
 									textVerbosity: 'low',
-									reasoningSummary: 'auto'
-								}
-							}
-						}
+									reasoningSummary: 'auto',
+								},
+							},
+						},
 					};
 
 					const body: RequestBody = {
 						model: 'gpt-5-codex-low',
 						input: [
 							{ id: 'msg_1', type: 'message', role: 'user', content: 'test' },
-							{ id: 'rs_2', type: 'message', role: 'assistant', content: 'reply' }
+							{ id: 'rs_2', type: 'message', role: 'assistant', content: 'reply' },
 						],
-						tools: [{ name: 'edit' }]
+						tools: [{ name: 'edit' }],
 					};
 
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
 
-				// Model preserved for legacy identifiers
-				expect(result.model).toBe('gpt-5-codex-low');
+					// Model normalized for legacy identifiers
+					expect(result.model).toBe('gpt-5.1-codex');
 
 					// IDs removed
-					expect(result.input!.every(item => !item.id)).toBe(true);
+					expect(result.input!.every((item) => !item.id)).toBe(true);
 
 					// Per-model options applied
 					expect(result.reasoning?.effort).toBe('low');
 					expect(result.reasoning?.summary).toBe('auto');
 					expect(result.text?.verbosity).toBe('low');
 
-				// Codex fields set
-				expect(result.store).toBe(false);
-				expect(result.stream).toBe(true);
-				expect(result.instructions).toContain(codexInstructions);
-				expect(result.include).toEqual(['reasoning.encrypted_content']);
-			});
+					// Codex fields set
+					expect(result.store).toBe(false);
+					expect(result.stream).toBe(true);
+					expect(result.instructions).toContain(codexInstructions);
+					expect(result.include).toEqual(['reasoning.encrypted_content']);
+				});
 			});
 		});
 	});
