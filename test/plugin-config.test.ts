@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
 	loadPluginConfig,
-	getCodexMode,
 	getPerProjectAccounts,
 	getSchedulingMode,
 	getMaxCacheFirstWaitSeconds,
@@ -69,7 +68,6 @@ describe('Plugin Configuration', () => {
 
 		describe('loadPluginConfig', () => {
 			const expectedDefault = {
-				codexMode: false,
 				accountSelectionStrategy: 'sticky',
 				pidOffsetEnabled: true,
 				quietMode: false,
@@ -104,15 +102,6 @@ describe('Plugin Configuration', () => {
 			expect(mockExistsSync).toHaveBeenCalledWith(
 				path.join(os.homedir(), '.config', 'opencode', 'openai-codex-auth-config.json')
 			);
-		});
-
-		it('should load config from file when it exists', () => {
-			mockExistsSync.mockReturnValue(true);
-			mockReadFileSync.mockReturnValue(JSON.stringify({ codexMode: true }));
-
-			const config = loadPluginConfig();
-
-			expect(config).toEqual({ ...expectedDefault, codexMode: true });
 		});
 
 		it('should merge user config with defaults', () => {
@@ -177,19 +166,6 @@ describe('Plugin Configuration', () => {
 			const result = getPerProjectAccounts(config);
 
 			expect(result).toBe(true);
-		});
-	});
-
-	describe('getCodexMode', () => {
-		it('should always return false by default', () => {
-			expect(getCodexMode({})).toBe(false);
-		});
-
-		it('should ignore legacy env vars and config values', () => {
-			process.env.CODEX_AUTH_MODE = '1';
-			process.env.CODEX_MODE = '1';
-			expect(getCodexMode({ codexMode: true })).toBe(false);
-			expect(getCodexMode({ codexMode: false })).toBe(false);
 		});
 	});
 
@@ -359,13 +335,5 @@ describe('Plugin Configuration', () => {
 		});
 	});
 
-	describe('Priority order', () => {
-		it('keeps codexMode as a legacy no-op', () => {
-			process.env.CODEX_AUTH_MODE = '1';
-			process.env.CODEX_MODE = '1';
-			expect(getCodexMode({ codexMode: true })).toBe(false);
-			expect(getCodexMode({ codexMode: false })).toBe(false);
-			expect(getCodexMode({})).toBe(false);
-		});
-	});
+
 });

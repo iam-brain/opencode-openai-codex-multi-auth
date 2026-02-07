@@ -9,12 +9,6 @@
       "type": "string",
       "description": "JSON schema reference for editor autocompletion"
     },
-    "codexMode": {
-      "type": "boolean",
-      "default": false,
-      "deprecated": true,
-      "description": "Deprecated legacy field. Bridge mode has been removed and this flag is now a no-op."
-    },
     "custom_settings": {
       "type": "object",
       "description": "Override provider options (including personality) without editing opencode.json.",

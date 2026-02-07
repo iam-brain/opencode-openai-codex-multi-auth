@@ -406,7 +406,6 @@ Plugin config is stored in `~/.config/opencode/openai-codex-auth-config.json`.
 
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `codexMode` | `boolean` | `false` | Legacy no-op (bridge mode removed). |
 | `accountSelectionStrategy` | `string` | `"sticky"` | Account selection (`sticky`, `round-robin`, `hybrid`). |
 | `pidOffsetEnabled` | `boolean` | `true` | PID-based starting offset for parallel agents. |
 | `perProjectAccounts` | `boolean` | `false` | Use `.opencode/openai-codex-accounts.json` when present. |

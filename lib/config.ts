@@ -43,10 +43,9 @@ function migrateLegacyConfigIfNeeded(): void {
 
 /**
  * Default plugin configuration
- * Bridge mode is legacy and no longer affects runtime prompt behavior.
+ * Plugin default configuration.
  */
 const DEFAULT_CONFIG: PluginConfig = {
-	codexMode: false,
 	accountSelectionStrategy: "sticky",
 	pidOffsetEnabled: true,
 	quietMode: false,
@@ -85,11 +84,14 @@ export function loadPluginConfig(): PluginConfig {
 
 		const fileContent = readFileSync(CONFIG_PATH, "utf-8");
 		const userConfig = JSON.parse(fileContent) as Partial<PluginConfig>;
+		const { codexMode: _ignoredCodexMode, ...rest } = userConfig as Partial<PluginConfig> & {
+			codexMode?: unknown;
+		};
 
 		// Merge with defaults
 		return {
 			...DEFAULT_CONFIG,
-			...userConfig,
+			...rest,
 		};
 	} catch (error) {
 		console.warn(
@@ -145,13 +147,6 @@ function resolveNumberSetting(
 	const min = options?.min;
 	if (min !== undefined) return Math.max(min, candidate);
 	return candidate;
-}
-
-/**
- * Legacy no-op: bridge mode has been removed.
- */
-export function getCodexMode(_pluginConfig: PluginConfig): boolean {
-	return false;
 }
 
 export function getPerProjectAccounts(pluginConfig: PluginConfig): boolean {

@@ -369,13 +369,7 @@ Result: Project uses `high`, other projects use `medium`.
 
 ## Plugin Configuration
 
-Advanced plugin settings in `~/.config/opencode/openai-codex-auth-config.json`:
-
-```json
-{
-  "codexMode": false
-}
-```
+Advanced plugin settings in `~/.config/opencode/openai-codex-auth-config.json`.
 
 ### Custom Settings Overrides
 
@@ -409,10 +403,6 @@ The plugin also seeds `Friendly.md` and `Pragmatic.md` in the global directory f
 
 Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching `.md` file in one of the locations above.
 
-### Legacy `codexMode` (No-op)
-
-`codexMode` is retained only for backwards compatibility. Bridge mode was removed, and this field no longer changes runtime prompt or tool behavior.
-
 ### Multi-Account Settings
 
 Multi-account settings live in the same plugin config file:
@@ -424,7 +414,6 @@ Add `$schema` for editor autocompletion:
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/main/assets/openai-codex-auth-config.schema.json",
-  "codexMode": false,
   "accountSelectionStrategy": "sticky",
   "pidOffsetEnabled": true,
   "quietMode": false,

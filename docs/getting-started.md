@@ -198,10 +198,6 @@ Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmat
 
 Prompt caching is enabled out of the box: when OpenCode sends its session identifier as `prompt_cache_key`, the plugin forwards it untouched so multi-turn runs reuse prior work. If you hit your ChatGPT subscription limits, the plugin returns a friendly Codex-style message with the 5-hour and weekly usage windows so you know when capacity resets.
 
-### Migration Note: Legacy `codexMode`
-
-The old bridge-mode behavior has been removed. `codexMode` is deprecated (no-op) and no longer changes request prompt/tool behavior. The runtime now relies on Codex instructions, OpenCode harness metadata, and live tool schemas.
-
 > **⚠️ CRITICAL:** This full configuration is REQUIRED. OpenCode's context auto-compaction and usage sidebar only work with this full configuration. GPT 5 models are temperamental and need proper setup - minimal configurations are NOT supported.
 
 #### ❌ Minimal Configuration (NOT SUPPORTED - DO NOT USE)

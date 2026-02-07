@@ -99,8 +99,6 @@ Personality descriptions come from:
 The filename (case-insensitive) defines the key (e.g., `Idiot.md`), and the file contents are used verbatim.
 
 Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching personality file.
-
-Legacy note: `codexMode` is deprecated and now a no-op.
 ---
 ## ⌨️ Slash Commands (TUI)
 In the OpenCode TUI, you can use these commands to manage your accounts and monitor usage:

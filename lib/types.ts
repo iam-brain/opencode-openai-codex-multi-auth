@@ -5,13 +5,6 @@ import type { Auth, Provider, Model } from "@opencode-ai/sdk";
  */
 export interface PluginConfig {
 	/**
-	 * Legacy toggle for bridge mode.
-	 * Deprecated: bridge injection has been removed and this flag no longer changes runtime behavior.
-	 * @default false
-	 */
-	codexMode?: boolean;
-
-	/**
 	 * Account selection strategy
 	 * - sticky: keep same account until rate-limited (best for caching)
 	 * - round-robin: rotate accounts on every request (best for throughput)
