@@ -147,5 +147,11 @@ describe('Configuration Parsing', () => {
 			const gpt5Reasoning = getReasoningConfig('gpt-5', {});
 			expect(gpt5Reasoning.effort).toBe('medium');
 		});
+
+		it('should treat gpt-5.3-codex as a first-class codex model supporting xhigh', () => {
+			const config = { reasoningEffort: 'xhigh' as const };
+			const reasoning = getReasoningConfig('gpt-5.3-codex', config);
+			expect(reasoning.effort).toBe('xhigh');
+		});
 	});
 });

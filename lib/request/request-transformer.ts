@@ -5,15 +5,22 @@ import { normalizeOrphanedToolOutputs } from "./helpers/input-utils.js";
 import type {
 	ConfigOptions,
 	InputItem,
+	PluginConfig,
 	ReasoningConfig,
 	RequestBody,
 	UserConfig,
 } from "../types.js";
+import { resolveCustomPersonalityDescription } from "../personalities.js";
 
-type PersonalityOption = NonNullable<ConfigOptions["personality"]>;
-
-const PERSONALITY_VALUES = new Set<PersonalityOption>([
+type PersonalityOption = string;
+type ResolvedPersonality = {
+	value: PersonalityOption;
+	raw: string;
+};
+const DEFAULT_PERSONALITY = "pragmatic";
+const PERSONALITY_VALUES = new Set([
 	"none",
+	"default",
 	"friendly",
 	"pragmatic",
 ]);
@@ -24,54 +31,72 @@ const PERSONALITY_FALLBACK_TEXT: Record<Exclude<PersonalityOption, "none">, stri
 	pragmatic:
 		"Adopt a pragmatic, concise, execution-focused tone with direct guidance.",
 };
+const VERBOSITY_VALUES = new Set(["low", "medium", "high"]);
 let didLogInvalidPersonality = false;
 
-type PersonalityParseResult =
-	| { kind: "unset" }
-	| { kind: "valid"; value: PersonalityOption }
-	| { kind: "invalid" };
-
-function parsePersonalityValue(
-	value: unknown,
-	source: "model" | "global",
-): PersonalityParseResult {
-	if (typeof value !== "string") return { kind: "unset" };
+function normalizePersonalityKey(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().toLowerCase();
-	if (!normalized) return { kind: "unset" };
-	if (!PERSONALITY_VALUES.has(normalized as PersonalityOption)) {
-		if (!didLogInvalidPersonality) {
-			logDebug(
-				`Invalid ${source} personality "${value}" detected; coercing to "none"`,
-			);
-			didLogInvalidPersonality = true;
+	return normalized ? normalized : undefined;
+}
+
+function applyCustomSettings(
+	userConfig: UserConfig,
+	pluginConfig?: PluginConfig,
+): UserConfig {
+	const custom = pluginConfig?.custom_settings;
+	if (!custom) return userConfig;
+
+	const merged: UserConfig = {
+		global: { ...userConfig.global, ...(custom.options ?? {}) },
+		models: { ...userConfig.models },
+	};
+
+	if (custom.models) {
+		for (const [modelId, override] of Object.entries(custom.models)) {
+			const existing = merged.models[modelId] ?? {};
+			const mergedOptions = {
+				...(existing.options ?? {}),
+				...(override.options ?? {}),
+			};
+			const mergedVariants = {
+				...(existing.variants ?? {}),
+				...(override.variants ?? {}),
+			};
+			merged.models[modelId] = {
+				...existing,
+				...override,
+				options: mergedOptions,
+				variants: mergedVariants,
+			};
 		}
-		return { kind: "invalid" };
 	}
-	return { kind: "valid", value: normalized as PersonalityOption };
+
+	return merged;
+}
+
+function normalizeVerbosity(
+	value: unknown,
+): "low" | "medium" | "high" | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (!VERBOSITY_VALUES.has(normalized)) return undefined;
+	return normalized as "low" | "medium" | "high";
 }
 
 function resolvePersonality(
-	modelOptions: ConfigOptions,
-	globalOptions: ConfigOptions,
-	runtimeDefaults?: CodexModelRuntimeDefaults,
-): PersonalityOption {
-	const modelValue = parsePersonalityValue(modelOptions.personality, "model");
-	if (modelValue.kind === "valid") return modelValue.value;
-	if (modelValue.kind === "invalid") return "none";
-
-	// Online model default is preferred over global backup when available.
-	if (runtimeDefaults?.onlineDefaultPersonality) {
-		return runtimeDefaults.onlineDefaultPersonality;
-	}
-
-	const globalValue = parsePersonalityValue(
-		globalOptions.personality,
-		"global",
-	);
-	if (globalValue.kind === "valid") return globalValue.value;
-	if (globalValue.kind === "invalid") return "none";
-
-	return runtimeDefaults?.staticDefaultPersonality ?? "none";
+	modelLookupKey: string,
+	pluginConfig?: PluginConfig,
+): ResolvedPersonality {
+	const custom = pluginConfig?.custom_settings;
+	const modelOverride = custom?.models?.[modelLookupKey]?.options?.personality;
+	const globalOverride = custom?.options?.personality;
+	const rawCandidate =
+		(typeof modelOverride === "string" && modelOverride.trim()) ||
+		(typeof globalOverride === "string" && globalOverride.trim()) ||
+		DEFAULT_PERSONALITY;
+	const normalized = normalizePersonalityKey(rawCandidate) ?? DEFAULT_PERSONALITY;
+	return { value: normalized, raw: rawCandidate };
 }
 
 function getModelLookupCandidates(
@@ -98,31 +123,71 @@ function getModelLookupCandidates(
 }
 
 function resolvePersonalityMessage(
-	personality: PersonalityOption,
+	personality: ResolvedPersonality,
 	runtimeDefaults?: CodexModelRuntimeDefaults,
 ): string {
-	if (personality === "none") {
-		return runtimeDefaults?.personalityMessages?.default ?? "";
+	const fileDescription = resolveCustomPersonalityDescription(personality.value);
+	if (fileDescription && fileDescription.trim()) {
+		return fileDescription;
 	}
-	return (
-		runtimeDefaults?.personalityMessages?.[personality] ??
-		PERSONALITY_FALLBACK_TEXT[personality]
-	);
+
+	const runtimeMessages = runtimeDefaults?.personalityMessages ?? {};
+	if (typeof runtimeMessages[personality.value] === "string") {
+		return runtimeMessages[personality.value];
+	}
+	if (personality.value === "default") {
+		if (typeof runtimeMessages.default === "string") {
+			const directDefault = runtimeMessages.default.trim();
+			if (directDefault) return directDefault;
+		}
+		const defaultKey =
+			runtimeDefaults?.onlineDefaultPersonality ??
+			runtimeDefaults?.staticDefaultPersonality ??
+			DEFAULT_PERSONALITY;
+		if (defaultKey === "none") return "";
+		if (typeof runtimeMessages[defaultKey] === "string") {
+			return runtimeMessages[defaultKey];
+		}
+		if (defaultKey === "friendly") {
+			return runtimeMessages.friendly ?? PERSONALITY_FALLBACK_TEXT.friendly;
+		}
+		return runtimeMessages.pragmatic ?? PERSONALITY_FALLBACK_TEXT.pragmatic;
+	}
+	if (personality.value === "none") return "";
+
+	if (personality.value === "friendly") {
+		return runtimeMessages.friendly ?? PERSONALITY_FALLBACK_TEXT.friendly;
+	}
+	if (personality.value === "pragmatic") {
+		return runtimeMessages.pragmatic ?? PERSONALITY_FALLBACK_TEXT.pragmatic;
+	}
+
+	if (!didLogInvalidPersonality) {
+		const invalidLabel = personality.raw || personality.value;
+		logDebug(
+			`Invalid personality "${invalidLabel}" detected; coercing to "${DEFAULT_PERSONALITY}"`,
+		);
+		didLogInvalidPersonality = true;
+	}
+	return runtimeMessages.pragmatic ?? PERSONALITY_FALLBACK_TEXT.pragmatic;
 }
 
 function renderCodexInstructions(
 	baseInstructions: string,
-	personality: PersonalityOption,
+	personality: ResolvedPersonality,
 	runtimeDefaults?: CodexModelRuntimeDefaults,
 ): string {
 	const instructions = runtimeDefaults?.instructionsTemplate ?? baseInstructions;
-	const personalityMessage = resolvePersonalityMessage(personality, runtimeDefaults);
+	const personalityMessage = resolvePersonalityMessage(
+		personality,
+		runtimeDefaults,
+	);
 
 	if (instructions.includes(PERSONALITY_PLACEHOLDER)) {
 		return instructions.replaceAll(PERSONALITY_PLACEHOLDER, personalityMessage);
 	}
 
-	if (personality === "none") return instructions;
+	if (personality.value === "none") return instructions;
 
 	const appended = personalityMessage.trim();
 	if (!appended) return instructions;
@@ -142,84 +207,19 @@ function renderCodexInstructions(
 export function normalizeModel(model: string | undefined): string {
 	if (!model) return "gpt-5.1";
 
-	// Strip provider prefix if present (e.g., "openai/gpt-5-codex" → "gpt-5-codex")
+	// Strip provider prefix if present (e.g., "openai/gpt-5.3-codex" → "gpt-5.3-codex")
 	const modelId = model.includes("/") ? model.split("/").pop()! : model;
+	const trimmed = modelId.trim();
+	if (!trimmed) return "gpt-5.1";
 
 	// Try explicit model map first (handles all known model variants)
-	const mappedModel = getNormalizedModel(modelId);
+	const mappedModel = getNormalizedModel(trimmed);
 	if (mappedModel) {
 		return mappedModel;
 	}
 
-	// Fallback: Pattern-based matching for unknown/custom model names
-	// This preserves backwards compatibility with old verbose names
-	// like "GPT 5 Codex Low (ChatGPT Subscription)"
-	const normalized = modelId.toLowerCase();
-
-	// Priority order for pattern matching (most specific first):
-	// 1. GPT-5.2 Codex (newest codex model)
-	if (
-		normalized.includes("gpt-5.2-codex") ||
-		normalized.includes("gpt 5.2 codex")
-	) {
-		return "gpt-5.2-codex";
-	}
-
-	// 2. GPT-5.2 (general purpose)
-	if (normalized.includes("gpt-5.2") || normalized.includes("gpt 5.2")) {
-		return "gpt-5.2";
-	}
-
-	// 3. GPT-5.1 Codex Max
-	if (
-		normalized.includes("gpt-5.1-codex-max") ||
-		normalized.includes("gpt 5.1 codex max")
-	) {
-		return "gpt-5.1-codex-max";
-	}
-
-	// 4. GPT-5.1 Codex Mini
-	if (
-		normalized.includes("gpt-5.1-codex-mini") ||
-		normalized.includes("gpt 5.1 codex mini")
-	) {
-		return "gpt-5.1-codex-mini";
-	}
-
-	// 5. Legacy Codex Mini
-	if (
-		normalized.includes("codex-mini-latest") ||
-		normalized.includes("gpt-5-codex-mini") ||
-		normalized.includes("gpt 5 codex mini")
-	) {
-		return "codex-mini-latest";
-	}
-
-	// 6. GPT-5.1 Codex
-	if (
-		normalized.includes("gpt-5.1-codex") ||
-		normalized.includes("gpt 5.1 codex")
-	) {
-		return "gpt-5.1-codex";
-	}
-
-	// 7. GPT-5.1 (general-purpose)
-	if (normalized.includes("gpt-5.1") || normalized.includes("gpt 5.1")) {
-		return "gpt-5.1";
-	}
-
-	// 8. GPT-5 Codex family (any variant with "codex")
-	if (normalized.includes("codex")) {
-		return "gpt-5.1-codex";
-	}
-
-	// 9. GPT-5 family (any variant) - default to 5.1 as 5 is being phased out
-	if (normalized.includes("gpt-5") || normalized.includes("gpt 5")) {
-		return "gpt-5.1";
-	}
-
-	// Default fallback - use gpt-5.1 as gpt-5 is being phased out
-	return "gpt-5.1";
+	// Leave unknown/legacy models untouched to avoid false positives.
+	return trimmed.toLowerCase();
 }
 
 /**
@@ -243,12 +243,47 @@ function resolveReasoningConfig(
 	modelName: string,
 	modelConfig: ConfigOptions,
 	body: RequestBody,
+	runtimeDefaults?: CodexModelRuntimeDefaults,
 ): ReasoningConfig {
 	const providerOpenAI = body.providerOptions?.openai;
 	const existingEffort =
 		body.reasoning?.effort ?? providerOpenAI?.reasoningEffort;
 	const existingSummary =
 		body.reasoning?.summary ?? providerOpenAI?.reasoningSummary;
+	const supportedEfforts = runtimeDefaults?.supportedReasoningEfforts;
+	const defaultEffort = runtimeDefaults?.defaultReasoningEffort;
+	const summaryUnsupported =
+		runtimeDefaults?.supportsReasoningSummaries === false ||
+		runtimeDefaults?.reasoningSummaryFormat === "none";
+
+	if (supportedEfforts && supportedEfforts.length > 0) {
+		const normalizedEfforts = supportedEfforts.map((effort) =>
+			effort.toLowerCase(),
+		);
+		const effortSet = new Set(normalizedEfforts);
+		const requested = existingEffort ?? modelConfig.reasoningEffort;
+		let effort =
+			requested && effortSet.has(String(requested).toLowerCase())
+				? String(requested).toLowerCase()
+				: undefined;
+		if (!effort) {
+			const defaultCandidate = defaultEffort
+				? defaultEffort.toLowerCase()
+				: undefined;
+			if (defaultCandidate && effortSet.has(defaultCandidate)) {
+				effort = defaultCandidate;
+			} else {
+				effort = normalizedEfforts[0];
+			}
+		}
+		let summary =
+			existingSummary ?? modelConfig.reasoningSummary ?? "auto";
+		if (summaryUnsupported) summary = "off";
+		return {
+			effort: effort as ReasoningConfig["effort"],
+			summary: summary as ReasoningConfig["summary"],
+		};
+	}
 
 	const mergedConfig: ConfigOptions = {
 		...modelConfig,
@@ -262,14 +297,17 @@ function resolveReasoningConfig(
 function resolveTextVerbosity(
 	modelConfig: ConfigOptions,
 	body: RequestBody,
-): "low" | "medium" | "high" {
+	runtimeDefaults?: CodexModelRuntimeDefaults,
+): "low" | "medium" | "high" | undefined {
 	const providerOpenAI = body.providerOptions?.openai;
-	return (
+	const runtimeVerbosity = normalizeVerbosity(runtimeDefaults?.defaultVerbosity);
+	const explicit =
 		body.text?.verbosity ??
 		providerOpenAI?.textVerbosity ??
-		modelConfig.textVerbosity ??
-		"medium"
-	);
+		modelConfig.textVerbosity;
+	if (explicit) return explicit;
+	if (runtimeDefaults?.supportsVerbosity === false) return undefined;
+	return runtimeVerbosity ?? "medium";
 }
 
 function resolveInclude(modelConfig: ConfigOptions, body: RequestBody): string[] {
@@ -304,10 +342,12 @@ export function getReasoningConfig(
 ): ReasoningConfig {
 	const normalizedName = modelName?.toLowerCase() ?? "";
 
-	// GPT-5.2 Codex is the newest codex model (supports xhigh, but not "none")
+	// GPT-5.3/5.2 Codex are the newest codex models (support xhigh, but not "none")
 	const isGpt52Codex =
 		normalizedName.includes("gpt-5.2-codex") ||
-		normalizedName.includes("gpt 5.2 codex");
+		normalizedName.includes("gpt 5.2 codex") ||
+		normalizedName.includes("gpt-5.3-codex") ||
+		normalizedName.includes("gpt 5.3 codex");
 
 	// GPT-5.2 general purpose (not codex variant)
 	const isGpt52General =
@@ -455,25 +495,23 @@ export async function transformRequestBody(
 	codexInstructions: string,
 	userConfig: UserConfig = { global: {}, models: {} },
 	runtimeDefaults?: CodexModelRuntimeDefaults,
+	pluginConfig?: PluginConfig,
 ): Promise<RequestBody> {
 	const originalModel = body.model;
 	const normalizedModel = normalizeModel(body.model);
-	const globalOptions = userConfig.global || {};
+	const effectiveConfig = applyCustomSettings(userConfig, pluginConfig);
+	const globalOptions = effectiveConfig.global || {};
 	const lookupCandidates = getModelLookupCandidates(originalModel, normalizedModel);
 	const resolvedModelKey = lookupCandidates.find(
-		(candidate) => !!userConfig.models?.[candidate],
+		(candidate) => !!effectiveConfig.models?.[candidate],
 	);
 	const modelLookupKey = resolvedModelKey ?? normalizedModel;
-	const modelOptions = userConfig.models?.[modelLookupKey]?.options || {};
+	const modelOptions = effectiveConfig.models?.[modelLookupKey]?.options || {};
 
 	// Get model-specific configuration using ORIGINAL model name (config key)
 	// with fallbacks for provider-prefixed and normalized aliases
-	const modelConfig = getModelConfig(modelLookupKey, userConfig);
-	const personality = resolvePersonality(
-		modelOptions,
-		globalOptions,
-		runtimeDefaults,
-	);
+	const modelConfig = getModelConfig(modelLookupKey, effectiveConfig);
+	const personality = resolvePersonality(modelLookupKey, pluginConfig);
 
 	logDebug(
 		`Model config lookup: "${modelLookupKey}" → normalized to "${normalizedModel}" for API`,
@@ -481,8 +519,8 @@ export async function transformRequestBody(
 			lookupCandidates,
 			hasModelSpecificConfig: !!resolvedModelKey,
 			resolvedConfig: modelConfig,
-			personality,
-		},
+		personality: personality.value,
+	},
 	);
 
 	// Normalize model name for API call
@@ -537,15 +575,17 @@ export async function transformRequestBody(
 		normalizedModel,
 		modelConfig,
 		body,
+		runtimeDefaults,
 	);
 	body.reasoning = {
 		...body.reasoning,
 		...reasoningConfig,
 	};
 
+	const verbosity = resolveTextVerbosity(modelConfig, body, runtimeDefaults);
 	body.text = {
 		...body.text,
-		verbosity: resolveTextVerbosity(modelConfig, body),
+		...(verbosity ? { verbosity } : {}),
 	};
 
 	body.include = resolveInclude(modelConfig, body);

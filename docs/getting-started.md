@@ -73,8 +73,22 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
         "store": false
       },
       "models": {
-        "gpt-5.1-codex-low": {
-          "name": "GPT 5.1 Codex Low (OAuth)",
+        "gpt-5.3-codex": {
+          "name": "GPT 5.3 Codex (OAuth)",
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          },
+          "options": {
+            "reasoningEffort": "medium",
+            "reasoningSummary": "auto",
+            "textVerbosity": "medium",
+            "include": ["reasoning.encrypted_content"],
+            "store": false
+          }
+        },
+        "gpt-5.3-codex-low": {
+          "name": "GPT 5.3 Codex Low (OAuth)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -87,8 +101,22 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
             "store": false
           }
         },
-        "gpt-5.1-codex-medium": {
-          "name": "GPT 5.1 Codex Medium (OAuth)",
+        "gpt-5.3-codex-high": {
+          "name": "GPT 5.3 Codex High (OAuth)",
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          },
+          "options": {
+            "reasoningEffort": "high",
+            "reasoningSummary": "detailed",
+            "textVerbosity": "medium",
+            "include": ["reasoning.encrypted_content"],
+            "store": false
+          }
+        },
+        "gpt-5.2-codex": {
+          "name": "GPT 5.2 Codex (OAuth)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -101,92 +129,8 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
             "store": false
           }
         },
-        "gpt-5.1-codex-high": {
-          "name": "GPT 5.1 Codex High (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "high",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-max": {
-          "name": "GPT 5.1 Codex Max (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "high",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-max-low": {
-          "name": "GPT 5.1 Codex Max Low (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "low",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-max-medium": {
-          "name": "GPT 5.1 Codex Max Medium (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "medium",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-max-high": {
-          "name": "GPT 5.1 Codex Max High (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "high",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-max-xhigh": {
-          "name": "GPT 5.1 Codex Max Extra High (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "xhigh",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-mini-medium": {
-          "name": "GPT 5.1 Codex Mini Medium (OAuth)",
+        "gpt-5.2": {
+          "name": "GPT 5.2 (OAuth)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -195,62 +139,6 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-codex-mini-high": {
-          "name": "GPT 5.1 Codex Mini High (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "high",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-low": {
-          "name": "GPT 5.1 Low (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "low",
-            "reasoningSummary": "auto",
-            "textVerbosity": "low",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-medium": {
-          "name": "GPT 5.1 Medium (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "medium",
-            "reasoningSummary": "auto",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.1-high": {
-          "name": "GPT 5.1 High (OAuth)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "high",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "high",
             "include": ["reasoning.encrypted_content"],
             "store": false
           }
@@ -262,39 +150,31 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
 ```
 
   **What you get:**
-  - ✅ GPT 5.2 (None/Low/Medium/High/xHigh reasoning)
-  - ✅ GPT 5.2 Codex (Low/Medium/High/xHigh reasoning)
-  - ✅ GPT 5.1 Codex Max (Low/Medium/High/xHigh reasoning presets)
-  - ✅ GPT 5.1 Codex (Low/Medium/High reasoning)
-  - ✅ GPT 5.1 Codex Mini (Medium/High reasoning)
-  - ✅ GPT 5.1 (None/Low/Medium/High reasoning)
+  - ✅ GPT 5.3 Codex (low/medium/high/xhigh reasoning)
+  - ✅ GPT 5.2 (none/low/medium/high/xhigh reasoning)
+  - ✅ GPT 5.2 Codex (low/medium/high/xhigh reasoning)
+  - ✅ GPT 5.1 Codex Max (low/medium/high/xhigh reasoning presets)
+  - ✅ GPT 5.1 Codex (low/medium/high reasoning)
+  - ✅ GPT 5.1 Codex Mini (medium/high reasoning)
+  - ✅ GPT 5.1 (none/low/medium/high reasoning)
   - ✅ 272k context + 128k output window for all GPT 5.x presets.
   - ✅ All visible in OpenCode model selector
   - ✅ Optimal settings for each reasoning level
 
 **Optional: Personality configuration**
 
-You can set personality globally and override it per model:
+Personality settings live in the plugin config file: `~/.config/opencode/openai-codex-auth-config.json` under `custom_settings`.
 
 ```json
 {
-  "provider": {
-    "openai": {
-      "options": {
-        "reasoningEffort": "high",
-        "reasoningSummary": "detailed",
-        "textVerbosity": "medium",
-        "include": [
-          "reasoning.encrypted_content"
-        ],
-        "store": false,
-        "personality": "friendly"
-      },
-      "models": {
-        "gpt-5.3-codex": {
-          "options": {
-            "personality": "pragmatic"
-          }
+  "custom_settings": {
+    "options": {
+      "personality": "friendly"
+    },
+    "models": {
+      "gpt-5.3-codex": {
+        "options": {
+          "personality": "pragmatic"
         }
       }
     }
@@ -302,19 +182,21 @@ You can set personality globally and override it per model:
 }
 ```
 
-Accepted values are `none`, `friendly`, and `pragmatic` (case-insensitive).
+Personality descriptions are loaded from:
+- Project-local `.opencode/Personalities/*.md`
+- Global `~/.config/opencode/Personalities/*.md`
 
-> **Note**: All `gpt-5.1-codex-mini*` presets use 272k context / 128k output limits.
+The filename (case-insensitive) is the personality key; the file contents are used verbatim.
+
+Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching file.
+
+> **Note**: All `gpt-5.*` presets use 272k context / 128k output limits.
 >
 > **Note**: Codex Max presets map to the `gpt-5.1-codex-max` slug with 272k context and 128k output. Use `gpt-5.1-codex-max-low/medium/high/xhigh` to pick the reasoning level (only `-xhigh` uses `xhigh` reasoning).
 >
-> **Note**: GPT 5.2 and GPT 5.2 Codex support `xhigh` reasoning. Use explicit reasoning levels (e.g., `gpt-5.2-xhigh`, `gpt-5.2-codex-xhigh`) for precise control.
+> **Note**: GPT-5.3-Codex, GPT-5.2, and GPT-5.2 Codex support `xhigh` reasoning. Use explicit reasoning levels (e.g., `gpt-5.3-codex-xhigh`, `gpt-5.2-xhigh`) for precise control.
 
 Prompt caching is enabled out of the box: when OpenCode sends its session identifier as `prompt_cache_key`, the plugin forwards it untouched so multi-turn runs reuse prior work. If you hit your ChatGPT subscription limits, the plugin returns a friendly Codex-style message with the 5-hour and weekly usage windows so you know when capacity resets.
-
-### Migration Note: Legacy `codexMode`
-
-The old bridge-mode behavior has been removed. `codexMode` is deprecated (no-op) and no longer changes request prompt/tool behavior. The runtime now relies on Codex instructions, OpenCode harness metadata, and live tool schemas.
 
 > **⚠️ CRITICAL:** This full configuration is REQUIRED. OpenCode's context auto-compaction and usage sidebar only work with this full configuration. GPT 5 models are temperamental and need proper setup - minimal configurations are NOT supported.
 
@@ -327,7 +209,7 @@ The old bridge-mode behavior has been removed. `codexMode` is deprecated (no-op)
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["opencode-openai-codex-multi-auth"],
-  "model": "openai/gpt-5-codex"
+  "model": "openai/gpt-5.3-codex"
 }
 ```
 
@@ -348,7 +230,7 @@ opencode auth login
    If you see other OpenAI auth options, they are OpenCode's built-in methods. This plugin's flow is the one labeled **"(Codex Multi Auth)"**.
 3. Browser opens automatically for OAuth flow
 4. Log in with your ChatGPT account
-5. Done! Token saved to `~/.config/opencode/auth/openai.json`
+5. Done! Accounts saved to `~/.config/opencode/openai-codex-accounts.json`
 
 **Multi-account:** Run `opencode auth login` again to add more ChatGPT accounts (you'll be prompted to add, fresh start, or manage accounts to enable/disable). Accounts are stored in `~/.config/opencode/openai-codex-accounts.json`. See [Multi-Account](multi-account.md).
 
@@ -360,13 +242,13 @@ opencode auth login
 
 ```bash
 # Quick test
-opencode run "write hello world to test.txt" --model=openai/gpt-5.1-codex-medium
+opencode run "write hello world to test.txt" --model=openai/gpt-5.3-codex --variant=medium
 
 # Or start interactive session
 opencode
 ```
 
-You'll see all 22 GPT 5.x variants (GPT 5.2, GPT 5.2 Codex, Codex Max, Codex, Codex Mini, and GPT 5.1 presets) in the model selector!
+You'll see all GPT 5.x variants (GPT 5.3 Codex, GPT 5.2, GPT 5.2 Codex, Codex Max, Codex, Codex Mini, and GPT 5.1 presets) in the model selector!
 
 ---
 
@@ -447,7 +329,7 @@ opencode --version
 ### Check Authentication
 
 ```bash
-cat ~/.config/opencode/auth/openai.json
+cat ~/.config/opencode/openai-codex-accounts.json
 # Should show OAuth credentials (if authenticated)
 ```
 
@@ -455,7 +337,7 @@ cat ~/.config/opencode/auth/openai.json
 
 ```bash
 # Enable logging to verify requests
-ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex
+ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5.3-codex
 
 # Check logs
 ls ~/.config/opencode/logs/codex-plugin/

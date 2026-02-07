@@ -15,7 +15,6 @@ describe("plugin config schema parity", () => {
 		const keys = new Set(Object.keys(schema.properties ?? {}));
 
 		const expectedKeys = [
-			"codexMode",
 			"accountSelectionStrategy",
 			"pidOffsetEnabled",
 			"quietMode",

@@ -26,6 +26,8 @@ import { type ProactiveRefreshQueue } from "./refresh-queue.js";
 import {
 	getAccountSelectionStrategy,
 	getAuthDebugEnabled,
+	getHardStopMaxWaitMs,
+	getHardStopOnAllAuthFailed,
 	getMaxCacheFirstWaitSeconds,
 	getRateLimitDedupWindowMs,
 	getRateLimitToastDebounceMs,
@@ -49,6 +51,11 @@ import {
 	handleErrorResponse,
 	handleSuccessResponse,
 } from "./request/fetch-helpers.js";
+import { createSyntheticErrorResponse } from "./request/response-handler.js";
+import {
+	isModelCatalogError,
+	isModelCatalogUnavailableError,
+} from "./request/errors.js";
 import { normalizeModel } from "./request/request-transformer.js";
 import { getModelFamily } from "./prompts/codex.js";
 import { logDebug, logWarn } from "./logger.js";
@@ -62,6 +69,9 @@ const debugAuth = (...args: unknown[]): void => {
 	if (!getAuthDebugEnabled()) return;
 	console.debug(...args);
 };
+
+const SESSION_KEY_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_SESSION_KEYS = 200;
 
 function shouldRefreshToken(auth: OAuthAuthDetails, skewMs: number): boolean {
 	return !auth.access || auth.expires <= Date.now() + Math.max(0, Math.floor(skewMs));
@@ -105,10 +115,39 @@ export interface FetchOrchestratorConfig {
 
 export class FetchOrchestrator {
 	private lastSessionKey: string | null = null;
-	private readonly seenSessionKeys = new Set<string>();
+	private readonly seenSessionKeys = new Map<string, number>();
 	private lastAccountIndex: number | null = null;
 
 	constructor(private config: FetchOrchestratorConfig) { }
+
+	private touchSessionKey(sessionKey: string): boolean {
+		const now = Date.now();
+		this.pruneSessionKeys(now);
+		const hasSeen = this.seenSessionKeys.has(sessionKey);
+		if (hasSeen) {
+			this.seenSessionKeys.delete(sessionKey);
+		}
+		this.seenSessionKeys.set(sessionKey, now);
+		this.enforceSessionKeyLimit();
+		return hasSeen;
+	}
+
+	private pruneSessionKeys(now: number): void {
+		if (this.seenSessionKeys.size === 0) return;
+		for (const [key, lastSeen] of this.seenSessionKeys) {
+			if (now - lastSeen > SESSION_KEY_TTL_MS) {
+				this.seenSessionKeys.delete(key);
+			}
+		}
+	}
+
+	private enforceSessionKeyLimit(): void {
+		while (this.seenSessionKeys.size > MAX_SESSION_KEYS) {
+			const oldest = this.seenSessionKeys.keys().next().value as string | undefined;
+			if (!oldest) break;
+			this.seenSessionKeys.delete(oldest);
+		}
+	}
 
 	async execute(input: Request | string | URL, init?: RequestInit): Promise<Response> {
 		const {
@@ -147,6 +186,7 @@ export class FetchOrchestrator {
 		let transformation:
 			| Awaited<ReturnType<typeof transformRequestForCodex>>
 			| undefined;
+		let transformationAccountId: string | null = null;
 		let requestInit = init;
 		let model: string | undefined = initialModel;
 		const modelFamily: ModelFamily = model
@@ -160,10 +200,9 @@ export class FetchOrchestrator {
 		const sessionKey = resolveSessionKey(sessionBody);
 		let sessionEvent: "new" | "switch" | null = null;
 		if (sessionKey) {
-			const hasSeen = this.seenSessionKeys.has(sessionKey);
+			const hasSeen = this.touchSessionKey(sessionKey);
 			if (!hasSeen) {
 				sessionEvent = "new";
-				this.seenSessionKeys.add(sessionKey);
 			} else if (this.lastSessionKey && this.lastSessionKey !== sessionKey) {
 				sessionEvent = "switch";
 			}
@@ -260,14 +299,36 @@ export class FetchOrchestrator {
 				}
 				account.accountId = accountId;
 
-				if (!transformation) {
+			if (!transformation || transformationAccountId !== accountId) {
+				try {
 					transformation = await transformRequestForCodex(init, url, userConfig, {
 						accessToken: accountAuth.access,
 						accountId,
+						pluginConfig,
 					});
-					requestInit = transformation?.updatedInit ?? init;
-					model = transformation?.body.model ?? model;
+			} catch (err) {
+				if (isModelCatalogError(err)) {
+					const attemptedModel =
+						typeof originalBody?.model === "string" && originalBody.model.trim()
+							? originalBody.model
+							: model ?? "unknown";
+					const detail =
+						isModelCatalogUnavailableError(err)
+							? " Model catalog unavailable; run once with network access to seed /codex/models."
+							: "";
+						return createSyntheticErrorResponse(
+							`Unsupported model "${attemptedModel}".${detail}`,
+							400,
+							"unsupported_model",
+							"model",
+						);
+					}
+					throw err;
 				}
+				transformationAccountId = accountId;
+				requestInit = transformation?.updatedInit ?? init;
+				model = transformation?.body.model ?? model;
+			}
 
 				const headers = createCodexHeaders(requestInit, accountId, accountAuth.access, { model, promptCacheKey: transformation?.body?.prompt_cache_key });
 
@@ -404,6 +465,22 @@ export class FetchOrchestrator {
 			}
 
 			const waitMs = await accountManager.getMinWaitTimeForFamilyWithHydration(modelFamily, model);
+			if (getHardStopOnAllAuthFailed(pluginConfig) && accountManager.allAccountsCoolingDown("auth-failure")) {
+				return createSyntheticErrorResponse(
+					"All accounts failed authentication. Run `opencode auth login` to reauthenticate.",
+					HTTP_STATUS.UNAUTHORIZED,
+					"all_accounts_auth_failed",
+				);
+			}
+
+			const hardStopMaxWaitMs = getHardStopMaxWaitMs(pluginConfig);
+			if (hardStopMaxWaitMs > 0 && waitMs > hardStopMaxWaitMs) {
+				return createSyntheticErrorResponse(
+					`All ${accountCount} account(s) rate-limited for ${formatWaitTime(waitMs)}. Try again later or raise hardStopMaxWaitMs.`,
+					HTTP_STATUS.TOO_MANY_REQUESTS,
+					"all_accounts_rate_limited",
+				);
+			}
 			if (getRetryAllAccountsRateLimited(pluginConfig) && accountManager.getAccountCount() > 0 && waitMs > 0 && (getRetryAllAccountsMaxWaitMs(pluginConfig) === 0 || waitMs <= getRetryAllAccountsMaxWaitMs(pluginConfig)) && allRateLimitedRetries < getRetryAllAccountsMaxRetries(pluginConfig)) {
 				allRateLimitedRetries += 1;
 				await sleep(waitMs);
@@ -427,3 +504,8 @@ export class FetchOrchestrator {
 		}
 	}
 }
+
+export const __internal = {
+	SESSION_KEY_TTL_MS,
+	MAX_SESSION_KEYS,
+};

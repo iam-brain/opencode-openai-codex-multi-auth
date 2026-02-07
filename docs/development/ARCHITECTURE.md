@@ -265,10 +265,11 @@ let include: Vec<String> = if reasoning.is_some() {
 
 2. Model Normalization
    ├─ Resolve known mappings from model map
-   ├─ Apply fallback normalization for unknown variants
-   └─ Normalize to canonical Codex slug (for API + metadata lookups)
+   ├─ Preserve unknown/legacy slugs (lowercased) to avoid false positives
+   └─ Use the normalized slug for API + metadata lookups
 
 3. Config Merging
+   ├─ Merge plugin `custom_settings` over OpenCode config
    ├─ Global options (provider.openai.options)
    ├─ Model-specific options (provider.openai.models[name].options)
    └─ Result: merged config for this model
@@ -279,11 +280,17 @@ let include: Vec<String> = if reasoning.is_some() {
    └─ Verify no IDs remain
 
 5. System Prompt Handling
-   ├─ Preserve OpenCode env + AGENTS/runtime metadata messages
-   ├─ Load Codex instructions by model family (GitHub ETag-cached)
-   ├─ Load model runtime defaults (online-first /codex/models fallback chain)
-   ├─ Render personality using precedence:
-   │   model option → online model default → global backup → static default
+	├─ Preserve OpenCode env + AGENTS/runtime metadata messages
+	├─ Load Codex instructions by model family (GitHub ETag-cached)
+	├─ Load model runtime defaults from /codex/models (per-account cached, strict allowlist)
+	├─ Render personality using precedence:
+   │   custom_settings model override → custom_settings global → pragmatic (fallback)
+   ├─ Resolve personality message from:
+   │   Personalities/*.md → runtime instructions_variables.personalities → built-ins
+   │   (Key "default" uses runtime defaults: personality_default message if present,
+   │    otherwise the onlineDefaultPersonality key from instructions_variables.personality,
+   │    with pragmatic fallback)
+   ├─ Apply instructions template (replace `{{ personality }}` or append spec)
    └─ Do not inject bridge/tool-remap overlays
 
 6. Orphan Tool Output Handling
@@ -335,7 +342,7 @@ let include: Vec<String> = if reasoning.is_some() {
 | Feature | Codex CLI | This Plugin | Why? |
 |---------|-----------|-------------|------|
 | **OpenCode Runtime Metadata Preservation** | Native runtime | ✅ Preserve env/AGENTS developer messages | Keep harness context intact without duplicating tool contracts |
-| **Online-First Model Metadata Fallbacks** | Native model manager | ✅ `/codex/models` → cache → GitHub → static | Resilient runtime defaults + personality templates |
+| **Authoritative Model Catalog** | Native model manager | ✅ `/codex/models` → per-account cache (server-derived), fail closed if unavailable | Strict allowlist + runtime defaults |
 | **Orphan Tool Output Handling** | ✅ Drop orphans | ✅ Convert to messages | Preserve context + avoid 400s |
 | **Usage-limit messaging** | CLI prints status | ✅ Friendly error summary | Surface 5h/weekly windows in OpenCode |
 | **Per-Model Options** | CLI flags | ✅ Config file | Better UX in OpenCode |
@@ -396,7 +403,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Alternative**: Single global config
 
 **Problem**:
-- `gpt-5.1-codex` optimal settings differ from `gpt-5.1`
+- `gpt-5.3-codex` optimal settings differ from `gpt-5.3`
 - Users want quick switching between quality levels
 - No way to save "presets"
 
@@ -430,6 +437,20 @@ let include: Vec<String> = if reasoning.is_some() {
 **Cause**: Azure doesn't support stateless mode
 **Workaround**: Codex CLI uses `store: true` for Azure only
 **This Plugin**: Only supports ChatGPT OAuth (no Azure)
+
+### Hard-Stop Error Handling
+
+**Unsupported model**:
+- Trigger: model not in `/codex/models` (including custom IDs)
+- Response: synthetic error with `type: unsupported_model`, `param: model`, and attempted model ID
+
+**Catalog unavailable**:
+- Trigger: `/codex/models` unavailable and no cached catalog
+- Response: synthetic `unsupported_model` error with catalog context in the message
+
+**All accounts unavailable**:
+- Trigger: all accounts rate-limited beyond `hardStopMaxWaitMs` or all accounts in auth-failure cooldown
+- Response: synthetic errors `all_accounts_rate_limited` (HTTP 429) or `all_accounts_auth_failed` (HTTP 401)
 
 ---
 
@@ -473,11 +494,6 @@ The plugin retrieves usage data from the authoritative `/wham/usage` endpoint:
 ---
 
 ## Performance Considerations
-
-### Token Usage
-
-**Codex Bridge Prompt**: ~550 tokens (~90% reduction vs full OpenCode prompt)
-**Benefit**: Faster inference, lower costs
 
 ### Request Optimization
 

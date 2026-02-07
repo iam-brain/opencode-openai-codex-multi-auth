@@ -3,6 +3,20 @@ import { getModelFamily } from "../lib/prompts/codex.js";
 
 describe("Codex Module", () => {
 	describe("getModelFamily", () => {
+		describe("GPT-5.3 Codex family", () => {
+			it("should return gpt-5.3-codex for gpt-5.3-codex", () => {
+				expect(getModelFamily("gpt-5.3-codex")).toBe("gpt-5.3-codex");
+			});
+
+			it("should return gpt-5.3-codex for gpt-5.3-codex-low", () => {
+				expect(getModelFamily("gpt-5.3-codex-low")).toBe("gpt-5.3-codex");
+			});
+
+			it("should return gpt-5.3-codex for gpt-5.3-codex-xhigh", () => {
+				expect(getModelFamily("gpt-5.3-codex-xhigh")).toBe("gpt-5.3-codex");
+			});
+		});
+
 		describe("GPT-5.2 Codex family", () => {
 			it("should return gpt-5.2-codex for gpt-5.2-codex", () => {
 				expect(getModelFamily("gpt-5.2-codex")).toBe("gpt-5.2-codex");

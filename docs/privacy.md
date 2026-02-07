@@ -1,5 +1,7 @@
 # Privacy & Data Handling
 
+**Last Updated:** Feb 2026
+
 This page explains how the OpenCode OpenAI Codex Auth Plugin handles your data and protects your privacy.
 
 ## Overview
@@ -24,18 +26,23 @@ This plugin prioritizes user privacy and data security. We believe in transparen
 All data is stored **locally on your machine**:
 
 ### OAuth Tokens
-- **Location:** `~/.config/opencode/auth/openai.json`
-- **Contents:** Access tokens, refresh tokens, expiration timestamps
-- **Managed by:** OpenCode's credential management system
+- **Location:** `~/.config/opencode/openai-codex-accounts.json` (plus any project-local storage seeded by OpenCode)
+- **Contents:** Refresh tokens, access tokens, expiration timestamps, account identity metadata
+- **Managed by:** This plugin's account storage (with file locking + atomic writes)
 - **Security:** File permissions restrict access to your user account
 
 ### Cache Files
 - **Location:** `~/.config/opencode/cache/`
 - **Contents:**
-  - `gpt-5.1-instructions.md`, `gpt-5.2-instructions.md`, `gpt-5.2-codex-instructions.md`, etc. (Codex system instructions)
+  - `gpt-5.1-codex-instructions.md`, `gpt-5.3-codex-instructions.md`, `gpt-5.3-codex-instructions-v2.md`, etc. (Codex system instructions)
   - `*-instructions-meta.json` (ETag/tag/timestamp metadata per family)
-  - `codex-models-cache.json` (runtime `/codex/models` fallback cache)
+  - `codex-models-cache-<hash>.json` (per-account hashed `/codex/models` cache)
 - **Purpose:** Reduce GitHub API calls, preserve offline fallbacks, and improve startup/runtime performance
+
+### Personality Cache Files
+- **Location:** `~/.config/opencode/Personalities/`
+- **Contents:** `Friendly.md`, `Pragmatic.md` (server-derived personality fallbacks)
+- **Purpose:** Durable fallback when runtime defaults cannot be fetched; user-managed files are not overwritten
 
 ### Debug Logs
 - **Location:** `~/.config/opencode/logs/codex-plugin/`
@@ -103,7 +110,7 @@ You have complete control over your data:
 ```bash
 opencode auth logout
 # Or manually:
-rm ~/.config/opencode/auth/openai.json
+rm ~/.config/opencode/openai-codex-accounts.json
 ```
 
 ### Delete Cache Files

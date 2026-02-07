@@ -1,7 +1,7 @@
 ![Image 1: opencode-openai-codex-auth](assets/readme-hero.svg)
 
 
-**This project is now EOL and no further developments will be made. A complete rewrite, based on the current native implementation of OpenAI's OAuth in Opencode, is now underway and will be available at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-openai-multi) when complete.**
+**Maintenance fork:** This project continues to receive hardening and compatibility updates while a full rewrite (based on OpenCode's native OAuth) is underway at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-openai-multi).
 
   
 Fork maintained by [iam-brain](https://github.com/iam-brain).
@@ -33,12 +33,12 @@ npx -y opencode-openai-codex-multi-auth@latest
 Then:
 ```bash
 opencode auth login
-opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=medium
+opencode run "write hello world to test.txt" --model=openai/gpt-5.3-codex --variant=medium
 ```
 Legacy OpenCode (v1.0.209 and below):
 ```bash
 npx -y opencode-openai-codex-multi-auth@latest --legacy
-opencode run "write hello world to test.txt" --model=openai/gpt-5.2-medium
+opencode run "write hello world to test.txt" --model=openai/gpt-5.3-codex-medium
 ```
 Uninstall:
 ```bash
@@ -57,6 +57,7 @@ opencode auth login
 
 ---
 ## 📦 Models
+- **gpt-5.3-codex** (low/medium/high/xhigh)
 - **gpt-5.2** (none/low/medium/high/xhigh)
 - **gpt-5.2-codex** (low/medium/high/xhigh)
 - **gpt-5.1-codex-max** (low/medium/high/xhigh)
@@ -68,24 +69,22 @@ opencode auth login
 - Modern (OpenCode v1.0.210+): `config/opencode-modern.json`
 - Legacy (OpenCode v1.0.209 and below): `config/opencode-legacy.json`
 - Installer template source: latest GitHub release → GitHub `main` → bundled static template fallback
-- Runtime model metadata source: Codex `/backend-api/codex/models` → local cache → GitHub `models.json` (release/main) → static template defaults
+- Runtime model metadata source: Codex `/backend-api/codex/models` → per-account local cache (server-derived). Requests fail closed if the catalog is unavailable.
 
 Minimal configs are not supported for GPT‑5.x; use the full configs above.
 
-Personality is supported for all current and future models via `options.personality`:
+Personality is configured in `~/.config/opencode/openai-codex-auth-config.json` via `custom_settings`:
 
 ```json
 {
-  "provider": {
-    "openai": {
-      "options": {
-        "personality": "friendly"
-      },
-      "models": {
-        "gpt-5.3-codex": {
-          "options": {
-            "personality": "pragmatic"
-          }
+  "custom_settings": {
+    "options": {
+      "personality": "Idiot"
+    },
+    "models": {
+      "gpt-5.3-codex": {
+        "options": {
+          "personality": "pragmatic"
         }
       }
     }
@@ -93,9 +92,13 @@ Personality is supported for all current and future models via `options.personal
 }
 ```
 
-Accepted values: `none`, `friendly`, `pragmatic` (case-insensitive).
+Personality descriptions come from:
+- Project-local `.opencode/Personalities/*.md`
+- Global `~/.config/opencode/Personalities/*.md`
 
-Legacy note: `codexMode` is deprecated and now a no-op.
+The filename (case-insensitive) defines the key (e.g., `Idiot.md`), and the file contents are used verbatim.
+
+Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching personality file.
 ---
 ## ⌨️ Slash Commands (TUI)
 In the OpenCode TUI, you can use these commands to manage your accounts and monitor usage:
@@ -105,22 +108,29 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 | `/codex-status` | Shows current rate limits (5h/Weekly), credits, and account status (percent left). |
 | `/codex-switch-accounts <index>` | Switch the active account by its 1-based index from the status list. |
 | `/codex-toggle-account <index>` | Enable or disable an account by its 1-based index (prevents auto-selection). |
+| `/codex-remove-account <index>` | Remove an account by its 1-based index. |
 
 ---
 ## ✅ Features
 - ChatGPT Plus/Pro OAuth authentication (official flow)
-- 22 model presets across GPT‑5.2 / GPT‑5.2 Codex / GPT‑5.1 families
+- Model presets across GPT‑5.3 Codex / GPT‑5.2 / GPT‑5.2 Codex / GPT‑5.1 families
 - Variant system support (v1.0.210+) + legacy presets
 - Multimodal input enabled for all models
 - Usage‑aware errors + automatic token refresh
-- Online-first template/model metadata resolution with resilient fallbacks
+- Authoritative model catalog validation (`/codex/models`) with per-account cache
 - Multi-account support with sticky selection + PID offset (great for parallel agents)
 - Account enable/disable management (via `opencode auth login` manage)
+- Hard-stop safety loops for unavailable accounts and unsupported models
 - Strict account identity matching (`accountId` + `email` + `plan`)
 - Hybrid account selection strategy (health score + token bucket + LRU bias)
 - Optional round-robin account rotation (maximum throughput)
 - OpenCode TUI toasts + `codex-status` / `codex-switch-accounts` tools
 - **Authoritative Codex Status**: Real-time rate limit monitoring (5h/Weekly) with ASCII status bars
+---
+## 🛡️ Safety & Reliability
+- Hard-stop safety gate for all-accounts rate-limit/auth-failure loops
+- Strict model allowlist from `/backend-api/codex/models` (per-account cached)
+- Synthetic error responses that surface the exact failure reason
 ---
 ## 📚 Docs
 - Getting Started: `docs/getting-started.md`

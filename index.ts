@@ -78,16 +78,90 @@ import {
 import { formatToastMessage } from "./lib/formatting.js";
 import { logCritical } from "./lib/logger.js";
 import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
+import { warmCodexInstructions } from "./lib/prompts/codex.js";
+import { getCachedVariantEfforts, warmCodexModelCatalog } from "./lib/prompts/codex-models.js";
+import { buildInternalModelDefaults, mergeModelDefaults } from "./lib/catalog-defaults.js";
 
-const LEGACY_ALLOWED_METADATA_MODELS = new Set([
+/**
+ * Fallback model slugs when server is unavailable.
+ * The server response is the source of truth; this is only used as a fallback.
+ */
+const FALLBACK_MODEL_SLUGS = new Set([
+	"gpt-5.3-codex",
+	"gpt-5.2-codex",
 	"gpt-5.2",
 	"gpt-5.1",
-	"gpt-5-codex",
-	"codex-mini-latest",
+	"gpt-5.1-codex",
+	"gpt-5.1-codex-max",
+	"gpt-5.1-codex-mini",
 ]);
 
+function parseGptVersion(slug: string): { major: number; minor: number } | null {
+	const match = slug.toLowerCase().match(/^gpt-(\d+)\.(\d+)/);
+	if (!match) return null;
+	const major = Number(match[1]);
+	const minor = Number(match[2]);
+	if (!Number.isFinite(major) || !Number.isFinite(minor)) return null;
+	return { major, minor };
+}
+
+function pickLowestAvailable(available: Set<string>, pattern: RegExp): string | null {
+	let best: { slug: string; major: number; minor: number } | null = null;
+	for (const slug of available) {
+		if (!pattern.test(slug)) continue;
+		const version = parseGptVersion(slug);
+		if (!version) continue;
+		if (!best) {
+			best = { slug, ...version };
+			continue;
+		}
+		if (version.major < best.major) {
+			best = { slug, ...version };
+			continue;
+		}
+		if (version.major === best.major && version.minor < best.minor) {
+			best = { slug, ...version };
+		}
+	}
+	return best?.slug ?? null;
+}
+
+/**
+ * Legacy model slug mappings for automatic upgrade.
+ * Maps obsolete identifiers to their modern equivalents.
+ * The target slugs are dynamically resolved from available models.
+ */
+const LEGACY_MODEL_PATTERNS: Array<{
+	pattern: RegExp;
+	upgrade: (available: Set<string>) => string | null;
+}> = [
+	// gpt-5 → lowest available gpt-5.X (dynamic)
+	{
+		pattern: /^gpt-5$/,
+		upgrade: (available) =>
+			pickLowestAvailable(available, /^gpt-5\.\d+$/i) ?? "gpt-5.1",
+	},
+	// gpt-5-codex → lowest available gpt-5.X-codex (dynamic)
+	{
+		pattern: /^gpt-5-codex$/,
+		upgrade: (available) =>
+			pickLowestAvailable(available, /^gpt-5\.\d+-codex$/i) ?? "gpt-5.1-codex",
+	},
+	// codex-mini-latest → lowest available gpt-5.X-codex-mini (dynamic)
+	{
+		pattern: /^codex-mini-latest$/,
+		upgrade: (available) =>
+			pickLowestAvailable(available, /^gpt-5\.\d+-codex-mini$/i) ??
+			"gpt-5.1-codex-mini",
+	},
+];
+
+/**
+ * Matches official Codex model slugs with optional effort suffix.
+ * Format: gpt-X.Y[-codex[-max|-mini|-pro]][-effort]
+ */
 const CODEX_METADATA_REGEX =
-	/^(gpt-\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(none|minimal|low|medium|high|xhigh))?$/i;
+	/^(gpt-\d+\.\d+(?:-codex)?(?:-(?:max|mini|pro))?)(?:-(none|minimal|low|medium|high|xhigh))?$/i;
 
 const CODEX_STANDARD_VARIANTS = ["low", "medium", "high"] as const;
 const CODEX_XHIGH_VARIANTS = ["low", "medium", "high", "xhigh"] as const;
@@ -136,10 +210,68 @@ function codexVariantSet(baseId: string): readonly string[] {
 	return CODEX_STANDARD_VARIANTS;
 }
 
-function isAllowedMetadataModel(modelId: string): boolean {
-	const normalized = modelId.toLowerCase();
-	if (LEGACY_ALLOWED_METADATA_MODELS.has(normalized)) return true;
-	return parseCodexMetadataModel(normalized) !== undefined;
+/**
+ * Get available model slugs from the cached server response.
+ * Falls back to FALLBACK_MODEL_SLUGS when cache is empty.
+ */
+function getAvailableModelSlugs(accountId?: string): Set<string> {
+	const cached = getCachedVariantEfforts(accountId);
+	if (cached.size > 0) {
+		return new Set(cached.keys());
+	}
+	return new Set(FALLBACK_MODEL_SLUGS);
+}
+
+/**
+ * Upgrade legacy model slugs to their modern equivalents.
+ * Uses dynamic resolution based on available models from server.
+ */
+function upgradeLegacyModelSlug(modelId: string, accountId?: string): string {
+	const normalized = modelId.toLowerCase().trim();
+	const available = getAvailableModelSlugs(accountId);
+	
+	for (const { pattern, upgrade } of LEGACY_MODEL_PATTERNS) {
+		if (pattern.test(normalized)) {
+			const upgraded = upgrade(available);
+			if (upgraded) return upgraded;
+		}
+	}
+	
+	return normalized;
+}
+
+/**
+ * Check if a model ID is an officially supported Codex model slug.
+ * 
+ * Allowed:
+ * - Models from server catalog (getCachedVariantEfforts)
+ * - Fallback slugs when server unavailable
+ * - Models matching official pattern: gpt-X.Y[-codex[-max|-mini|-pro]]
+ * 
+ * NOT allowed:
+ * - Legacy slugs with effort suffixes like "gpt-5.2-high" (use variants instead)
+ * - Old slugs like "gpt-5" or "gpt-5-codex" (auto-upgraded internally)
+ */
+function isAllowedMetadataModel(modelId: string, accountId?: string): boolean {
+	const normalized = modelId.toLowerCase().trim();
+	const available = getAvailableModelSlugs(accountId);
+	
+	// Check if it's directly available from server/fallback
+	if (available.has(normalized)) return true;
+	
+	// Check if it's a legacy slug that can be upgraded
+	const upgraded = upgradeLegacyModelSlug(normalized, accountId);
+	if (upgraded !== normalized && available.has(upgraded)) return true;
+	
+	// Check if it matches the official format pattern (for new models from server)
+	const parsed = parseCodexMetadataModel(normalized);
+	if (!parsed) return false;
+	
+	// Base ID must be available or match the official gpt-X.Y pattern
+	// This allows new models like gpt-5.2-pro from server
+	if (available.has(parsed.baseId)) return true;
+	
+	return /^gpt-\d+\.\d+(?:-codex)?(?:-(?:max|mini|pro))?$/.test(parsed.baseId);
 }
 
 function cloneModelMetadata(
@@ -184,7 +316,12 @@ function looksLikeModelMetadataRegistry(models: Record<string, unknown>): boolea
 
 function normalizeProviderModelMetadata(
 	models: Record<string, unknown>,
-	options?: { force?: boolean },
+	options?: {
+		force?: boolean;
+		variantEfforts?: Map<string, string[]>;
+		legacyEffortBases?: Set<string>;
+		accountId?: string;
+	},
 ): void {
 	if (!options?.force && !looksLikeModelMetadataRegistry(models)) return;
 
@@ -197,6 +334,7 @@ function normalizeProviderModelMetadata(
 			variantTemplates: Map<string, Record<string, unknown>>;
 		}
 	>();
+	const baseEntryPresent = new Set<string>();
 
 	for (const [modelId, metadata] of Object.entries(models)) {
 		const parsed = parseCodexMetadataModel(modelId);
@@ -208,6 +346,7 @@ function normalizeProviderModelMetadata(
 		};
 		if (modelId.toLowerCase() === parsed.baseId) {
 			entry.baseTemplate = metadata;
+			baseEntryPresent.add(parsed.baseId);
 		}
 		if (!entry.fallbackTemplate) {
 			entry.fallbackTemplate = metadata;
@@ -247,10 +386,21 @@ function normalizeProviderModelMetadata(
 			? (baseModel.variants as Record<string, unknown>)
 			: {};
 
-		const efforts = new Set<string>([
-			...codexVariantSet(baseId),
-			...entry.seenEfforts,
-		]);
+		const cachedEfforts = options?.variantEfforts?.get(baseId);
+		const efforts = cachedEfforts?.length
+			? new Set<string>(cachedEfforts)
+			: new Set<string>([...codexVariantSet(baseId), ...entry.seenEfforts]);
+
+		if (cachedEfforts?.length) {
+			const allowed = new Set(
+				cachedEfforts.map((effort) => effort.toLowerCase()),
+			);
+			for (const key of Object.keys(variants)) {
+				if (!allowed.has(key.toLowerCase())) {
+					delete variants[key];
+				}
+			}
+		}
 
 		for (const effort of efforts) {
 			const existingVariant = isObjectRecord(variants[effort])
@@ -269,11 +419,34 @@ function normalizeProviderModelMetadata(
 	for (const modelId of Object.keys(models)) {
 		const parsed = parseCodexMetadataModel(modelId);
 		if (parsed?.effort) {
+			if (options?.legacyEffortBases?.has(parsed.baseId)) {
+				continue;
+			}
+			if (!baseEntryPresent.has(parsed.baseId)) {
+				continue;
+			}
 			delete models[modelId];
 			continue;
 		}
-		if (!isAllowedMetadataModel(modelId)) delete models[modelId];
+		if (!isAllowedMetadataModel(modelId, options?.accountId)) delete models[modelId];
 	}
+}
+
+function collectLegacyEffortBases(models?: Record<string, unknown>): Set<string> {
+	const bases = new Set<string>();
+	if (!models) return bases;
+	const baseEntries = new Set<string>();
+	for (const modelId of Object.keys(models)) {
+		const parsed = parseCodexMetadataModel(modelId);
+		if (!parsed) continue;
+		if (!parsed.effort) baseEntries.add(parsed.baseId);
+	}
+	for (const modelId of Object.keys(models)) {
+		const parsed = parseCodexMetadataModel(modelId);
+		if (!parsed?.effort) continue;
+		if (!baseEntries.has(parsed.baseId)) bases.add(parsed.baseId);
+	}
+	return bases;
 }
 
 
@@ -283,6 +456,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	let cachedFetchOrchestrator: FetchOrchestrator | null = null;
 
 	configureStorageForPluginConfig(loadPluginConfig(), process.cwd());
+	void warmCodexInstructions();
+	void warmCodexModelCatalog();
 
 	const showToast = async (
 		message: string,
@@ -584,10 +759,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					const auth = await getAuth();
 					if (!isOAuthAuth(auth)) return {};
 					const providerConfig = provider as { options?: Record<string, unknown>; models?: UserConfig["models"] } | undefined;
-					if (providerConfig?.models && isObjectRecord(providerConfig.models)) {
-						normalizeProviderModelMetadata(providerConfig.models, { force: true });
-					}
-
 				const pluginConfig = loadPluginConfig();
 				configureStorageForPluginConfig(pluginConfig, process.cwd());
 				const quietMode = getQuietMode(pluginConfig);
@@ -599,6 +770,20 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				if (snapshotCount === 0) {
 					await autoQuarantineCorruptAccountsFile();
 					return {};
+				}
+
+				if (providerConfig?.models && isObjectRecord(providerConfig.models)) {
+					const legacyEffortBases = collectLegacyEffortBases(providerConfig.models);
+					const activeAccount = accountManager.getCurrentAccountForFamily(
+						DEFAULT_MODEL_FAMILY,
+					);
+					const variantEfforts = getCachedVariantEfforts(activeAccount?.accountId);
+					normalizeProviderModelMetadata(providerConfig.models, {
+						force: true,
+						variantEfforts,
+						legacyEffortBases,
+						accountId: activeAccount?.accountId,
+					});
 				}
 
 				const userConfig: UserConfig = { global: providerConfig?.options || {}, models: providerConfig?.models || {} };
@@ -685,9 +870,21 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 		methods: authMethods,
 	},
 		config: async (cfg) => {
-			const openAIModels = (cfg as { provider?: { openai?: { models?: unknown } } })?.provider?.openai?.models;
-			if (openAIModels && isObjectRecord(openAIModels)) {
-				normalizeProviderModelMetadata(openAIModels, { force: true });
+			cfg.provider = cfg.provider || {};
+			cfg.provider.openai = cfg.provider.openai || {};
+			const openAIConfig = cfg.provider.openai as { models?: unknown };
+			const legacyEffortBases = collectLegacyEffortBases(
+				isObjectRecord(openAIConfig.models) ? openAIConfig.models : undefined,
+			);
+			const internalDefaults = buildInternalModelDefaults();
+			openAIConfig.models = mergeModelDefaults(openAIConfig.models, internalDefaults);
+			if (isObjectRecord(openAIConfig.models)) {
+				const variantEfforts = getCachedVariantEfforts();
+				normalizeProviderModelMetadata(openAIConfig.models, {
+					force: true,
+					variantEfforts,
+					legacyEffortBases,
+				});
 			}
 
 			cfg.command = cfg.command || {};

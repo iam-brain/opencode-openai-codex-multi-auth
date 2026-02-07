@@ -1,15 +1,54 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
-import { FetchOrchestrator, FetchOrchestratorConfig } from '../lib/fetch-orchestrator.js';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { FetchOrchestrator, FetchOrchestratorConfig, __internal } from '../lib/fetch-orchestrator.js';
 import { AccountManager, formatAccountLabel } from '../lib/accounts.js';
 import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
 import { PluginConfig } from '../lib/types.js';
+import { __internal as modelsInternal } from '../lib/prompts/codex-models.js';
+import { getOpencodeCacheDir } from '../lib/paths.js';
 
 vi.mock('../lib/storage.js', () => ({
 	quarantineAccountsByRefreshToken: vi.fn(),
 	replaceAccountsFile: vi.fn(),
 }));
+
+const MODELS_CACHE_FIXTURE = JSON.parse(
+	readFileSync(new URL('./fixtures/codex-models-cache.json', import.meta.url), 'utf-8'),
+);
+const DEFAULT_CACHE_DIR = getOpencodeCacheDir();
+
+function seedModelsCache(accountId: string, fetchedAt = Date.now()): void {
+	const cacheFile = modelsInternal.getModelsCacheFile(accountId);
+	mkdirSync(dirname(cacheFile), { recursive: true });
+	const payload = { ...MODELS_CACHE_FIXTURE, fetchedAt };
+	writeFileSync(cacheFile, JSON.stringify(payload), 'utf8');
+}
+
+function seedInstructionsCache(modelFamily: 'gpt-5.3-codex' | 'gpt-5.1'): void {
+	const cacheDir = DEFAULT_CACHE_DIR;
+	mkdirSync(cacheDir, { recursive: true });
+	const fileName =
+		modelFamily === 'gpt-5.3-codex'
+			? 'gpt-5.3-codex-instructions.md'
+			: 'gpt-5.1-instructions.md';
+	const cacheFile = join(cacheDir, fileName);
+	const metaFile = join(cacheDir, fileName.replace('.md', '-meta.json'));
+	writeFileSync(cacheFile, `# ${modelFamily} instructions`, 'utf8');
+	writeFileSync(
+		metaFile,
+		JSON.stringify({
+			etag: null,
+			tag: 'test',
+			lastChecked: Date.now(),
+			url: 'https://example.com',
+		}),
+		'utf8',
+	);
+}
 
 describe('FetchOrchestrator', () => {
 	let config: FetchOrchestratorConfig;
@@ -21,12 +60,30 @@ describe('FetchOrchestrator', () => {
 	let codexStatus: any;
 	let pluginConfig: PluginConfig;
 	let quarantineAccountsByRefreshToken: any;
+	let configRoot: string;
+	let primaryAccountId: string;
+	let secondaryAccountId: string;
+	let previousXdgConfigHome: string | undefined;
+	let previousOpencodeHome: string | undefined;
+	let accountCounter = 0;
 
 	const mockFetch = vi.fn();
 
 	beforeEach(async () => {
 		vi.useFakeTimers();
 		vi.resetAllMocks();
+		accountCounter += 1;
+		primaryAccountId = `acc-${accountCounter}`;
+		secondaryAccountId = `acc-${accountCounter}-2`;
+		configRoot = mkdtempSync(join(tmpdir(), 'fetch-orchestrator-config-'));
+		previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
+		previousOpencodeHome = process.env.OPENCODE_HOME;
+		process.env.XDG_CONFIG_HOME = configRoot;
+		delete process.env.OPENCODE_HOME;
+		seedModelsCache(primaryAccountId);
+		seedModelsCache(secondaryAccountId);
+		seedInstructionsCache('gpt-5.1');
+		seedInstructionsCache('gpt-5.3-codex');
 		const storageModule = (await import('../lib/storage.js')) as any;
 		quarantineAccountsByRefreshToken = vi.mocked(
 			storageModule.quarantineAccountsByRefreshToken,
@@ -59,6 +116,7 @@ describe('FetchOrchestrator', () => {
 			getMinTokenWaitMsForFamily: vi.fn().mockReturnValue(0),
 			getAccountsSnapshot: vi.fn().mockReturnValue([]),
 			getActiveIndexForFamily: vi.fn(),
+			allAccountsCoolingDown: vi.fn().mockReturnValue(false),
 		};
 
 		rateLimitTracker = {
@@ -111,11 +169,22 @@ describe('FetchOrchestrator', () => {
 	afterEach(() => {
 		vi.clearAllMocks();
 		vi.useRealTimers();
+		if (previousXdgConfigHome === undefined) {
+			delete process.env.XDG_CONFIG_HOME;
+		} else {
+			process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
+		}
+		if (previousOpencodeHome === undefined) {
+			delete process.env.OPENCODE_HOME;
+		} else {
+			process.env.OPENCODE_HOME = previousOpencodeHome;
+		}
+		rmSync(configRoot, { recursive: true, force: true });
 	});
 
 	it('should execute a successful request', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
 			expires: Date.now() + 100000,
@@ -136,7 +205,7 @@ describe('FetchOrchestrator', () => {
 
 	it('should handle 401 Unauthorized and recover', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'expired-token',
 			expires: Date.now() + 100000,
@@ -167,8 +236,8 @@ describe('FetchOrchestrator', () => {
 		
 		// First account
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -209,13 +278,60 @@ describe('FetchOrchestrator', () => {
 		expect(mockFetch).toHaveBeenCalledTimes(2);
 	});
 
+	it('recomputes request transform when account switches', async () => {
+		accountManager.getAccountCount.mockReturnValue(2);
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		const fetchHelpers = await import('../lib/request/fetch-helpers.js');
+		const transformSpy = vi
+			.spyOn(fetchHelpers, 'transformRequestForCodex')
+			.mockResolvedValue({
+				body: { model: 'gpt-5.3-codex', prompt_cache_key: 'session' },
+				updatedInit: { method: 'POST', body: '{}' },
+			} as any);
+
+		mockFetch.mockResolvedValueOnce(new Response('Rate limit', {
+			status: 429,
+			headers: { 'retry-after': '60' }
+		}));
+		rateLimitTracker.getBackoff.mockReturnValue({
+			delayMs: 60000,
+			attempt: 1,
+			isDuplicate: false,
+		});
+		mockFetch.mockResolvedValueOnce(new Response('{"success":true}', {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		}));
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.3-codex' }),
+		});
+
+		expect(response.status).toBe(200);
+		expect(transformSpy).toHaveBeenCalledTimes(2);
+		expect(transformSpy.mock.calls[0]?.[3]).toEqual(
+				expect.objectContaining({ accountId: primaryAccountId }),
+		);
+		expect(transformSpy.mock.calls[1]?.[3]).toEqual(
+				expect.objectContaining({ accountId: secondaryAccountId }),
+		);
+	});
+
 	it('passes quiet mode to rate-limit toast', async () => {
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.shouldShowAccountToast.mockReturnValue(true);
 
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -243,9 +359,54 @@ describe('FetchOrchestrator', () => {
 		expect(config.showToast).toHaveBeenCalledWith('Rate limited - switching account', 'warning', true);
 	});
 
+	it('caps seen session keys by max size and TTL', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({
+			index: 0,
+			accountId: primaryAccountId,
+			email: 'test@example.com',
+		});
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		mockFetch.mockImplementation(() =>
+			Promise.resolve(
+				new Response('{"success":true}', {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				}),
+			),
+		);
+
+		const start = new Date('2026-02-06T00:00:00.000Z');
+		vi.setSystemTime(start);
+
+		for (let i = 0; i < __internal.MAX_SESSION_KEYS + 1; i += 1) {
+			await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+				method: 'POST',
+				body: JSON.stringify({ prompt_cache_key: `session-${i}` }),
+			});
+		}
+
+		const seenSize = (orchestrator as any).seenSessionKeys.size;
+		expect(seenSize).toBeLessThanOrEqual(__internal.MAX_SESSION_KEYS);
+
+		vi.setSystemTime(
+			new Date(start.getTime() + __internal.SESSION_KEY_TTL_MS + 1),
+		);
+		await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ prompt_cache_key: 'session-new' }),
+		});
+		const postTtlSize = (orchestrator as any).seenSessionKeys.size;
+		expect(postTtlSize).toBe(1);
+	});
+
 	it('shows a toast when a new chat starts', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		const account = { index: 0, accountId: 'acc1', email: 'test@example.com', plan: 'Pro' };
+		const account = { index: 0, accountId: primaryAccountId, email: 'test@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
@@ -264,7 +425,7 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when switching to an existing session', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		const account = { index: 0, accountId: 'acc1', email: 'test@example.com', plan: 'Pro' };
+		const account = { index: 0, accountId: primaryAccountId, email: 'test@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		mockFetch.mockImplementation(() => Promise.resolve(new Response('{"success":true}', {
@@ -291,8 +452,8 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when the account changes', async () => {
 		accountManager.getAccountCount.mockReturnValue(2);
-		const first = { index: 0, accountId: 'acc1', email: 'one@example.com', plan: 'Pro' };
-		const second = { index: 1, accountId: 'acc2', email: 'two@example.com', plan: 'Pro' };
+		const first = { index: 0, accountId: primaryAccountId, email: 'one@example.com', plan: 'Pro' };
+		const second = { index: 1, accountId: secondaryAccountId, email: 'two@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily
 			.mockReturnValueOnce(first)
 			.mockReturnValueOnce(second);
@@ -316,15 +477,16 @@ describe('FetchOrchestrator', () => {
 	});
 
 	it('should return 429 if all accounts are exhausted', async () => {
+		pluginConfig.hardStopMaxWaitMs = 0;
 		// Use 2 accounts to force "switch" action instead of "wait" (infinite loop for 1 account)
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
-			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
 
 		accountManager.getAccountsSnapshot.mockReturnValue([
-			{ index: 0, accountId: 'acc1', email: 'acc1@example.com', enabled: true },
-			{ index: 1, accountId: 'acc2', email: 'acc2@example.com', enabled: true }
+			{ index: 0, accountId: primaryAccountId, email: 'acc1@example.com', enabled: true },
+			{ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com', enabled: true }
 		]);
 		accountManager.toAuthDetails.mockReturnValue({
 			access: 'valid-token',
@@ -346,9 +508,105 @@ describe('FetchOrchestrator', () => {
 		expect(body.error.message).toContain('All 2 account(s) unavailable');
 	});
 
+	it('hard-stops when all accounts rate-limited beyond max wait', async () => {
+		accountManager.getAccountCount.mockReturnValue(2);
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com' });
+		accountManager.getAccountsSnapshot.mockReturnValue([
+			{ index: 0, accountId: primaryAccountId, email: 'acc1@example.com', enabled: true },
+			{ index: 1, accountId: secondaryAccountId, email: 'acc2@example.com', enabled: true }
+		]);
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('Rate limit', {
+			status: 429,
+			headers: { 'retry-after': '60' }
+		})));
+		rateLimitTracker.getBackoff.mockReturnValue({ delayMs: 60000, attempt: 1 });
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(60000);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(429);
+		const body = await response.json();
+		expect(body.error.type).toBe('all_accounts_rate_limited');
+		expect(body.error.message).toContain('rate-limited');
+	});
+
+	it('hard-stops when all accounts auth-failed', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(null);
+		accountManager.getAccountsSnapshot.mockReturnValue([
+			{ index: 0, accountId: primaryAccountId, email: 'acc1@example.com', enabled: true, cooldownReason: 'auth-failure' }
+		]);
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(60000);
+		accountManager.allAccountsCoolingDown.mockReturnValue(true);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(401);
+		const body = await response.json();
+		expect(body.error.type).toBe('all_accounts_auth_failed');
+		expect(body.error.message).toContain('auth');
+	});
+
+	it('hard-stops on unsupported model errors', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({
+			index: 0,
+			accountId: primaryAccountId,
+			email: 'acc1@example.com',
+		});
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-0.0-bad' }),
+		});
+
+		expect(response.status).toBe(400);
+		const body = await response.json();
+		expect(body.error.type).toBe('unsupported_model');
+		expect(body.error.param).toBe('model');
+		expect(body.error.message).toContain('gpt-0.0-bad');
+	});
+
+	it('hard-stops when model catalog is unavailable', async () => {
+		const missingAccountId = `${primaryAccountId}-missing`;
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({
+			index: 0,
+			accountId: missingAccountId,
+			email: 'acc1@example.com',
+		});
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+		mockFetch.mockRejectedValue(new Error('offline'));
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1' }),
+		});
+
+		expect(response.status).toBe(400);
+		const body = await response.json();
+		expect(body.error.type).toBe('unsupported_model');
+		expect(body.error.param).toBe('model');
+		expect(body.error.message).toContain('gpt-5.1');
+		expect(body.error.message).toContain('catalog');
+	});
+
 	it('should not loop infinitely on persistent 401', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({ access: 'bad-token', expires: Date.now() + 100000 });
 
 		// Use mockImplementation to return a NEW Response each time
@@ -370,7 +628,7 @@ describe('FetchOrchestrator', () => {
 
 	it('shows a toast when auth fails', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		const account = { index: 0, accountId: 'acc1', email: 'fail@example.com', plan: 'Pro' };
+		const account = { index: 0, accountId: primaryAccountId, email: 'fail@example.com', plan: 'Pro' };
 		accountManager.getCurrentOrNextForFamily.mockReturnValue(account);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'bad-token', expires: Date.now() + 100000 });
 		accountManager.getAccountsSnapshot.mockReturnValue([account]);
@@ -401,7 +659,7 @@ describe('FetchOrchestrator', () => {
 			.mockReturnValueOnce(1)
 			.mockReturnValueOnce(0);
 		accountManager.getCurrentOrNextForFamily
-			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 0, accountId: primaryAccountId, email: 'acc1@example.com' })
 			.mockReturnValueOnce(null);
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		accountManager.getAccountsSnapshot.mockReturnValue([]);
@@ -480,7 +738,7 @@ describe('FetchOrchestrator', () => {
 
 	it('should handle non-JSON or non-string bodies gracefully', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
-		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: primaryAccountId, email: 'test@example.com' });
 		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
 		mockFetch.mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })));
 

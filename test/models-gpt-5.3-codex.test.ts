@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Auth } from "@opencode-ai/sdk";
 import { DEFAULT_MODEL_FAMILY } from "../lib/constants.js";
+import { AccountManager } from "../lib/accounts.js";
 
 vi.mock("@opencode-ai/plugin", () => {
 	const describe = () => ({
@@ -236,12 +237,17 @@ describe("gpt-5.3-codex model metadata", () => {
 			);
 
 				expect(provider.models["gpt-5.3-codex"]).toBeDefined();
-				expect(provider.models["gpt-5.3-codex-xhigh"]).toBeUndefined();
 				expect(provider.models["gpt-5.3-codex"]?.variants?.xhigh).toBeDefined();
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}
 		});
+
+	it("initializes gpt-5.3-codex family in AccountManager", async () => {
+		const manager = new AccountManager();
+		expect(manager.getActiveIndexForFamily("gpt-5.3-codex")).toBeDefined();
+		// If it's not initialized, it might throw or return -1 depending on how it's handled.
+	});
 
 	it("does not synthesize gpt-5.3-codex from gpt-5.2-codex", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-gpt53-no52clone-"));

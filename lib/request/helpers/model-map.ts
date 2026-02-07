@@ -75,37 +75,47 @@ export const MODEL_MAP: Record<string, string> = {
 	"gpt-5.1-chat-latest": "gpt-5.1",
 
 	// ============================================================================
-	// GPT-5 Codex Models (LEGACY - maps to gpt-5.1-codex as gpt-5 is being phased out)
+	// GPT-5 lightweight aliases
 	// ============================================================================
-	"gpt-5-codex": "gpt-5.1-codex",
+	"gpt-5-mini": "gpt-5-mini",
+	"gpt-5-nano": "gpt-5-nano",
 
 	// ============================================================================
-	// GPT-5 Codex Mini Models (LEGACY - maps to gpt-5.1-codex-mini)
-	// ============================================================================
-	"codex-mini-latest": "gpt-5.1-codex-mini",
-	"gpt-5-codex-mini": "gpt-5.1-codex-mini",
-	"gpt-5-codex-mini-medium": "gpt-5.1-codex-mini",
-	"gpt-5-codex-mini-high": "gpt-5.1-codex-mini",
-
-	// ============================================================================
-	// GPT-5 General Purpose Models (LEGACY - maps to gpt-5.1 as gpt-5 is being phased out)
+	// Legacy GPT-5 aliases (map to modern equivalents)
 	// ============================================================================
 	"gpt-5": "gpt-5.1",
-	"gpt-5-mini": "gpt-5.1",
-	"gpt-5-nano": "gpt-5.1",
+	"gpt-5-none": "gpt-5.1",
+	"gpt-5-minimal": "gpt-5.1",
+	"gpt-5-low": "gpt-5.1",
+	"gpt-5-medium": "gpt-5.1",
+	"gpt-5-high": "gpt-5.1",
+	"gpt-5-xhigh": "gpt-5.1",
+
+	"gpt-5-codex": "gpt-5.1-codex",
+	"gpt-5-codex-none": "gpt-5.1-codex",
+	"gpt-5-codex-minimal": "gpt-5.1-codex",
+	"gpt-5-codex-low": "gpt-5.1-codex",
+	"gpt-5-codex-medium": "gpt-5.1-codex",
+	"gpt-5-codex-high": "gpt-5.1-codex",
+	"gpt-5-codex-xhigh": "gpt-5.1-codex",
+
+	"codex-mini-latest": "gpt-5.1-codex-mini",
+	"codex-mini-latest-none": "gpt-5.1-codex-mini",
+	"codex-mini-latest-minimal": "gpt-5.1-codex-mini",
+	"codex-mini-latest-low": "gpt-5.1-codex-mini",
+	"codex-mini-latest-medium": "gpt-5.1-codex-mini",
+	"codex-mini-latest-high": "gpt-5.1-codex-mini",
+	"codex-mini-latest-xhigh": "gpt-5.1-codex-mini",
 };
 
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
 const GPT_CODEX_DYNAMIC_REGEX =
-	/^(gpt-\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
+	/^(gpt-5\.\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
+const GPT_GENERAL_PRO_DYNAMIC_REGEX =
+	/^(gpt-5\.\d+(?:\.\d+)*-pro)(?:-(?:none|low|medium|high|xhigh))?$/i;
 const GPT_GENERAL_DYNAMIC_REGEX =
-	/^(gpt-\d+(?:\.\d+)*)(?:-(?:none|minimal|low|medium|high|xhigh))$/i;
-const LEGACY_DYNAMIC_ALIASES: Record<string, string> = {
-	"gpt-5": "gpt-5.1",
-	"gpt-5-codex": "gpt-5.1-codex",
-	"gpt-5-codex-max": "gpt-5.1-codex-max",
-	"gpt-5-codex-mini": "gpt-5.1-codex-mini",
-};
+	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|low|medium|high|xhigh))?$/i;
+const LEGACY_DYNAMIC_ALIASES: Record<string, string> = {};
 
 function applyDynamicAlias(baseModel: string): string {
 	return LEGACY_DYNAMIC_ALIASES[baseModel] ?? baseModel;
@@ -119,13 +129,20 @@ function getDynamicNormalizedModel(modelId: string): string | undefined {
 		return applyDynamicAlias(codexMatch[1]);
 	}
 
+	const proMatch = normalized.match(GPT_GENERAL_PRO_DYNAMIC_REGEX);
+	if (proMatch?.[1]) {
+		return applyDynamicAlias(proMatch[1]);
+	}
+
 	const generalMatch = normalized.match(GPT_GENERAL_DYNAMIC_REGEX);
 	if (generalMatch?.[1]) {
 		return applyDynamicAlias(generalMatch[1]);
 	}
 
 	// Fallback for odd casing/formatting where only effort suffix needs stripping.
-	if (EFFORT_SUFFIX_REGEX.test(normalized) && normalized.startsWith("gpt-")) {
+	if (EFFORT_SUFFIX_REGEX.test(normalized) && normalized.startsWith("gpt-5.")) {
+		const effort = normalized.match(EFFORT_SUFFIX_REGEX)?.[1]?.toLowerCase();
+		if (effort === "minimal") return undefined;
 		return applyDynamicAlias(normalized.replace(EFFORT_SUFFIX_REGEX, ""));
 	}
 

@@ -1,0 +1,11 @@
+{
+  "source": "server",
+  "models": [
+    {
+      "slug": "gpt-5.1"
+    },
+    {
+      "slug": "gpt-5.3-codex"
+    }
+  ]
+}

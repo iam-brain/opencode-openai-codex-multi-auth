@@ -43,10 +43,9 @@ function migrateLegacyConfigIfNeeded(): void {
 
 /**
  * Default plugin configuration
- * Bridge mode is legacy and no longer affects runtime prompt behavior.
+ * Plugin default configuration.
  */
 const DEFAULT_CONFIG: PluginConfig = {
-	codexMode: false,
 	accountSelectionStrategy: "sticky",
 	pidOffsetEnabled: true,
 	quietMode: false,
@@ -54,6 +53,10 @@ const DEFAULT_CONFIG: PluginConfig = {
 	retryAllAccountsRateLimited: false,
 	retryAllAccountsMaxWaitMs: 30_000,
 	retryAllAccountsMaxRetries: 1,
+	hardStopMaxWaitMs: 10_000,
+	hardStopOnUnknownModel: true,
+	hardStopOnAllAuthFailed: true,
+	hardStopMaxConsecutiveFailures: 5,
 	tokenRefreshSkewMs: 60_000,
 	proactiveTokenRefresh: false,
 	authDebug: false,
@@ -81,11 +84,14 @@ export function loadPluginConfig(): PluginConfig {
 
 		const fileContent = readFileSync(CONFIG_PATH, "utf-8");
 		const userConfig = JSON.parse(fileContent) as Partial<PluginConfig>;
+		const { codexMode: _ignoredCodexMode, ...rest } = userConfig as Partial<PluginConfig> & {
+			codexMode?: unknown;
+		};
 
 		// Merge with defaults
 		return {
 			...DEFAULT_CONFIG,
-			...userConfig,
+			...rest,
 		};
 	} catch (error) {
 		console.warn(
@@ -141,13 +147,6 @@ function resolveNumberSetting(
 	const min = options?.min;
 	if (min !== undefined) return Math.max(min, candidate);
 	return candidate;
-}
-
-/**
- * Legacy no-op: bridge mode has been removed.
- */
-export function getCodexMode(_pluginConfig: PluginConfig): boolean {
-	return false;
 }
 
 export function getPerProjectAccounts(pluginConfig: PluginConfig): boolean {
@@ -222,6 +221,41 @@ export function getRetryAllAccountsMaxRetries(pluginConfig: PluginConfig): numbe
 		{ min: 0 },
 	);
 }
+
+export function getHardStopMaxWaitMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_HARD_STOP_MAX_WAIT_MS",
+		pluginConfig.hardStopMaxWaitMs,
+		10_000,
+		{ min: 0 },
+	);
+}
+
+export function getHardStopOnUnknownModel(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL",
+		pluginConfig.hardStopOnUnknownModel,
+		true,
+	);
+}
+
+export function getHardStopOnAllAuthFailed(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED",
+		pluginConfig.hardStopOnAllAuthFailed,
+		true,
+	);
+}
+
+export function getHardStopMaxConsecutiveFailures(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES",
+		pluginConfig.hardStopMaxConsecutiveFailures,
+		5,
+		{ min: 0 },
+	);
+}
+
 
 export function getSchedulingMode(pluginConfig: PluginConfig):
 	| "cache_first"

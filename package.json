@@ -71,18 +71,18 @@
     "@opencode-ai/sdk": "^1.0.150",
     "@types/node": "^24.6.2",
     "@types/proper-lockfile": "^4.1.2",
+    "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
-    "hono": "^4.10.4",
     "jsonc-parser": "^3.3.1",
     "proper-lockfile": "^4.1.2"
   },
   "overrides": {
-    "hono": "^4.10.4",
+    "hono": "^4.11.8",
     "vite": "^7.1.12"
   }
 }

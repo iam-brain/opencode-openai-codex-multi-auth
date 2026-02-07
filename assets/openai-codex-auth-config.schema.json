@@ -9,11 +9,48 @@
       "type": "string",
       "description": "JSON schema reference for editor autocompletion"
     },
-    "codexMode": {
-      "type": "boolean",
-      "default": false,
-      "deprecated": true,
-      "description": "Deprecated legacy field. Bridge mode has been removed and this flag is now a no-op."
+    "custom_settings": {
+      "type": "object",
+      "description": "Override provider options (including personality) without editing opencode.json.",
+      "properties": {
+        "options": {
+          "type": "object",
+          "description": "Global OpenAI provider option overrides.",
+          "properties": {
+            "personality": {
+              "type": "string",
+              "description": "Personality key (built-ins: none/default/friendly/pragmatic or a custom .md file name)."
+            }
+          },
+          "additionalProperties": true
+        },
+        "models": {
+          "type": "object",
+          "description": "Per-model overrides keyed by model id.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "options": {
+                "type": "object",
+                "properties": {
+                  "personality": {
+                    "type": "string",
+                    "description": "Personality key override for this model."
+                  }
+                },
+                "additionalProperties": true
+              },
+              "variants": {
+                "type": "object",
+                "description": "Per-variant overrides keyed by reasoning effort.",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
     },
     "accountSelectionStrategy": {
       "type": "string",
@@ -121,6 +158,28 @@
       "minimum": 0,
       "default": 1,
       "description": "Maximum number of all-accounts wait cycles."
+    },
+    "hardStopMaxWaitMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 10000,
+      "description": "Maximum wait (ms) before returning a hard-stop error when no accounts are available."
+    },
+    "hardStopOnUnknownModel": {
+      "type": "boolean",
+      "default": true,
+      "description": "Return a hard-stop error when the requested model is not in the server catalog."
+    },
+    "hardStopOnAllAuthFailed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Return a hard-stop error when all accounts are in auth-failure cooldown."
+    },
+    "hardStopMaxConsecutiveFailures": {
+      "type": "number",
+      "minimum": 0,
+      "default": 5,
+      "description": "Maximum consecutive failures before returning a hard-stop error."
     }
   }
 }

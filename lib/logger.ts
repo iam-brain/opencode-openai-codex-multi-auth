@@ -8,6 +8,8 @@ import { getOpencodeLogDir, migrateLegacyLogDir } from "./paths.js";
 export const LOGGING_ENABLED = process.env.ENABLE_PLUGIN_REQUEST_LOGGING === "1";
 export const DEBUG_ENABLED = getAuthDebugEnabled() || LOGGING_ENABLED;
 const LOG_DIR = getOpencodeLogDir();
+const REDACTED_VALUE = "[redacted]";
+const REDACTED_KEYS = new Set(["prompt_cache_key"]);
 
 migrateLegacyLogDir();
 
@@ -20,6 +22,27 @@ if (DEBUG_ENABLED && !LOGGING_ENABLED) {
 }
 
 let requestCounter = 0;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function sanitizeLogValue(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map((entry) => sanitizeLogValue(entry));
+	}
+	if (!isPlainObject(value)) return value;
+
+	const sanitized: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (REDACTED_KEYS.has(key)) {
+			sanitized[key] = REDACTED_VALUE;
+			continue;
+		}
+		sanitized[key] = sanitizeLogValue(entry);
+	}
+	return sanitized;
+}
 
 /**
  * Log request data to file (only when LOGGING_ENABLED is true)
@@ -40,6 +63,7 @@ export function logRequest(stage: string, data: Record<string, unknown>): void {
 	const filename = join(LOG_DIR, `request-${requestId}-${stage}.json`);
 
 	try {
+		const sanitized = sanitizeLogValue(data) as Record<string, unknown>;
 		writeFileSync(
 			filename,
 			JSON.stringify(
@@ -47,7 +71,7 @@ export function logRequest(stage: string, data: Record<string, unknown>): void {
 					timestamp,
 					requestId,
 					stage,
-					...data,
+					...sanitized,
 				},
 				null,
 				2,
@@ -71,7 +95,8 @@ export function logRequest(stage: string, data: Record<string, unknown>): void {
  * @param data - Optional data to log
  */
 export function logDebug(message: string, data?: unknown): void {
-	if (!DEBUG_ENABLED) return;
+	const loggingEnabled = process.env.ENABLE_PLUGIN_REQUEST_LOGGING === "1";
+	if (!DEBUG_ENABLED && !loggingEnabled) return;
 
 	if (data !== undefined) {
 		console.log(`[${PLUGIN_NAME}] ${message}`, data);

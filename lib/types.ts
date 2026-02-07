@@ -5,13 +5,6 @@ import type { Auth, Provider, Model } from "@opencode-ai/sdk";
  */
 export interface PluginConfig {
 	/**
-	 * Legacy toggle for bridge mode.
-	 * Deprecated: bridge injection has been removed and this flag no longer changes runtime behavior.
-	 * @default false
-	 */
-	codexMode?: boolean;
-
-	/**
 	 * Account selection strategy
 	 * - sticky: keep same account until rate-limited (best for caching)
 	 * - round-robin: rotate accounts on every request (best for throughput)
@@ -112,6 +105,20 @@ export interface PluginConfig {
 	requestJitterMaxMs?: number;
 
 	/**
+	 * Custom personality configuration (global).
+	 */
+	custom_settings?: {
+		options?: ConfigOptions;
+		models?: {
+			[modelName: string]: {
+				options?: ConfigOptions;
+				variants?: Record<string, (ConfigOptions & { disabled?: boolean }) | undefined>;
+				[key: string]: unknown;
+			};
+		};
+	};
+
+	/**
 	 * Retry when all accounts rate-limited.
 	 * @default false
 	 */
@@ -129,6 +136,30 @@ export interface PluginConfig {
 	 * @default 1
 	 */
 	retryAllAccountsMaxRetries?: number;
+
+	/**
+	 * Hard-stop max wait before returning synthetic error (ms).
+	 * @default 10000
+	 */
+	hardStopMaxWaitMs?: number;
+
+	/**
+	 * Hard-stop when model is not in the server catalog.
+	 * @default true
+	 */
+	hardStopOnUnknownModel?: boolean;
+
+	/**
+	 * Hard-stop when all accounts are in auth-failure cooldown.
+	 * @default true
+	 */
+	hardStopOnAllAuthFailed?: boolean;
+
+	/**
+	 * Max consecutive failures before hard-stop.
+	 * @default 5
+	 */
+	hardStopMaxConsecutiveFailures?: number;
 }
 
 export type AccountSelectionStrategy = "sticky" | "round-robin" | "hybrid";
@@ -183,7 +214,7 @@ export interface ConfigOptions {
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on";
 	textVerbosity?: "low" | "medium" | "high";
-	personality?: "none" | "friendly" | "pragmatic";
+	personality?: string;
 	include?: string[];
 }
 

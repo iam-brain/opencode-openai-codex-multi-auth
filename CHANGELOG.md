@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [Unreleased]
+
+### Added
+- **Dynamic model discovery**: authoritative `/backend-api/codex/models` catalog with per-account cache and strict allowlist.
+- **Personality caching**: seeds Friendly/Pragmatic defaults from runtime model metadata when available.
+
+### Changed
+- **Logging safety**: request logs redact `prompt_cache_key` when request logging is enabled.
+- **Catalog cache hygiene**: invalid `codex-models-cache-<hash>.json` files are deleted on read.
+- **Config surface**: removed legacy `codexMode` flag (no longer supported).
+
+### Docs
+- Refresh configuration, architecture, and troubleshooting to match hard-stop and catalog behavior.
+
 ## [4.6.0] - 2026-02-04
 
 **Quarantine + Multi-Account Reliability release**: safer storage handling, clearer recovery, and
