@@ -398,6 +398,39 @@ const parsedModel: ModelsDev.Model = {
 - `false` (required): Prevents AI SDK from using `item_reference` for conversation history
 - `true` (default): Uses server-side storage with references (incompatible with Codex API)
 
+---
+
+## Plugin Config Fields
+
+Plugin config is stored in `~/.config/opencode/openai-codex-auth-config.json`.
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `codexMode` | `boolean` | `false` | Legacy no-op (bridge mode removed). |
+| `accountSelectionStrategy` | `string` | `"sticky"` | Account selection (`sticky`, `round-robin`, `hybrid`). |
+| `pidOffsetEnabled` | `boolean` | `true` | PID-based starting offset for parallel agents. |
+| `perProjectAccounts` | `boolean` | `false` | Use `.opencode/openai-codex-accounts.json` when present. |
+| `quietMode` | `boolean` | `false` | Reduce background toasts. |
+| `rateLimitToastDebounceMs` | `number` | `60000` | Debounce toast notifications. |
+| `tokenRefreshSkewMs` | `number` | `60000` | Refresh tokens this early before expiry. |
+| `proactiveTokenRefresh` | `boolean` | `false` | Enable proactive refresh queue when available. |
+| `authDebug` | `boolean` | `false` | Debug logging (see env aliases). |
+| `retryAllAccountsRateLimited` | `boolean` | `false` | Enable global wait-and-retry when all accounts rate-limited. |
+| `retryAllAccountsMaxWaitMs` | `number` | `30000` | Max wait time for global retry (0 disables limit). |
+| `retryAllAccountsMaxRetries` | `number` | `1` | Max retry cycles for global wait loop. |
+| `hardStopMaxWaitMs` | `number` | `10000` | Hard-stop wait threshold for all-accounts rate limits. |
+| `hardStopOnUnknownModel` | `boolean` | `true` | Hard-stop when model not in server catalog. |
+| `hardStopOnAllAuthFailed` | `boolean` | `true` | Hard-stop when all accounts in auth-failure cooldown. |
+| `hardStopMaxConsecutiveFailures` | `number` | `5` | Hard-stop after consecutive failures. |
+| `schedulingMode` | `string` | `"cache_first"` | Scheduling strategy (`cache_first`, `balance`, `performance_first`). |
+| `maxCacheFirstWaitSeconds` | `number` | `60` | Cache-first wait before switching. |
+| `switchOnFirstRateLimit` | `boolean` | `true` | Switch accounts immediately on rate limit. |
+| `rateLimitDedupWindowMs` | `number` | `2000` | Deduplicate rate-limit events. |
+| `rateLimitStateResetMs` | `number` | `120000` | Reset rate-limit state after idle window. |
+| `defaultRetryAfterMs` | `number` | `60000` | Fallback retry-after when headers missing. |
+| `maxBackoffMs` | `number` | `120000` | Cap exponential backoff. |
+| `requestJitterMaxMs` | `number` | `1000` | Random jitter added to retry delays. |
+
 **Why required:**
 AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce payload size when `store: true`. However:
 - Codex API requires `store: false` (stateless mode)

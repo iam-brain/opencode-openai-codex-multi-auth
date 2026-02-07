@@ -160,6 +160,16 @@ async loader(getAuth: () => Promise<Auth>, provider: unknown) {
 }
 ```
 
+Plugin settings are loaded from `~/.config/opencode/openai-codex-auth-config.json` and include:
+
+- Account selection + scheduling: `accountSelectionStrategy`, `schedulingMode`, `maxCacheFirstWaitSeconds`, `switchOnFirstRateLimit`
+- Rate-limit tuning: `rateLimitDedupWindowMs`, `rateLimitStateResetMs`, `defaultRetryAfterMs`, `maxBackoffMs`, `requestJitterMaxMs`
+- Hard-stop safety: `hardStopMaxWaitMs`, `hardStopOnUnknownModel`, `hardStopOnAllAuthFailed`, `hardStopMaxConsecutiveFailures`
+- Token refresh + logging: `tokenRefreshSkewMs`, `proactiveTokenRefresh`, `authDebug`
+- Storage + UX: `perProjectAccounts`, `pidOffsetEnabled`, `quietMode`
+
+See `docs/configuration.md` for the full field table and environment variable mapping.
+
 ### Config Structure
 
 ```typescript
