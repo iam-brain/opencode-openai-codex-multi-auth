@@ -69,7 +69,7 @@ opencode auth login
 - Modern (OpenCode v1.0.210+): `config/opencode-modern.json`
 - Legacy (OpenCode v1.0.209 and below): `config/opencode-legacy.json`
 - Installer template source: latest GitHub release → GitHub `main` → bundled static template fallback
-- Runtime model metadata source: Codex `/backend-api/codex/models` → local cache → GitHub `models.json` (release/main) → static template defaults
+- Runtime model metadata source: Codex `/backend-api/codex/models` → per-account local cache (server-derived). Requests fail closed if the catalog is unavailable.
 
 Minimal configs are not supported for GPT‑5.x; use the full configs above.
 
@@ -119,7 +119,7 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 - Variant system support (v1.0.210+) + legacy presets
 - Multimodal input enabled for all models
 - Usage‑aware errors + automatic token refresh
-- Online-first template/model metadata resolution with resilient fallbacks
+- Authoritative model catalog validation (`/codex/models`) with per-account cache
 - Multi-account support with sticky selection + PID offset (great for parallel agents)
 - Account enable/disable management (via `opencode auth login` manage)
 - Hard-stop safety loops for unavailable accounts and unsupported models
@@ -128,6 +128,11 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 - Optional round-robin account rotation (maximum throughput)
 - OpenCode TUI toasts + `codex-status` / `codex-switch-accounts` tools
 - **Authoritative Codex Status**: Real-time rate limit monitoring (5h/Weekly) with ASCII status bars
+---
+## 🛡️ Safety & Reliability
+- Hard-stop safety gate for all-accounts rate-limit/auth-failure loops
+- Strict model allowlist from `/backend-api/codex/models` (per-account cached)
+- Synthetic error responses that surface the exact failure reason
 ---
 ## 📚 Docs
 - Getting Started: `docs/getting-started.md`
