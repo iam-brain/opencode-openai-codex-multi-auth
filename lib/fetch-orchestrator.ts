@@ -53,8 +53,8 @@ import {
 } from "./request/fetch-helpers.js";
 import { createSyntheticErrorResponse } from "./request/response-handler.js";
 import {
-	ModelCatalogUnavailableError,
-	UnknownModelError,
+	isModelCatalogError,
+	isModelCatalogUnavailableError,
 } from "./request/errors.js";
 import { normalizeModel } from "./request/request-transformer.js";
 import { getModelFamily } from "./prompts/codex.js";
@@ -306,16 +306,16 @@ export class FetchOrchestrator {
 						accountId,
 						pluginConfig,
 					});
-				} catch (err) {
-					if (err instanceof UnknownModelError || err instanceof ModelCatalogUnavailableError) {
-						const attemptedModel =
-							typeof originalBody?.model === "string" && originalBody.model.trim()
-								? originalBody.model
-								: model ?? "unknown";
-						const detail =
-							err instanceof ModelCatalogUnavailableError
-								? " Model catalog unavailable; run once with network access to seed /codex/models."
-								: "";
+			} catch (err) {
+				if (isModelCatalogError(err)) {
+					const attemptedModel =
+						typeof originalBody?.model === "string" && originalBody.model.trim()
+							? originalBody.model
+							: model ?? "unknown";
+					const detail =
+						isModelCatalogUnavailableError(err)
+							? " Model catalog unavailable; run once with network access to seed /codex/models."
+							: "";
 						return createSyntheticErrorResponse(
 							`Unsupported model "${attemptedModel}".${detail}`,
 							400,

@@ -22,3 +22,25 @@ export class ModelCatalogUnavailableError extends Error {
 		this.name = "ModelCatalogUnavailableError";
 	}
 }
+
+function isErrorLike(err: unknown): err is { name?: unknown } {
+	return typeof err === "object" && err !== null;
+}
+
+export function isUnknownModelError(err: unknown): err is UnknownModelError {
+	if (err instanceof UnknownModelError) return true;
+	return isErrorLike(err) && err.name === "UnknownModelError";
+}
+
+export function isModelCatalogUnavailableError(
+	err: unknown,
+): err is ModelCatalogUnavailableError {
+	if (err instanceof ModelCatalogUnavailableError) return true;
+	return isErrorLike(err) && err.name === "ModelCatalogUnavailableError";
+}
+
+export function isModelCatalogError(
+	err: unknown,
+): err is UnknownModelError | ModelCatalogUnavailableError {
+	return isUnknownModelError(err) || isModelCatalogUnavailableError(err);
+}
