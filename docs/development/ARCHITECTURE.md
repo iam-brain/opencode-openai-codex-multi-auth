@@ -280,10 +280,10 @@ let include: Vec<String> = if reasoning.is_some() {
    └─ Verify no IDs remain
 
 5. System Prompt Handling
-   ├─ Preserve OpenCode env + AGENTS/runtime metadata messages
-   ├─ Load Codex instructions by model family (GitHub ETag-cached)
-   ├─ Load model runtime defaults (online-first /codex/models fallback chain)
-   ├─ Render personality using precedence:
+	├─ Preserve OpenCode env + AGENTS/runtime metadata messages
+	├─ Load Codex instructions by model family (GitHub ETag-cached)
+	├─ Load model runtime defaults from /codex/models (per-account cached, strict allowlist)
+	├─ Render personality using precedence:
    │   custom_settings model override → custom_settings global → pragmatic (fallback)
    ├─ Resolve personality message from:
    │   Personalities/*.md → runtime instructions_variables.personalities → built-ins
@@ -438,6 +438,20 @@ let include: Vec<String> = if reasoning.is_some() {
 **Workaround**: Codex CLI uses `store: true` for Azure only
 **This Plugin**: Only supports ChatGPT OAuth (no Azure)
 
+### Hard-Stop Error Handling
+
+**Unsupported model**:
+- Trigger: model not in `/codex/models` (including custom IDs)
+- Response: synthetic error with `type: unsupported_model`, `param: model`, and attempted model ID
+
+**Catalog unavailable**:
+- Trigger: `/codex/models` unavailable and no cached catalog
+- Response: synthetic `unsupported_model` error with catalog context in the message
+
+**All accounts unavailable**:
+- Trigger: all accounts rate-limited beyond `hardStopMaxWaitMs` or all accounts in auth-failure cooldown
+- Response: synthetic errors `all_accounts_rate_limited` (HTTP 429) or `all_accounts_auth_failed` (HTTP 401)
+
 ---
 
 ## Multi-Process State Management
@@ -480,11 +494,6 @@ The plugin retrieves usage data from the authoritative `/wham/usage` endpoint:
 ---
 
 ## Performance Considerations
-
-### Token Usage
-
-**Codex Bridge Prompt**: ~550 tokens (~90% reduction vs full OpenCode prompt)
-**Benefit**: Faster inference, lower costs
 
 ### Request Optimization
 
