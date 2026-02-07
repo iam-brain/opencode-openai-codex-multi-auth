@@ -438,6 +438,10 @@ Add `$schema` for editor autocompletion:
 | `pidOffsetEnabled` | `boolean` | `true` | Enable PID-based offset for parallel agent rotation. |
 | `perProjectAccounts` | `boolean` | `false` | If `true`, the plugin will look for and use account storage in `.opencode/openai-codex-accounts.json` relative to the current project. |
 | `quietMode` | `boolean` | `false` | Disable TUI toasts for background operations (e.g., token refreshes). |
+| `rateLimitToastDebounceMs` | `number` | `60000` | Debounce account/rate-limit toasts. |
+| `tokenRefreshSkewMs` | `number` | `60000` | Refresh OAuth tokens this early (ms) before expiry. |
+| `proactiveTokenRefresh` | `boolean` | `false` | Enable background token refresh queue (when available). |
+| `authDebug` | `boolean` | `false` | Enable debug logging (env aliases supported). |
 
 #### Hard-Stop Settings
 
@@ -447,6 +451,29 @@ Add `$schema` for editor autocompletion:
 | `hardStopOnUnknownModel` | `boolean` | `true` | Return a hard-stop error for models not in the server catalog. |
 | `hardStopOnAllAuthFailed` | `boolean` | `true` | Return a hard-stop error when all accounts are in auth-failure cooldown. |
 | `hardStopMaxConsecutiveFailures` | `number` | `5` | Maximum consecutive failures before returning a hard-stop error. |
+
+Default hard-stop wait is 10 seconds; increase `hardStopMaxWaitMs` if you prefer longer waits.
+
+#### Scheduling & Retry Settings
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `schedulingMode` | `string` | `"cache_first"` | Scheduling strategy (`cache_first`, `balance`, `performance_first`). |
+| `maxCacheFirstWaitSeconds` | `number` | `60` | Max seconds to wait in cache-first mode before switching. |
+| `switchOnFirstRateLimit` | `boolean` | `true` | Switch accounts immediately on the first rate-limit response. |
+| `retryAllAccountsRateLimited` | `boolean` | `false` | Enable global retry loop when all accounts are rate-limited. |
+| `retryAllAccountsMaxWaitMs` | `number` | `30000` | Max wait time for all-accounts retry (0 disables the limit). |
+| `retryAllAccountsMaxRetries` | `number` | `1` | Max retry cycles when all accounts are rate-limited. |
+
+#### Rate-Limit Tuning
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `rateLimitDedupWindowMs` | `number` | `2000` | Deduplicate rate-limit events within this window. |
+| `rateLimitStateResetMs` | `number` | `120000` | Reset rate-limit state after this idle time. |
+| `defaultRetryAfterMs` | `number` | `60000` | Fallback retry-after when headers are missing. |
+| `maxBackoffMs` | `number` | `120000` | Cap exponential backoff for rate-limit retries. |
+| `requestJitterMaxMs` | `number` | `1000` | Random jitter added to retry delays. |
 
 #### Per-Project Storage
 
@@ -483,6 +510,32 @@ For a detailed guide, see [docs/multi-account.md](multi-account.md).
 
 All options can be overridden with env vars:
 
+| Field | Env Var | Notes |
+| :--- | :--- | :--- |
+| `accountSelectionStrategy` | `CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY` | `sticky`, `round-robin`, `hybrid` |
+| `pidOffsetEnabled` | `CODEX_AUTH_PID_OFFSET_ENABLED` | Boolean |
+| `perProjectAccounts` | `CODEX_AUTH_PER_PROJECT_ACCOUNTS` | Boolean |
+| `quietMode` | `CODEX_AUTH_QUIET` | Boolean |
+| `rateLimitToastDebounceMs` | `CODEX_AUTH_RATE_LIMIT_TOAST_DEBOUNCE_MS` | Milliseconds |
+| `tokenRefreshSkewMs` | `CODEX_AUTH_TOKEN_REFRESH_SKEW_MS` | Milliseconds |
+| `proactiveTokenRefresh` | `CODEX_AUTH_PROACTIVE_TOKEN_REFRESH` | Boolean |
+| `authDebug` | `CODEX_AUTH_DEBUG` | Aliases supported (see below) |
+| `schedulingMode` | `CODEX_AUTH_SCHEDULING_MODE` | `cache_first`, `balance`, `performance_first` |
+| `maxCacheFirstWaitSeconds` | `CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS` | Seconds |
+| `switchOnFirstRateLimit` | `CODEX_AUTH_SWITCH_ON_FIRST_RATE_LIMIT` | Boolean |
+| `rateLimitDedupWindowMs` | `CODEX_AUTH_RATE_LIMIT_DEDUP_WINDOW_MS` | Milliseconds |
+| `rateLimitStateResetMs` | `CODEX_AUTH_RATE_LIMIT_STATE_RESET_MS` | Milliseconds |
+| `defaultRetryAfterMs` | `CODEX_AUTH_DEFAULT_RETRY_AFTER_MS` | Milliseconds |
+| `maxBackoffMs` | `CODEX_AUTH_MAX_BACKOFF_MS` | Milliseconds |
+| `requestJitterMaxMs` | `CODEX_AUTH_REQUEST_JITTER_MAX_MS` | Milliseconds |
+| `retryAllAccountsRateLimited` | `CODEX_AUTH_RETRY_ALL_RATE_LIMITED` | Boolean |
+| `retryAllAccountsMaxWaitMs` | `CODEX_AUTH_RETRY_ALL_MAX_WAIT_MS` | Milliseconds |
+| `retryAllAccountsMaxRetries` | `CODEX_AUTH_RETRY_ALL_MAX_RETRIES` | Number |
+| `hardStopMaxWaitMs` | `CODEX_AUTH_HARD_STOP_MAX_WAIT_MS` | Milliseconds |
+| `hardStopOnUnknownModel` | `CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL` | Boolean |
+| `hardStopOnAllAuthFailed` | `CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED` | Boolean |
+| `hardStopMaxConsecutiveFailures` | `CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES` | Number |
+
 ```bash
 CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=round-robin
 CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=hybrid
@@ -490,6 +543,14 @@ CODEX_AUTH_PID_OFFSET_ENABLED=1
 CODEX_AUTH_QUIET=1
 CODEX_AUTH_TOKEN_REFRESH_SKEW_MS=60000
 CODEX_AUTH_RATE_LIMIT_TOAST_DEBOUNCE_MS=60000
+CODEX_AUTH_RATE_LIMIT_DEDUP_WINDOW_MS=2000
+CODEX_AUTH_RATE_LIMIT_STATE_RESET_MS=120000
+CODEX_AUTH_DEFAULT_RETRY_AFTER_MS=60000
+CODEX_AUTH_MAX_BACKOFF_MS=120000
+CODEX_AUTH_REQUEST_JITTER_MAX_MS=1000
+CODEX_AUTH_SCHEDULING_MODE=cache_first
+CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS=60
+CODEX_AUTH_SWITCH_ON_FIRST_RATE_LIMIT=1
 CODEX_AUTH_RETRY_ALL_RATE_LIMITED=1
 CODEX_AUTH_RETRY_ALL_MAX_WAIT_MS=30000
 CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
@@ -497,7 +558,15 @@ CODEX_AUTH_HARD_STOP_MAX_WAIT_MS=10000
 CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL=1
 CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED=1
 CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES=5
+CODEX_AUTH_TOKEN_REFRESH_SKEW_MS=60000
+CODEX_AUTH_PROACTIVE_TOKEN_REFRESH=1
+CODEX_AUTH_DEBUG=1
+CODEX_AUTH_NO_BROWSER=1
 ```
+
+Deprecated environment aliases (still supported):
+- `OPENCODE_OPENAI_AUTH_DEBUG`, `DEBUG_CODEX_PLUGIN` → `CODEX_AUTH_DEBUG`
+- `OPENCODE_NO_BROWSER`, `OPENCODE_HEADLESS` → `CODEX_AUTH_NO_BROWSER`
 
 ### Prompt caching
 
