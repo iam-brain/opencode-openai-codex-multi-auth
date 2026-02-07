@@ -1,9 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const originalXdg = process.env.XDG_CONFIG_HOME;
+
+function maybeReleaseTagResponse(url: string): Response | null {
+	if (!url.includes("api.github.com/repos/openai/codex/releases/latest")) {
+		return null;
+	}
+	return new Response(JSON.stringify({ tag_name: "rust-v9.8.7" }), {
+		status: 200,
+	});
+}
 
 async function loadModule() {
 	vi.resetModules();
@@ -24,15 +33,21 @@ describe("codex model metadata resolver", () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-server-"));
 		process.env.XDG_CONFIG_HOME = root;
 		const { getCodexModelRuntimeDefaults } = await loadModule();
+		let capturedUrl = "";
 
 		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
 			if (url.includes("/codex/models")) {
+				capturedUrl = url;
 				return new Response(
 					JSON.stringify({
 						models: [
 							{
 								slug: "gpt-5.3-codex",
+								base_instructions: "Server base instructions",
+								apply_patch_tool_type: "freeform",
 								model_messages: {
 									instructions_template: "Base {{ personality }}",
 									instructions_variables: {
@@ -57,10 +72,157 @@ describe("codex model metadata resolver", () => {
 		});
 
 		expect(mockFetch).toHaveBeenCalled();
-		expect(mockFetch.mock.calls[0]?.[0]?.toString()).toContain("/codex/models");
+		expect(capturedUrl).toContain("/codex/models");
 		expect(defaults.onlineDefaultPersonality).toBeUndefined();
 		expect(defaults.personalityMessages?.friendly).toBe("Friendly from server");
+		expect(defaults.baseInstructions).toBe("Server base instructions");
+		expect(defaults.applyPatchToolType).toBe("freeform");
 
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("reads personalities map from instructions_variables", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-personality-map-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personalities: {
+											default: "",
+											friendly: "Friendly from map",
+											pragmatic: "Pragmatic from map",
+										},
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"abc"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		expect(defaults.personalityMessages?.friendly).toBe("Friendly from map");
+		expect(defaults.personalityMessages?.pragmatic).toBe("Pragmatic from map");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("uses codex release semver for client_version", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-client-version-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+		let capturedUrl = "";
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			if (url.includes("api.github.com/repos/openai/codex/releases/latest")) {
+				return new Response(JSON.stringify({ tag_name: "rust-v9.8.7" }), {
+					status: 200,
+				});
+			}
+			if (url.includes("/codex/models")) {
+				capturedUrl = url;
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personality_default: "",
+										personality_friendly: "Friendly from server",
+										personality_pragmatic: "Pragmatic from server",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"abc"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		expect(capturedUrl).toContain("client_version=9.8.7");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("falls back to cached client_version when release lookup fails", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-client-version-cache-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
+		let capturedUrl = "";
+
+		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		mkdirSync(cacheDir, { recursive: true });
+		writeFileSync(
+			__internal.CLIENT_VERSION_CACHE_FILE,
+			JSON.stringify({ version: "2.3.4", fetchedAt: Date.now() - 1000 }),
+			"utf8",
+		);
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			if (url.includes("api.github.com/repos/openai/codex/releases/latest")) {
+				throw new Error("offline");
+			}
+			if (url.includes("/codex/models")) {
+				capturedUrl = url;
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personality_default: "",
+										personality_friendly: "Friendly from server",
+										personality_pragmatic: "Pragmatic from server",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"abc"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		expect(capturedUrl).toContain("client_version=2.3.4");
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -98,6 +260,8 @@ describe("codex model metadata resolver", () => {
 
 		const failingFetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
 			if (url.includes("/codex/models")) {
 				throw new Error("offline");
 			}
@@ -115,59 +279,43 @@ describe("codex model metadata resolver", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("attempts server refresh before using fresh cache", async () => {
+	it("refreshes stale cache with ETag and uses cached models on 304", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-online-first-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
-
-		const seedFetch = vi.fn(async () => {
-			return new Response(
-				JSON.stringify({
-					models: [
-						{
-							slug: "gpt-5.3-codex",
-							model_messages: {
-								instructions_template: "Base {{ personality }}",
-								instructions_variables: {
-									personality_default: "",
-									personality_friendly: "Friendly from stale cache",
-									personality_pragmatic: "Pragmatic from stale cache",
-								},
+		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
+		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		mkdirSync(cacheDir, { recursive: true });
+		writeFileSync(
+			__internal.MODELS_CACHE_FILE,
+			JSON.stringify({
+				fetchedAt: 0,
+				source: "server",
+				etag: '"etag-123"',
+				models: [
+					{
+						slug: "gpt-5.3-codex",
+						model_messages: {
+							instructions_template: "Base {{ personality }}",
+							instructions_variables: {
+								personality_default: "",
+								personality_friendly: "Friendly from stale cache",
+								personality_pragmatic: "Pragmatic from stale cache",
 							},
 						},
-					],
-				}),
-				{ status: 200 },
-			);
-		});
+					},
+				],
+			}),
+			"utf8",
+		);
 
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account",
-			fetchImpl: seedFetch as unknown as typeof fetch,
-		});
-
-		const refreshFetch = vi.fn(async (input: RequestInfo | URL) => {
+		const refreshFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
 			if (url.includes("/codex/models")) {
-				return new Response(
-					JSON.stringify({
-						models: [
-							{
-								slug: "gpt-5.3-codex",
-								model_messages: {
-									instructions_template: "Base {{ personality }}",
-									instructions_variables: {
-										personality_default: "",
-										personality_friendly: "Friendly from server refresh",
-										personality_pragmatic: "Pragmatic from server refresh",
-									},
-								},
-							},
-						],
-					}),
-					{ status: 200 },
-				);
+				const headers = init?.headers as Record<string, string> | undefined;
+				expect(headers?.["If-None-Match"]).toBe('"etag-123"');
+				return new Response(null, { status: 304, headers: { etag: '"etag-123"' } });
 			}
 			throw new Error(`Unexpected URL: ${url}`);
 		});
@@ -179,7 +327,317 @@ describe("codex model metadata resolver", () => {
 		});
 
 		expect(refreshFetch).toHaveBeenCalled();
-		expect(defaults.personalityMessages?.friendly).toBe("Friendly from server refresh");
+		expect(defaults.personalityMessages?.friendly).toBe("Friendly from stale cache");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("warms model catalog into memory from cache", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-warm-cache-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { __internal, warmCodexModelCatalog, getCodexModelRuntimeDefaults } = await loadModule();
+
+		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		mkdirSync(cacheDir, { recursive: true });
+		writeFileSync(
+			__internal.MODELS_CACHE_FILE,
+			JSON.stringify({
+				fetchedAt: Date.now(),
+				source: "server",
+				etag: '"warm-etag"',
+				models: [
+					{
+						slug: "gpt-5.3-codex",
+						model_messages: {
+							instructions_template: "Base {{ personality }}",
+							instructions_variables: {
+								personality_default: "",
+								personality_friendly: "Friendly from warm cache",
+								personality_pragmatic: "Pragmatic from warm cache",
+							},
+						},
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		const mockFetch = vi.fn(async () => {
+			throw new Error("unexpected fetch");
+		});
+
+		await warmCodexModelCatalog();
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		expect(mockFetch).not.toHaveBeenCalled();
+		expect(defaults.personalityMessages?.friendly).toBe("Friendly from warm cache");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("reuses in-memory catalog for repeated calls", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-memoized-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personality_default: "",
+										personality_friendly: "Friendly from first fetch",
+										personality_pragmatic: "Pragmatic from first fetch",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"fresh"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		const serverCalls = mockFetch.mock.calls.filter((call) =>
+			call[0]?.toString().includes("/codex/models"),
+		).length;
+		expect(serverCalls).toBe(1);
+		expect(defaults.personalityMessages?.friendly).toBe("Friendly from first fetch");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("avoids repeated server fetches when stale cache exists", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-stale-retry-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
+
+		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		mkdirSync(cacheDir, { recursive: true });
+		writeFileSync(
+			__internal.MODELS_CACHE_FILE,
+			JSON.stringify({
+				fetchedAt: 0,
+				source: "server",
+				etag: "etag-stale",
+				models: [
+					{
+						slug: "gpt-5.3-codex",
+						model_messages: {
+							instructions_template: "Base {{ personality }}",
+							instructions_variables: {
+								personality_default: "",
+								personality_friendly: "Friendly from stale cache",
+								personality_pragmatic: "Pragmatic from stale cache",
+							},
+						},
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				throw new Error("offline");
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+
+		const serverCalls = fetchMock.mock.calls.filter((call) =>
+			call[0]?.toString().includes("/codex/models"),
+		).length;
+		expect(serverCalls).toBe(1);
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("allows authenticated refresh after unauthenticated failure", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-auth-guard-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
+
+		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		mkdirSync(cacheDir, { recursive: true });
+		writeFileSync(
+			__internal.MODELS_CACHE_FILE,
+			JSON.stringify({
+				fetchedAt: 0,
+				source: "server",
+				etag: "etag-stale",
+				models: [
+					{
+						slug: "gpt-5.3-codex",
+						model_messages: {
+							instructions_template: "Base {{ personality }}",
+							instructions_variables: {
+								personality_default: "",
+								personality_friendly: "Friendly from stale cache",
+								personality_pragmatic: "Pragmatic from stale cache",
+							},
+						},
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				throw new Error("offline");
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+
+		const serverCalls = fetchMock.mock.calls.filter((call) =>
+			call[0]?.toString().includes("/codex/models"),
+		).length;
+		expect(serverCalls).toBe(2);
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("retries server fetch after short backoff", async () => {
+		vi.useFakeTimers();
+		const root = mkdtempSync(join(tmpdir(), "codex-models-backoff-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
+
+		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		mkdirSync(cacheDir, { recursive: true });
+		writeFileSync(
+			__internal.MODELS_CACHE_FILE,
+			JSON.stringify({
+				fetchedAt: 0,
+				source: "server",
+				etag: "etag-stale",
+				models: [
+					{
+						slug: "gpt-5.3-codex",
+						model_messages: {
+							instructions_template: "Base {{ personality }}",
+							instructions_variables: {
+								personality_default: "",
+								personality_friendly: "Friendly from stale cache",
+								personality_pragmatic: "Pragmatic from stale cache",
+							},
+						},
+					},
+				],
+			}),
+			"utf8",
+		);
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				throw new Error("offline");
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const start = new Date("2026-02-06T00:00:00.000Z");
+		vi.setSystemTime(start);
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+		vi.setSystemTime(new Date(start.getTime() + 2 * 60 * 1000));
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+
+		const serverCalls = fetchMock.mock.calls.filter((call) =>
+			call[0]?.toString().includes("/codex/models"),
+		).length;
+		expect(serverCalls).toBe(2);
+		vi.useRealTimers();
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("suppresses repeated server fetches without cache during backoff", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-backoff-nocache-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+
+		let serverCalls = 0;
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				serverCalls += 1;
+				throw new Error("offline");
+			}
+			if (url.includes("raw.githubusercontent.com/openai/codex/")) {
+				throw new Error("github offline");
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: fetchMock as unknown as typeof fetch,
+		});
+
+		expect(serverCalls).toBe(1);
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -489,6 +947,7 @@ describe("codex model metadata resolver", () => {
 		const { __internal } = await loadModule();
 		const defaults = __internal.readStaticTemplateDefaults(moduleDir);
 		expect(defaults.get("gpt-5.9-codex")?.personality).toBe("friendly");
+		expect(__internal.readStaticTemplateDefaults(moduleDir)).toBe(defaults);
 
 		rmSync(root, { recursive: true, force: true });
 	});

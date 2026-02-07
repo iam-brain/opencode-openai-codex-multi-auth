@@ -32,7 +32,7 @@ All data is stored **locally on your machine**:
 ### Cache Files
 - **Location:** `~/.config/opencode/cache/`
 - **Contents:**
-  - `gpt-5.1-instructions.md`, `gpt-5.2-instructions.md`, `gpt-5.2-codex-instructions.md`, etc. (Codex system instructions)
+  - `gpt-5.1-codex-instructions.md`, `gpt-5.3-codex-instructions.md`, `gpt-5.3-codex-instructions-v2.md`, etc. (Codex system instructions)
   - `*-instructions-meta.json` (ETag/tag/timestamp metadata per family)
   - `codex-models-cache.json` (runtime `/codex/models` fallback cache)
 - **Purpose:** Reduce GitHub API calls, preserve offline fallbacks, and improve startup/runtime performance

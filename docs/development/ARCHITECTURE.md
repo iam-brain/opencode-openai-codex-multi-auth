@@ -265,10 +265,11 @@ let include: Vec<String> = if reasoning.is_some() {
 
 2. Model Normalization
    ├─ Resolve known mappings from model map
-   ├─ Apply fallback normalization for unknown variants
-   └─ Normalize to canonical Codex slug (for API + metadata lookups)
+   ├─ Preserve unknown/legacy slugs (lowercased) to avoid false positives
+   └─ Use the normalized slug for API + metadata lookups
 
 3. Config Merging
+   ├─ Merge plugin `custom_settings` over OpenCode config
    ├─ Global options (provider.openai.options)
    ├─ Model-specific options (provider.openai.models[name].options)
    └─ Result: merged config for this model
@@ -283,7 +284,11 @@ let include: Vec<String> = if reasoning.is_some() {
    ├─ Load Codex instructions by model family (GitHub ETag-cached)
    ├─ Load model runtime defaults (online-first /codex/models fallback chain)
    ├─ Render personality using precedence:
-   │   model option → online model default → global backup → static default
+   │   custom_settings model override → custom_settings global → pragmatic (fallback)
+   ├─ Resolve personality message from:
+   │   Personalities/*.md → runtime instructions_variables.personalities → built-ins
+   │   (Key "default" uses model runtime defaults; fallback is "pragmatic" if unset)
+   ├─ Apply instructions template (replace `{{ personality }}` or append spec)
    └─ Do not inject bridge/tool-remap overlays
 
 6. Orphan Tool Output Handling
@@ -396,7 +401,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Alternative**: Single global config
 
 **Problem**:
-- `gpt-5.1-codex` optimal settings differ from `gpt-5.1`
+- `gpt-5.3-codex` optimal settings differ from `gpt-5.3`
 - Users want quick switching between quality levels
 - No way to save "presets"
 

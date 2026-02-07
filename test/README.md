@@ -51,7 +51,7 @@ Tests configuration parsing and merging:
 
 ### request-transformer.test.ts (30 tests)
 Tests request body transformations:
-- Model name normalization (all variants → gpt-5 or gpt-5-codex)
+- Model name normalization (known variants collapse to gpt-5.x bases; unknown/legacy slugs are preserved)
 - Input filtering (removing stored conversation history)
 - Tool remap message injection
 - Reasoning configuration application

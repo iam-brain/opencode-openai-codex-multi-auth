@@ -1,71 +1,45 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-    normalizeModel,
-    getModelConfig,
-    filterInput,
-    transformRequestBody,
+	normalizeModel,
+	getModelConfig,
+	filterInput,
+	transformRequestBody,
 } from '../lib/request/request-transformer.js';
 import type { RequestBody, UserConfig, InputItem } from '../lib/types.js';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('Request Transformer Module', () => {
 	describe('normalizeModel', () => {
-		// NOTE: All gpt-5 models now normalize to gpt-5.1 as gpt-5 is being phased out
-		it('should normalize gpt-5-codex to gpt-5.1-codex', async () => {
-			expect(normalizeModel('gpt-5-codex')).toBe('gpt-5.1-codex');
+		it('should normalize known gpt-5.x codex models', async () => {
+			expect(normalizeModel('gpt-5.3-codex')).toBe('gpt-5.3-codex');
+			expect(normalizeModel('openai/gpt-5.2-codex-high')).toBe('gpt-5.2-codex');
 		});
 
-		it('should normalize gpt-5 to gpt-5.1', async () => {
-			expect(normalizeModel('gpt-5')).toBe('gpt-5.1');
+		it('should normalize known gpt-5.x general models', async () => {
+			expect(normalizeModel('gpt-5.2')).toBe('gpt-5.2');
+			expect(normalizeModel('openai/gpt-5.1-high')).toBe('gpt-5.1');
 		});
 
-		it('should normalize variants containing "codex" to gpt-5.1-codex', async () => {
-			expect(normalizeModel('openai/gpt-5-codex')).toBe('gpt-5.1-codex');
-			expect(normalizeModel('custom-gpt-5-codex-variant')).toBe('gpt-5.1-codex');
+		it('should leave unknown models untouched', async () => {
+			expect(normalizeModel('unknown-model')).toBe('unknown-model');
+			expect(normalizeModel('gpt-4')).toBe('gpt-4');
+			expect(normalizeModel('gpt-5-codex')).toBe('gpt-5-codex');
+			expect(normalizeModel('gpt-5')).toBe('gpt-5');
 		});
 
-		it('should normalize variants containing "gpt-5" to gpt-5.1', async () => {
-			expect(normalizeModel('gpt-5-mini')).toBe('gpt-5.1');
-			expect(normalizeModel('gpt-5-nano')).toBe('gpt-5.1');
-		});
-
-		it('should return gpt-5.1 as default for unknown models', async () => {
-			expect(normalizeModel('unknown-model')).toBe('gpt-5.1');
-			expect(normalizeModel('gpt-4')).toBe('gpt-5.1');
-		});
-
-		it('should return gpt-5.1 for undefined', async () => {
+		it('should default to gpt-5.1 when model is missing', async () => {
 			expect(normalizeModel(undefined)).toBe('gpt-5.1');
+			expect(normalizeModel('')).toBe('gpt-5.1');
 		});
 
-		// Codex CLI preset name tests - legacy gpt-5 models now map to gpt-5.1
+		// Codex CLI preset name tests - gpt-5.x only
 		describe('Codex CLI preset names', () => {
-			it('should normalize all gpt-5-codex presets to gpt-5.1-codex', async () => {
-				expect(normalizeModel('gpt-5-codex-low')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('gpt-5-codex-medium')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('gpt-5-codex-high')).toBe('gpt-5.1-codex');
-			});
-
-			it('should normalize all gpt-5 presets to gpt-5.1', async () => {
-				expect(normalizeModel('gpt-5-minimal')).toBe('gpt-5.1');
-				expect(normalizeModel('gpt-5-low')).toBe('gpt-5.1');
-				expect(normalizeModel('gpt-5-medium')).toBe('gpt-5.1');
-				expect(normalizeModel('gpt-5-high')).toBe('gpt-5.1');
-			});
-
-			it('should prioritize codex over gpt-5 in model name', async () => {
-				// Model name contains BOTH "codex" and "gpt-5"
-				// Should return "gpt-5.1-codex" (codex checked first, maps to 5.1)
-				expect(normalizeModel('gpt-5-codex-low')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('my-gpt-5-codex-model')).toBe('gpt-5.1-codex');
-			});
-
-			it('should normalize codex mini presets to gpt-5.1-codex-mini', async () => {
-				expect(normalizeModel('gpt-5-codex-mini')).toBe('gpt-5.1-codex-mini');
-				expect(normalizeModel('gpt-5-codex-mini-medium')).toBe('gpt-5.1-codex-mini');
-				expect(normalizeModel('gpt-5-codex-mini-high')).toBe('gpt-5.1-codex-mini');
-				expect(normalizeModel('openai/gpt-5-codex-mini-high')).toBe('gpt-5.1-codex-mini');
-				expect(normalizeModel('codex-mini-latest')).toBe('gpt-5.1-codex-mini');
-				expect(normalizeModel('openai/codex-mini-latest')).toBe('gpt-5.1-codex-mini');
+			it('should normalize gpt-5.1 codex mini presets', async () => {
+				expect(normalizeModel('gpt-5.1-codex-mini')).toBe('gpt-5.1-codex-mini');
+				expect(normalizeModel('gpt-5.1-codex-mini-high')).toBe('gpt-5.1-codex-mini');
+				expect(normalizeModel('openai/gpt-5.1-codex-mini-medium')).toBe('gpt-5.1-codex-mini');
 			});
 
 			it('should normalize gpt-5.1 codex max presets', async () => {
@@ -102,7 +76,7 @@ describe('Request Transformer Module', () => {
 			it('should normalize gpt-5.1 general-purpose slugs', async () => {
 				expect(normalizeModel('gpt-5.1')).toBe('gpt-5.1');
 				expect(normalizeModel('openai/gpt-5.1')).toBe('gpt-5.1');
-				expect(normalizeModel('GPT 5.1 High')).toBe('gpt-5.1');
+				expect(normalizeModel('GPT 5.1 High')).toBe('gpt 5.1 high');
 			});
 
 			it('should normalize future codex model variants without explicit map entries', async () => {
@@ -115,31 +89,19 @@ describe('Request Transformer Module', () => {
 			});
 		});
 
-		// Edge case tests - legacy gpt-5 models now map to gpt-5.1
+		// Edge case tests - avoid legacy or nonstandard coercion
 		describe('Edge cases', () => {
-			it('should handle uppercase model names', async () => {
-				expect(normalizeModel('GPT-5-CODEX')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('GPT-5-HIGH')).toBe('gpt-5.1');
-				expect(normalizeModel('CODEx-MINI-LATEST')).toBe('gpt-5.1-codex-mini');
+			it('should handle uppercase and mixed case for known models', async () => {
+				expect(normalizeModel('GPT-5.3-CODEX')).toBe('gpt-5.3-codex');
+				expect(normalizeModel('GpT-5.1-HiGh')).toBe('gpt-5.1');
 			});
 
-			it('should handle mixed case', async () => {
-				expect(normalizeModel('Gpt-5-Codex-Low')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('GpT-5-MeDiUm')).toBe('gpt-5.1');
-			});
-
-			it('should handle special characters', async () => {
-				expect(normalizeModel('my_gpt-5_codex')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('gpt.5.high')).toBe('gpt-5.1');
-			});
-
-			it('should handle old verbose names', async () => {
-				expect(normalizeModel('GPT 5 Codex Low (ChatGPT Subscription)')).toBe('gpt-5.1-codex');
-				expect(normalizeModel('GPT 5 High (ChatGPT Subscription)')).toBe('gpt-5.1');
-			});
-
-			it('should handle empty string', async () => {
-				expect(normalizeModel('')).toBe('gpt-5.1');
+			it('should not coerce legacy or verbose names', async () => {
+				expect(normalizeModel('GPT 5 Codex Low (ChatGPT Subscription)')).toBe(
+					'gpt 5 codex low (chatgpt subscription)',
+				);
+				expect(normalizeModel('my_gpt-5_codex')).toBe('my_gpt-5_codex');
+				expect(normalizeModel('gpt.5.high')).toBe('gpt.5.high');
 			});
 		});
 	});
@@ -360,7 +322,6 @@ describe('Request Transformer Module', () => {
 					model: 'gpt-5-codex',
 					input: [],
 					// Host-provided key (OpenCode session id)
-					// @ts-expect-error extra field allowed
 					prompt_cache_key: 'ses_host_key_123',
 				};
 				const result: any = await transformRequestBody(body, codexInstructions);
@@ -385,7 +346,7 @@ describe('Request Transformer Module', () => {
 
 			expect(result.store).toBe(false);
 			expect(result.stream).toBe(true);
-			expect(result.instructions).toBe(codexInstructions);
+			expect(result.instructions).toContain(codexInstructions);
 		});
 
 		it('should normalize model name', async () => {
@@ -394,7 +355,7 @@ describe('Request Transformer Module', () => {
 				input: [],
 			};
 			const result = await transformRequestBody(body, codexInstructions);
-			expect(result.model).toBe('gpt-5.1');  // gpt-5 now maps to gpt-5.1
+			expect(result.model).toBe('gpt-5-mini');
 		});
 
 		it('should apply default reasoning config', async () => {
@@ -822,7 +783,7 @@ describe('Request Transformer Module', () => {
 				input: [],
 			};
 			const result = await transformRequestBody(body, codexInstructions);
-			expect(result.reasoning?.effort).toBe('medium');
+			expect(result.reasoning?.effort).toBe('low');
 		});
 
 		it('should normalize minimal to low when provided by the host', async () => {
@@ -980,186 +941,145 @@ describe('Request Transformer Module', () => {
 					tools: [{ name: 'test_tool' }],
 				};
 				const result = await transformRequestBody(body, codexInstructions);
-				expect(result.instructions).toBe(codexInstructions);
+				expect(result.instructions).toContain(codexInstructions);
 			});
 		});
 
 		describe('personality resolution', () => {
-			it('applies model-level friendly personality override', async () => {
+			it('applies custom personality from local file', async () => {
+				const root = mkdtempSync(join(tmpdir(), 'personality-local-'));
+				const cwd = process.cwd();
+				process.chdir(root);
+				try {
+					const localDir = join(root, '.opencode', 'Personalities');
+					mkdirSync(localDir, { recursive: true });
+					writeFileSync(
+						join(localDir, 'Idiot.md'),
+						'Chaotic friendly override',
+						'utf8',
+					);
+					const body: RequestBody = {
+						model: 'gpt-5.3-codex',
+						input: [],
+					};
+					const userConfig: UserConfig = { global: {}, models: {} };
+					const pluginConfig = {
+						custom_settings: {
+							options: { personality: 'Idiot' },
+							models: {},
+						},
+					};
+					const runtimeDefaults = {
+						instructionsTemplate: 'BASE INSTRUCTIONS\n\n{{ personality }}',
+						personalityMessages: {
+							friendly: 'Friendly from runtime',
+							pragmatic: 'Pragmatic from runtime',
+						},
+						staticDefaultPersonality: 'pragmatic',
+					};
+					const result = await transformRequestBody(
+						body,
+						'BASE INSTRUCTIONS',
+						userConfig,
+						runtimeDefaults as any,
+						pluginConfig as any,
+					);
+					expect(result.instructions).toContain('Chaotic friendly override');
+				} finally {
+					process.chdir(cwd);
+					rmSync(root, { recursive: true, force: true });
+				}
+			});
+
+			it('defaults to pragmatic when no custom personality set', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5.3-codex',
 					input: [],
 				};
-				const userConfig: UserConfig = {
-					global: { personality: 'pragmatic' } as any,
-					models: {
-						'gpt-5.3-codex': {
-							options: { personality: 'friendly' } as any,
-						},
+				const userConfig: UserConfig = { global: {}, models: {} };
+				const runtimeDefaults = {
+					instructionsTemplate: 'BASE INSTRUCTIONS\n\n{{ personality }}',
+					personalityMessages: {
+						friendly: 'Friendly from runtime',
+						pragmatic: 'Pragmatic from runtime',
 					},
-				};
-				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
-				expect(result.instructions).toContain('BASE INSTRUCTIONS');
-				expect(result.instructions?.toLowerCase()).toContain('friendly');
-			});
-
-			it('applies model options when model id is provider-prefixed', async () => {
-				const body: RequestBody = {
-					model: 'openai/gpt-5.3-codex',
-					input: [],
-				};
-				const userConfig: UserConfig = {
-					global: { personality: 'pragmatic' } as any,
-					models: {
-						'gpt-5.3-codex': {
-							options: { personality: 'friendly' } as any,
-						},
-					},
-				};
-				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
-				expect(result.instructions?.toLowerCase()).toContain('friendly');
-				expect(result.instructions?.toLowerCase()).not.toContain('pragmatic');
-			});
-
-			it('normalizes mixed-case personality and coerces invalid to none', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5.4-codex',
-					input: [],
-				};
-				const userConfig: UserConfig = {
-					global: { personality: 'PrAgMaTiC' } as any,
-					models: {
-						'gpt-5.4-codex': {
-							options: { personality: 'INVALID_STYLE' } as any,
-						},
-					},
-				};
-				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
-				expect(result.instructions).toBe('BASE INSTRUCTIONS');
-			});
-
-			it('logs invalid personality once per process while coercing to none', async () => {
-				const previousLogging = process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
-				process.env.ENABLE_PLUGIN_REQUEST_LOGGING = '1';
-				const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-				try {
-					vi.resetModules();
-					const dynamicModule = await import('../lib/request/request-transformer.js');
-					const dynamicTransform = dynamicModule.transformRequestBody;
-					const body: RequestBody = {
-						model: 'gpt-5.4-codex',
-						input: [],
-					};
-					const userConfig: UserConfig = {
-						global: { personality: 'INVALID_GLOBAL' } as any,
-						models: {
-							'gpt-5.4-codex': {
-								options: { personality: 'INVALID_MODEL' } as any,
-							},
-						},
-					};
-
-					const first = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
-					const second = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
-
-					expect(first.instructions).toBe('BASE INSTRUCTIONS');
-					expect(second.instructions).toBe('BASE INSTRUCTIONS');
-
-					const invalidLogs = logSpy.mock.calls.filter((call) =>
-						call.some((part) =>
-							String(part).includes('Invalid model personality "INVALID_MODEL" detected; coercing to "none"'),
-						),
-					);
-					expect(invalidLogs).toHaveLength(1);
-				} finally {
-					if (previousLogging === undefined) {
-						delete process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
-					} else {
-						process.env.ENABLE_PLUGIN_REQUEST_LOGGING = previousLogging;
-					}
-					vi.restoreAllMocks();
-					vi.resetModules();
-				}
-			});
-
-			it('logs invalid global personality once per process while coercing to none', async () => {
-				const previousLogging = process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
-				process.env.ENABLE_PLUGIN_REQUEST_LOGGING = '1';
-				const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-				try {
-					vi.resetModules();
-					const dynamicModule = await import('../lib/request/request-transformer.js');
-					const dynamicTransform = dynamicModule.transformRequestBody;
-					const body: RequestBody = {
-						model: 'gpt-5.4-codex',
-						input: [],
-					};
-					const userConfig: UserConfig = {
-						global: { personality: 'INVALID_GLOBAL' } as any,
-						models: {},
-					};
-
-					const first = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
-					const second = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
-
-					expect(first.instructions).toBe('BASE INSTRUCTIONS');
-					expect(second.instructions).toBe('BASE INSTRUCTIONS');
-
-					const invalidLogs = logSpy.mock.calls.filter((call) =>
-						call.some((part) =>
-							String(part).includes('Invalid global personality "INVALID_GLOBAL" detected; coercing to "none"'),
-						),
-					);
-					expect(invalidLogs).toHaveLength(1);
-				} finally {
-					if (previousLogging === undefined) {
-						delete process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
-					} else {
-						process.env.ENABLE_PLUGIN_REQUEST_LOGGING = previousLogging;
-					}
-					vi.restoreAllMocks();
-					vi.resetModules();
-				}
-			});
-
-			it('applies global personality when runtime defaults only provide template messages', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5.3-codex',
-					input: [],
-				};
-				const userConfig: UserConfig = {
-					global: { personality: 'friendly' } as any,
-					models: {},
+					staticDefaultPersonality: 'pragmatic',
 				};
 				const result = await transformRequestBody(
 					body,
 					'BASE INSTRUCTIONS',
 					userConfig,
-					{
-						instructionsTemplate: 'Template {{ personality }}',
-						personalityMessages: {
-							default: '',
-							friendly: 'Friendly from runtime defaults',
-							pragmatic: 'Pragmatic from runtime defaults',
-						},
-						staticDefaultPersonality: 'none',
-					},
+					runtimeDefaults as any,
+					{} as any,
 				);
-				expect(result.instructions).toContain('Friendly from runtime defaults');
-				expect(result.instructions).not.toContain('Pragmatic from runtime defaults');
+				expect(result.instructions).toContain('Pragmatic from runtime');
+			});
+
+			it('logs invalid personality once per process while coercing to pragmatic', async () => {
+				const previousLogging = process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
+				process.env.ENABLE_PLUGIN_REQUEST_LOGGING = '1';
+				const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+				try {
+					vi.resetModules();
+					const dynamicModule = await import('../lib/request/request-transformer.js');
+					const dynamicTransform = dynamicModule.transformRequestBody;
+					const body: RequestBody = {
+						model: 'gpt-5.3-codex',
+						input: [],
+					};
+					const userConfig: UserConfig = {
+						global: {},
+						models: {},
+					};
+					const pluginConfig = {
+						custom_settings: {
+							options: { personality: 'INVALID' },
+							models: {},
+						},
+					};
+
+					await dynamicTransform(
+						body,
+						'BASE INSTRUCTIONS',
+						userConfig,
+						undefined,
+						pluginConfig as any,
+					);
+					await dynamicTransform(
+						body,
+						'BASE INSTRUCTIONS',
+						userConfig,
+						undefined,
+						pluginConfig as any,
+					);
+
+					const invalidLogs = logSpy.mock.calls.filter((call) =>
+						call.some((part) =>
+							String(part).includes('Invalid personality "INVALID" detected; coercing to "pragmatic"'),
+						),
+					);
+					expect(invalidLogs).toHaveLength(1);
+				} finally {
+					if (previousLogging === undefined) {
+						delete process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
+					} else {
+						process.env.ENABLE_PLUGIN_REQUEST_LOGGING = previousLogging;
+					}
+					vi.restoreAllMocks();
+					vi.resetModules();
+				}
 			});
 		});
 
 		// NEW: Integration tests for all config scenarios
 		describe('Integration: Complete Config Scenarios', () => {
 			describe('Scenario 1: Default models (no custom config)', () => {
-				it('should handle gpt-5-codex with global options only', async () => {
-					const body: RequestBody = {
-						model: 'gpt-5-codex',
-						input: []
-					};
+			it('should handle gpt-5-codex with global options only', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5-codex',
+					input: []
+				};
 					const userConfig: UserConfig = {
 						global: { reasoningEffort: 'high' },
 						models: {}
@@ -1167,22 +1087,22 @@ describe('Request Transformer Module', () => {
 
 					const result = await transformRequestBody(body, codexInstructions, userConfig);
 
-					expect(result.model).toBe('gpt-5.1-codex');  // gpt-5-codex now maps to gpt-5.1-codex
-					expect(result.reasoning?.effort).toBe('high');  // From global
-					expect(result.store).toBe(false);
-				});
+				expect(result.model).toBe('gpt-5-codex');
+				expect(result.reasoning?.effort).toBe('high');  // From global
+				expect(result.store).toBe(false);
+			});
 
-				it('should handle gpt-5-mini normalizing to gpt-5.1', async () => {
-					const body: RequestBody = {
-						model: 'gpt-5-mini',
-						input: []
-					};
+			it('should handle gpt-5-mini normalizing to gpt-5.1', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5-mini',
+					input: []
+				};
 
 					const result = await transformRequestBody(body, codexInstructions);
 
-					expect(result.model).toBe('gpt-5.1');  // gpt-5 now maps to gpt-5.1
-					expect(result.reasoning?.effort).toBe('medium');  // Default for normalized gpt-5.1
-				});
+				expect(result.model).toBe('gpt-5-mini');
+				expect(result.reasoning?.effort).toBe('low');  // Lightweight defaults
+			});
 			});
 
 			describe('Scenario 2: Custom preset names (new style)', () => {
@@ -1198,43 +1118,43 @@ describe('Request Transformer Module', () => {
 					}
 				};
 
-				it('should apply per-model options for gpt-5-codex-low', async () => {
-					const body: RequestBody = {
-						model: 'gpt-5-codex-low',
-						input: []
-					};
+			it('should apply per-model options for gpt-5-codex-low', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5-codex-low',
+					input: []
+				};
 
 					const result = await transformRequestBody(body, codexInstructions, userConfig);
 
-					expect(result.model).toBe('gpt-5.1-codex');  // gpt-5-codex now maps to gpt-5.1-codex
-					expect(result.reasoning?.effort).toBe('low');  // From per-model
-					expect(result.include).toEqual(['reasoning.encrypted_content']);  // From global
-				});
+				expect(result.model).toBe('gpt-5-codex-low');
+				expect(result.reasoning?.effort).toBe('low');  // From per-model
+				expect(result.include).toEqual(['reasoning.encrypted_content']);  // From global
+			});
 
-				it('should apply per-model options for gpt-5-codex-high', async () => {
-					const body: RequestBody = {
-						model: 'gpt-5-codex-high',
-						input: []
-					};
-
-					const result = await transformRequestBody(body, codexInstructions, userConfig);
-
-					expect(result.model).toBe('gpt-5.1-codex');  // gpt-5-codex now maps to gpt-5.1-codex
-					expect(result.reasoning?.effort).toBe('high');  // From per-model
-					expect(result.reasoning?.summary).toBe('detailed');  // From per-model
-				});
-
-				it('should use global options for default gpt-5-codex', async () => {
-					const body: RequestBody = {
-						model: 'gpt-5-codex',
-						input: []
-					};
+			it('should apply per-model options for gpt-5-codex-high', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5-codex-high',
+					input: []
+				};
 
 					const result = await transformRequestBody(body, codexInstructions, userConfig);
 
-					expect(result.model).toBe('gpt-5.1-codex');  // gpt-5-codex now maps to gpt-5.1-codex
-					expect(result.reasoning?.effort).toBe('medium');  // From global (no per-model)
-				});
+				expect(result.model).toBe('gpt-5-codex-high');
+				expect(result.reasoning?.effort).toBe('high');  // From per-model
+				expect(result.reasoning?.summary).toBe('detailed');  // From per-model
+			});
+
+			it('should use global options for default gpt-5-codex', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5-codex',
+					input: []
+				};
+
+					const result = await transformRequestBody(body, codexInstructions, userConfig);
+
+				expect(result.model).toBe('gpt-5-codex');
+				expect(result.reasoning?.effort).toBe('medium');  // From global (no per-model)
+			});
 			});
 
 			describe('Scenario 3: Backwards compatibility (old verbose names)', () => {
@@ -1247,18 +1167,18 @@ describe('Request Transformer Module', () => {
 					}
 				};
 
-				it('should find and apply old config format', async () => {
-					const body: RequestBody = {
-						model: 'GPT 5 Codex Low (ChatGPT Subscription)',
-						input: []
-					};
+			it('should find and apply old config format', async () => {
+				const body: RequestBody = {
+					model: 'GPT 5 Codex Low (ChatGPT Subscription)',
+					input: []
+				};
 
 					const result = await transformRequestBody(body, codexInstructions, userConfig);
 
-					expect(result.model).toBe('gpt-5.1-codex');  // gpt-5-codex now maps to gpt-5.1-codex
-					expect(result.reasoning?.effort).toBe('low');  // From per-model (old format)
-					expect(result.text?.verbosity).toBe('low');
-				});
+				expect(result.model).toBe('gpt 5 codex low (chatgpt subscription)');
+				expect(result.reasoning?.effort).toBe('low');  // From per-model (old format)
+				expect(result.text?.verbosity).toBe('low');
+			});
 			});
 
 			describe('Scenario 4: Mixed default + custom models', () => {
@@ -1342,8 +1262,8 @@ describe('Request Transformer Module', () => {
 
 					const result = await transformRequestBody(body, codexInstructions, userConfig);
 
-					// Model normalized (gpt-5-codex now maps to gpt-5.1-codex)
-					expect(result.model).toBe('gpt-5.1-codex');
+				// Model preserved for legacy identifiers
+				expect(result.model).toBe('gpt-5-codex-low');
 
 					// IDs removed
 					expect(result.input!.every(item => !item.id)).toBe(true);
@@ -1353,12 +1273,12 @@ describe('Request Transformer Module', () => {
 					expect(result.reasoning?.summary).toBe('auto');
 					expect(result.text?.verbosity).toBe('low');
 
-					// Codex fields set
-					expect(result.store).toBe(false);
-					expect(result.stream).toBe(true);
-					expect(result.instructions).toBe(codexInstructions);
-					expect(result.include).toEqual(['reasoning.encrypted_content']);
-				});
+				// Codex fields set
+				expect(result.store).toBe(false);
+				expect(result.stream).toBe(true);
+				expect(result.instructions).toContain(codexInstructions);
+				expect(result.include).toEqual(['reasoning.encrypted_content']);
+			});
 			});
 		});
 	});

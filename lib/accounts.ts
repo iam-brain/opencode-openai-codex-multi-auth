@@ -297,6 +297,7 @@ export class AccountManager {
 	private accounts: ManagedAccount[] = [];
 	private cursor = 0;
 	private currentAccountIndexByFamily: Record<ModelFamily, number> = {
+		"gpt-5.3-codex": -1,
 		"gpt-5.2-codex": -1,
 		"codex-max": -1,
 		codex: -1,
@@ -304,6 +305,7 @@ export class AccountManager {
 		"gpt-5.1": -1,
 	};
 	private sessionOffsetApplied: Record<ModelFamily, boolean> = {
+		"gpt-5.3-codex": false,
 		"gpt-5.2-codex": false,
 		"codex-max": false,
 		codex: false,

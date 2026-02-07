@@ -1,6 +1,6 @@
 # OpenCode OpenAI Codex Auth Plugin
 
-> Access GPT-5 Codex through your ChatGPT Plus/Pro subscription in OpenCode
+> Access GPT-5.3 Codex through your ChatGPT Plus/Pro subscription in OpenCode
 
 [![Tests](https://github.com/iam-brain/opencode-openai-codex-multi-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/iam-brain/opencode-openai-codex-multi-auth/actions)
 
@@ -77,7 +77,7 @@ npx -y opencode-openai-codex-multi-auth@latest
 ### Quick Test
 
 ```bash
-opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=medium
+opencode run "write hello world to test.txt" --model=openai/gpt-5.3-codex --variant=medium
 ```
 
 ---
@@ -85,9 +85,9 @@ opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=me
 ## Features
 
 ✅ **OAuth Authentication** - Secure ChatGPT Plus/Pro login
-✅ **GPT 5.2 + GPT 5.2 Codex + GPT 5.1 Models** - 22 pre-configured variants across GPT 5.2, GPT 5.2 Codex, GPT 5.1, Codex, Codex Max, Codex Mini
+✅ **GPT 5.3 Codex + GPT 5.2 + GPT 5.2 Codex + GPT 5.1 Models** - Pre-configured variants across GPT 5.3 Codex, GPT 5.2, GPT 5.2 Codex, GPT 5.1, Codex, Codex Max, Codex Mini
 ✅ **Variant system support** - Works with OpenCode v1.0.210+ model variants and legacy presets
-✅ **Per-Model Configuration** - Different reasoning effort, including `xhigh` for GPT 5.2, GPT 5.2 Codex, and Codex Max
+✅ **Per-Model Configuration** - Different reasoning effort, including `xhigh` for GPT 5.3 Codex, GPT 5.2, GPT 5.2 Codex, and Codex Max
 ✅ **Multi-Turn Conversations** - Full conversation history with stateless backend
 ✅ **Multi-Account Support** - Sticky-by-default rotation + PID offset for parallel agents
 ✅ **Verified Configuration** - Use `config/opencode-modern.json` (v1.0.210+) or `config/opencode-legacy.json` (older)

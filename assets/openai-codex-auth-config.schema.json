@@ -15,6 +15,49 @@
       "deprecated": true,
       "description": "Deprecated legacy field. Bridge mode has been removed and this flag is now a no-op."
     },
+    "custom_settings": {
+      "type": "object",
+      "description": "Override provider options (including personality) without editing opencode.json.",
+      "properties": {
+        "options": {
+          "type": "object",
+          "description": "Global OpenAI provider option overrides.",
+          "properties": {
+            "personality": {
+              "type": "string",
+              "description": "Personality key (built-ins: none/default/friendly/pragmatic or a custom .md file name)."
+            }
+          },
+          "additionalProperties": true
+        },
+        "models": {
+          "type": "object",
+          "description": "Per-model overrides keyed by model id.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "options": {
+                "type": "object",
+                "properties": {
+                  "personality": {
+                    "type": "string",
+                    "description": "Personality key override for this model."
+                  }
+                },
+                "additionalProperties": true
+              },
+              "variants": {
+                "type": "object",
+                "description": "Per-variant overrides keyed by reasoning effort.",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
     "accountSelectionStrategy": {
       "type": "string",
       "enum": ["sticky", "round-robin", "hybrid"],

@@ -95,6 +95,7 @@ Example accounts file:
   ],
   "activeIndex": 0,
   "activeIndexByFamily": {
+    "gpt-5.3-codex": 0,
     "codex": 0,
     "gpt-5.2-codex": 0,
     "codex-max": 0,

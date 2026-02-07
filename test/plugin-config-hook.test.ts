@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -37,7 +37,14 @@ describe("OpenAIAuthPlugin config hook", () => {
 		process.env.XDG_CONFIG_HOME = root;
 
 		try {
-			const plugin = await OpenAIAuthPlugin({
+			vi.resetModules();
+			const {
+				OpenAIAuthPlugin: FreshPlugin,
+			} = await import("../index.js");
+			const { getCachedVariantEfforts } = await import(
+				"../lib/prompts/codex-models.js"
+			);
+			const plugin = await FreshPlugin({
 				client: {
 					tui: { showToast: vi.fn() },
 					auth: { set: vi.fn() },
@@ -91,7 +98,12 @@ describe("OpenAIAuthPlugin config hook", () => {
 		process.env.XDG_CONFIG_HOME = root;
 
 		try {
-			const plugin = await OpenAIAuthPlugin({
+			vi.resetModules();
+			const { OpenAIAuthPlugin: FreshPlugin } = await import("../index.js");
+			const { getCachedVariantEfforts } = await import(
+				"../lib/prompts/codex-models.js"
+			);
+			const plugin = await FreshPlugin({
 				client: {
 					tui: { showToast: vi.fn() },
 					auth: { set: vi.fn() },
@@ -124,7 +136,12 @@ describe("OpenAIAuthPlugin config hook", () => {
 		process.env.XDG_CONFIG_HOME = root;
 
 		try {
-			const plugin = await OpenAIAuthPlugin({
+			vi.resetModules();
+			const { OpenAIAuthPlugin: FreshPlugin } = await import("../index.js");
+			const { getCachedVariantEfforts } = await import(
+				"../lib/prompts/codex-models.js"
+			);
+			const plugin = await FreshPlugin({
 				client: {
 					tui: { showToast: vi.fn() },
 					auth: { set: vi.fn() },
@@ -147,7 +164,67 @@ describe("OpenAIAuthPlugin config hook", () => {
 
 			await (plugin as any).config(cfg);
 
-			expect(cfg.provider.openai.models["gpt-5.3-codex"]).toBeUndefined();
+			expect(cfg.provider.openai.models["gpt-5.3-codex"]).toBeDefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("uses cached supported_reasoning_levels for codex variants", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-cache-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			const cacheDir = join(root, "opencode", "cache");
+			mkdirSync(cacheDir, { recursive: true });
+			writeFileSync(
+				join(cacheDir, "codex-models-cache.json"),
+				JSON.stringify({
+					fetchedAt: Date.now(),
+					source: "server",
+					models: [
+						{
+							slug: "gpt-5.3-codex",
+							supported_reasoning_levels: [
+								{ effort: "low" },
+								{ effort: "medium" },
+							],
+						},
+					],
+				}),
+				"utf8",
+			);
+
+			vi.resetModules();
+			const { OpenAIAuthPlugin: FreshPlugin } = await import("../index.js");
+			const { getCachedVariantEfforts } = await import(
+				"../lib/prompts/codex-models.js"
+			);
+			const plugin = await FreshPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const cfg: any = {
+				provider: {
+					openai: {
+						models: {
+							"gpt-5.3-codex": { id: "gpt-5.3-codex" },
+						},
+					},
+				},
+				experimental: {},
+			};
+
+			const efforts = getCachedVariantEfforts();
+			expect(efforts.get("gpt-5.3-codex")).toEqual(["low", "medium"]);
+
+			await (plugin as any).config(cfg);
+
+			const variants = cfg.provider.openai.models["gpt-5.3-codex"].variants;
+			expect(Object.keys(variants)).toEqual(["low", "medium"]);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -253,7 +330,7 @@ describe("OpenAIAuthPlugin config hook", () => {
 			});
 			expect(cfg.provider.openai.models["gpt-5.3-codex"].variants.high).toMatchObject({
 				reasoningEffort: "high",
-				textVerbosity: "high",
+				textVerbosity: "medium",
 				reasoningSummary: "detailed",
 				disabled: true,
 			});

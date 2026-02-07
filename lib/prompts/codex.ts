@@ -1,9 +1,19 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import lockfile from "proper-lockfile";
 import type { CacheMetadata, GitHubRelease } from "../types.js";
 import { getOpencodeCacheDir, migrateLegacyCacheFiles } from "../paths.js";
 import { MODEL_FAMILIES, type ModelFamily } from "../constants.js";
+import { logWarn } from "../logger.js";
 
 export { MODEL_FAMILIES, type ModelFamily };
 
@@ -12,6 +22,7 @@ const GITHUB_API_RELEASES =
 const GITHUB_HTML_RELEASES =
 	"https://github.com/openai/codex/releases/latest";
 const CACHE_DIR = getOpencodeCacheDir();
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,6 +32,8 @@ const __dirname = dirname(__filename);
  * Based on codex-rs/core/src/model_family.rs logic
  */
 const PROMPT_FILES: Record<ModelFamily, string> = {
+	// Reuse gpt-5.2 codex prompt until a dedicated 5.3 prompt ships upstream.
+	"gpt-5.3-codex": "gpt-5.2-codex_prompt.md",
 	"gpt-5.2-codex": "gpt-5.2-codex_prompt.md",
 	"codex-max": "gpt-5.1-codex-max_prompt.md",
 	codex: "gpt_5_codex_prompt.md",
@@ -32,6 +45,7 @@ const PROMPT_FILES: Record<ModelFamily, string> = {
  * Cache file mapping for each model family
  */
 const CACHE_FILES: Record<ModelFamily, string> = {
+	"gpt-5.3-codex": "gpt-5.3-codex-instructions.md",
 	"gpt-5.2-codex": "gpt-5.2-codex-instructions.md",
 	"codex-max": "codex-max-instructions.md",
 	codex: "codex-instructions.md",
@@ -44,11 +58,80 @@ const CACHE_META_FILES = Object.values(CACHE_FILES).map((file) =>
 );
 const LEGACY_CACHE_FILES = [...Object.values(CACHE_FILES), ...CACHE_META_FILES];
 let cacheMigrated = false;
+const IN_MEMORY_INSTRUCTIONS = new Map<ModelFamily, { value: string }>();
+
+const LOCK_OPTIONS = {
+	stale: 10_000,
+	retries: {
+		retries: 5,
+		minTimeout: 100,
+		maxTimeout: 1000,
+		factor: 2,
+	},
+	realpath: false,
+};
 
 function ensureCacheMigrated(): void {
 	if (cacheMigrated) return;
 	migrateLegacyCacheFiles(LEGACY_CACHE_FILES);
 	cacheMigrated = true;
+}
+
+function readInMemoryInstructions(modelFamily: ModelFamily): string | null {
+	const entry = IN_MEMORY_INSTRUCTIONS.get(modelFamily);
+	return entry?.value ?? null;
+}
+
+function writeInMemoryInstructions(modelFamily: ModelFamily, value: string): void {
+	IN_MEMORY_INSTRUCTIONS.set(modelFamily, { value });
+}
+
+function readCacheMetadata(cacheMetaFile: string): CacheMetadata | null {
+	try {
+		if (!existsSync(cacheMetaFile)) return null;
+		const parsed = JSON.parse(readFileSync(cacheMetaFile, "utf8")) as CacheMetadata;
+		if (!parsed || typeof parsed.tag !== "string") return null;
+		if (!Number.isFinite(parsed.lastChecked)) return null;
+		if (typeof parsed.url !== "string") return null;
+		return parsed;
+	} catch {
+		return null;
+	}
+}
+
+async function writeCacheAtomically(
+	cacheFile: string,
+	cacheMetaFile: string,
+	instructions: string,
+	metadata: CacheMetadata,
+): Promise<void> {
+	if (!existsSync(CACHE_DIR)) {
+		mkdirSync(CACHE_DIR, { recursive: true });
+	}
+	let release: (() => Promise<void>) | null = null;
+	try {
+		release = await lockfile.lock(CACHE_DIR, LOCK_OPTIONS);
+		const tmpCachePath = `${cacheFile}.${randomBytes(6).toString("hex")}.tmp`;
+		const tmpMetaPath = `${cacheMetaFile}.${randomBytes(6).toString("hex")}.tmp`;
+		try {
+			writeFileSync(tmpCachePath, instructions, "utf8");
+			writeFileSync(tmpMetaPath, JSON.stringify(metadata), "utf8");
+			renameSync(tmpCachePath, cacheFile);
+			renameSync(tmpMetaPath, cacheMetaFile);
+		} catch (error) {
+			try {
+				unlinkSync(tmpCachePath);
+			} catch { }
+			try {
+				unlinkSync(tmpMetaPath);
+			} catch { }
+			throw error;
+		}
+	} finally {
+		if (release) {
+			await release().catch(() => undefined);
+		}
+	}
 }
 
 /**
@@ -58,6 +141,12 @@ function ensureCacheMigrated(): void {
  */
 export function getModelFamily(normalizedModel: string): ModelFamily {
 	// Order matters - check more specific patterns first
+	if (
+		normalizedModel.includes("gpt-5.3-codex") ||
+		normalizedModel.includes("gpt 5.3 codex")
+	) {
+		return "gpt-5.3-codex";
+	}
 	if (
 		normalizedModel.includes("gpt-5.2-codex") ||
 		normalizedModel.includes("gpt 5.2 codex")
@@ -137,6 +226,8 @@ export async function getCodexInstructions(
 ): Promise<string> {
 	ensureCacheMigrated();
 	const modelFamily = getModelFamily(normalizedModel);
+	const inMemory = readInMemoryInstructions(modelFamily);
+	if (inMemory) return inMemory;
 	const promptFile = PROMPT_FILES[modelFamily];
 	const cacheFile = join(CACHE_DIR, CACHE_FILES[modelFamily]);
 	const cacheMetaFile = join(
@@ -146,27 +237,20 @@ export async function getCodexInstructions(
 
 	try {
 		// Load cached metadata (includes ETag, tag, and lastChecked timestamp)
-		let cachedETag: string | null = null;
-		let cachedTag: string | null = null;
-		let cachedTimestamp: number | null = null;
-
-		if (existsSync(cacheMetaFile)) {
-			const metadata = JSON.parse(
-				readFileSync(cacheMetaFile, "utf8"),
-			) as CacheMetadata;
-			cachedETag = metadata.etag;
-			cachedTag = metadata.tag;
-			cachedTimestamp = metadata.lastChecked;
-		}
+		const metadata = readCacheMetadata(cacheMetaFile);
+		let cachedETag: string | null = metadata?.etag ?? null;
+		let cachedTag: string | null = metadata?.tag ?? null;
+		let cachedTimestamp: number | null = metadata?.lastChecked ?? null;
 
 		// Rate limit protection: If cache is less than 15 minutes old, use it
-		const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 		if (
 			cachedTimestamp &&
 			Date.now() - cachedTimestamp < CACHE_TTL_MS &&
 			existsSync(cacheFile)
 		) {
-			return readFileSync(cacheFile, "utf8");
+			const instructions = readFileSync(cacheFile, "utf8");
+			writeInMemoryInstructions(modelFamily, instructions);
+			return instructions;
 		}
 
 		// Get the latest release tag (only if cache is stale or missing)
@@ -184,62 +268,86 @@ export async function getCodexInstructions(
 			headers["If-None-Match"] = cachedETag;
 		}
 
-		const response = await fetch(CODEX_INSTRUCTIONS_URL, { headers });
+		let response = await fetch(CODEX_INSTRUCTIONS_URL, { headers });
 
 		// 304 Not Modified - our cached version is still current
 		if (response.status === 304) {
 			if (existsSync(cacheFile)) {
-				return readFileSync(cacheFile, "utf8");
+				const instructions = readFileSync(cacheFile, "utf8");
+				writeInMemoryInstructions(modelFamily, instructions);
+				return instructions;
 			}
-			// Cache file missing but GitHub says not modified - fall through to re-fetch
+			response = await fetch(CODEX_INSTRUCTIONS_URL);
 		}
 
 		// 200 OK - new content or first fetch
 		if (response.ok) {
 			const instructions = await response.text();
 			const newETag = response.headers.get("etag");
-
-			// Create cache directory if it doesn't exist
-			if (!existsSync(CACHE_DIR)) {
-				mkdirSync(CACHE_DIR, { recursive: true });
-			}
-
-			// Cache the instructions with ETag and tag (verbatim from GitHub)
-			writeFileSync(cacheFile, instructions, "utf8");
-			writeFileSync(
-				cacheMetaFile,
-				JSON.stringify({
-					etag: newETag,
-					tag: latestTag,
-					lastChecked: Date.now(),
-					url: CODEX_INSTRUCTIONS_URL,
-				} satisfies CacheMetadata),
-				"utf8",
-			);
-
+			await writeCacheAtomically(cacheFile, cacheMetaFile, instructions, {
+				etag: newETag,
+				tag: latestTag,
+				lastChecked: Date.now(),
+				url: CODEX_INSTRUCTIONS_URL,
+			});
+			writeInMemoryInstructions(modelFamily, instructions);
 			return instructions;
 		}
 
 		throw new Error(`HTTP ${response.status}`);
 	} catch (error) {
 		const err = error as Error;
-		console.error(
+		logWarn(
 			`[openai-codex-plugin] Failed to fetch ${modelFamily} instructions from GitHub:`,
 			err.message,
 		);
 
 		// Try to use cached version even if stale
 		if (existsSync(cacheFile)) {
-			console.error(
+			logWarn(
 				`[openai-codex-plugin] Using cached ${modelFamily} instructions`,
 			);
-			return readFileSync(cacheFile, "utf8");
+			const instructions = readFileSync(cacheFile, "utf8");
+			writeInMemoryInstructions(modelFamily, instructions);
+			return instructions;
 		}
 
 		// Fall back to bundled version (use codex-instructions.md as default)
-		console.error(
+		logWarn(
 			`[openai-codex-plugin] Falling back to bundled instructions for ${modelFamily}`,
 		);
-		return readFileSync(join(__dirname, "codex-instructions.md"), "utf8");
+		const bundled = readFileSync(join(__dirname, "codex-instructions.md"), "utf8");
+		writeInMemoryInstructions(modelFamily, bundled);
+		return bundled;
 	}
+}
+
+export async function warmCodexInstructions(): Promise<void> {
+	ensureCacheMigrated();
+	const tasks = MODEL_FAMILIES.map(async (modelFamily) => {
+		try {
+			if (readInMemoryInstructions(modelFamily)) return;
+			const cacheFile = join(CACHE_DIR, CACHE_FILES[modelFamily]);
+			const cacheMetaFile = join(
+				CACHE_DIR,
+				`${CACHE_FILES[modelFamily].replace(".md", "-meta.json")}`,
+			);
+			const metadata = readCacheMetadata(cacheMetaFile);
+			const hasCacheFile = existsSync(cacheFile);
+			const isFresh =
+				metadata?.lastChecked &&
+				Date.now() - metadata.lastChecked < CACHE_TTL_MS;
+
+			if (isFresh && hasCacheFile) {
+				const instructions = readFileSync(cacheFile, "utf8");
+				writeInMemoryInstructions(modelFamily, instructions);
+				return;
+			}
+			if (!metadata && !hasCacheFile) return;
+			await getCodexInstructions(modelFamily);
+		} catch {
+			// Warm failures should not block startup.
+		}
+	});
+	await Promise.allSettled(tasks);
 }

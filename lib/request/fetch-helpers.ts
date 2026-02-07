@@ -11,7 +11,7 @@ import { getCodexInstructions, getModelFamily } from "../prompts/codex.js";
 import { getCodexModelRuntimeDefaults } from "../prompts/codex-models.js";
 import { transformRequestBody, normalizeModel } from "./request-transformer.js";
 import { convertSseToJson, ensureContentType } from "./response-handler.js";
-import type { UserConfig, RequestBody } from "../types.js";
+import type { UserConfig, RequestBody, PluginConfig } from "../types.js";
 import {
 	PLUGIN_NAME,
 	HTTP_STATUS,
@@ -103,7 +103,11 @@ export async function transformRequestForCodex(
 	init: RequestInit | undefined,
 	url: string,
 	userConfig: UserConfig,
-	runtimeContext?: { accessToken?: string; accountId?: string },
+	runtimeContext?: {
+		accessToken?: string;
+		accountId?: string;
+		pluginConfig?: PluginConfig;
+	},
 ): Promise<{ body: RequestBody; updatedInit: RequestInit } | undefined> {
 	if (!init?.body) return undefined;
 
@@ -140,6 +144,7 @@ export async function transformRequestForCodex(
 			codexInstructions,
 			userConfig,
 			runtimeDefaults,
+			runtimeContext?.pluginConfig,
 		);
 
 		// Log transformed request

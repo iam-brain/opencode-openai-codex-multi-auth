@@ -112,6 +112,20 @@ export interface PluginConfig {
 	requestJitterMaxMs?: number;
 
 	/**
+	 * Custom personality configuration (global).
+	 */
+	custom_settings?: {
+		options?: ConfigOptions;
+		models?: {
+			[modelName: string]: {
+				options?: ConfigOptions;
+				variants?: Record<string, (ConfigOptions & { disabled?: boolean }) | undefined>;
+				[key: string]: unknown;
+			};
+		};
+	};
+
+	/**
 	 * Retry when all accounts rate-limited.
 	 * @default false
 	 */
@@ -183,7 +197,7 @@ export interface ConfigOptions {
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on";
 	textVerbosity?: "low" | "medium" | "high";
-	personality?: "none" | "friendly" | "pragmatic";
+	personality?: string;
 	include?: string[];
 }
 

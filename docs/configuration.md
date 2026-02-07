@@ -18,8 +18,8 @@ Complete reference for configuring the OpenCode OpenAI Codex Auth Plugin.
         "store": false
       },
       "models": {
-        "gpt-5.1-codex-low": {
-          "name": "GPT 5.1 Codex Low (OAuth)",
+        "gpt-5.3-codex-low": {
+          "name": "GPT 5.3 Codex Low (OAuth)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -45,6 +45,12 @@ Complete reference for configuring the OpenCode OpenAI Codex Auth Plugin.
 ### reasoningEffort
 
 Controls computational effort for reasoning.
+
+**GPT-5.3-Codex Values:**
+- `low` - Fastest for code
+- `medium` - Balanced (default)
+- `high` - Maximum code quality
+- `xhigh` - Extra depth for long-horizon tasks
 
 **GPT-5.2 Values** (per OpenAI API docs and Codex CLI `ReasoningEffort` enum):
 - `none` - No dedicated reasoning phase (disables reasoning)
@@ -79,7 +85,7 @@ Controls computational effort for reasoning.
 - `none` is supported for GPT-5.2 and GPT-5.1 (general purpose) per OpenAI API documentation
 - `none` is NOT supported for Codex variants (including GPT-5.2 Codex) - it auto-converts to `low` for Codex/Codex Max or `medium` for Codex Mini
 - `minimal` auto-converts to `low` for Codex models
-- `xhigh` is supported for GPT-5.2, GPT-5.2 Codex, and GPT-5.1-Codex-Max; other models downgrade to `high`
+- `xhigh` is supported for GPT-5.3-Codex, GPT-5.2, GPT-5.2 Codex, and GPT-5.1-Codex-Max; other models downgrade to `high`
 - Codex Mini only supports `medium` or `high`; lower settings clamp to `medium`
 
 **Example:**
@@ -212,14 +218,14 @@ Different settings for different models:
         "store": false
       },
       "models": {
-        "gpt-5-codex-fast": {
+        "gpt-5.3-codex-fast": {
           "name": "Fast Codex",
           "options": {
             "reasoningEffort": "low",
             "store": false
           }
         },
-        "gpt-5-codex-smart": {
+        "gpt-5.3-codex-smart": {
           "name": "Smart Codex",
           "options": {
             "reasoningEffort": "high",
@@ -313,11 +319,11 @@ Different agents use different models:
 {
   "agent": {
     "commit": {
-      "model": "openai/gpt-5.1-codex-low",
+      "model": "openai/gpt-5.3-codex-low",
       "prompt": "Generate concise commit messages"
     },
     "review": {
-      "model": "openai/gpt-5.1-codex-high",
+      "model": "openai/gpt-5.3-codex-high",
       "prompt": "Thorough code review"
     }
   }
@@ -370,6 +376,36 @@ Advanced plugin settings in `~/.config/opencode/openai-codex-auth-config.json`:
   "codexMode": false
 }
 ```
+
+### Custom Settings Overrides
+
+Use `custom_settings` to override OpenCode provider options without editing `opencode.json`.
+These settings are merged on top of the OpenCode config at request time.
+
+```json
+{
+  "custom_settings": {
+    "options": {
+      "personality": "friendly"
+    },
+    "models": {
+      "gpt-5.3-codex": {
+        "options": {
+          "personality": "pragmatic"
+        }
+      }
+    }
+  }
+}
+```
+
+Personality descriptions come from:
+- `.opencode/Personalities/*.md` (project-local)
+- `~/.config/opencode/Personalities/*.md` (global)
+
+The filename (case-insensitive) defines the personality key (e.g., `Friendly.md` matches `friendly`). The file contents are used verbatim as the personality specification.
+
+Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching `.md` file in one of the locations above.
 
 ### Legacy `codexMode` (No-op)
 
@@ -511,7 +547,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "test" --model=openai/your-model-name
 
 Look for:
 ```
-[openai-codex-plugin] Model config lookup: "your-model-name" → normalized to "gpt-5.1-codex" for API {
+[openai-codex-plugin] Model config lookup: "your-model-name" → normalized to "gpt-5.3-codex" for API {
   hasModelSpecificConfig: true,
   resolvedConfig: { ... }
 }
@@ -521,8 +557,8 @@ Look for:
 
 ```bash
 # Run with different models, check logs show different options
-ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex-low
-ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex-high
+ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5.3-codex-low
+ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5.3-codex-high
 
 # Compare reasoning.effort in logs
 cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '.reasoning.effort'
@@ -557,8 +593,8 @@ Use the official config file (`opencode-modern.json` for v1.0.210+, `opencode-le
 ```json
 {
   "models": {
-    "gpt-5.1-codex-low": {
-      "name": "GPT 5.1 Codex Low (OAuth)",
+    "gpt-5.3-codex-low": {
+      "name": "GPT 5.3 Codex Low (OAuth)",
       "limit": {
         "context": 272000,
         "output": 128000
@@ -671,17 +707,17 @@ Look for `hasModelSpecificConfig: true` in debug output.
 
 ### Options Ignored
 
-**Cause**: Model normalizes before lookup
+**Cause**: Config key in `opencode.json` doesn't match the model name used in CLI
 
 **Example Problem:**
 ```json
-{ "models": { "gpt-5.1-codex": { "options": { ... } } } }
+{ "models": { "gpt-5.3-codex": { "options": { ... } } } }
 ```
 ```bash
---model=openai/gpt-5.1-codex-low  # Normalizes to "gpt-5.1-codex" before lookup
+--model=openai/gpt-5.3-codex-low  # Plugin looks for "gpt-5.3-codex-low" in config
 ```
 
-**Fix**: Use exact name you specify in CLI as config key.
+**Fix**: Use exact name you specify in CLI as config key (normalization for API happens *after* config lookup).
 
 > **⚠️ Best Practice:** Use the official `opencode-modern.json` or `opencode-legacy.json` configuration instead of creating custom configs. This ensures proper model normalization and compatibility with GPT 5 models.
 

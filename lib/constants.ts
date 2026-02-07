@@ -82,6 +82,7 @@ export const AUTH_LABELS = {
 
 /** Model family identifiers for account selection */
 export const MODEL_FAMILIES = [
+	"gpt-5.3-codex",
 	"gpt-5.2-codex",
 	"codex-max",
 	"codex",

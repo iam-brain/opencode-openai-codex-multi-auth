@@ -71,7 +71,8 @@ export function logRequest(stage: string, data: Record<string, unknown>): void {
  * @param data - Optional data to log
  */
 export function logDebug(message: string, data?: unknown): void {
-	if (!DEBUG_ENABLED) return;
+	const loggingEnabled = process.env.ENABLE_PLUGIN_REQUEST_LOGGING === "1";
+	if (!DEBUG_ENABLED && !loggingEnabled) return;
 
 	if (data !== undefined) {
 		console.log(`[${PLUGIN_NAME}] ${message}`, data);

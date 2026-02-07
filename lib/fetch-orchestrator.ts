@@ -264,6 +264,7 @@ export class FetchOrchestrator {
 					transformation = await transformRequestForCodex(init, url, userConfig, {
 						accessToken: accountAuth.access,
 						accountId,
+						pluginConfig,
 					});
 					requestInit = transformation?.updatedInit ?? init;
 					model = transformation?.body.model ?? model;

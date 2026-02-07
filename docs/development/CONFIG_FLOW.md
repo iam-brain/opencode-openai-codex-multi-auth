@@ -2,7 +2,7 @@
 
 This document explains how OpenCode configuration flows from user files through the plugin system to the Codex API.
 
-> Note: Some examples use legacy model aliases for compatibility demonstrations. Runtime normalization maps legacy aliases to current canonical slugs before API submission.
+> Note: Some examples use legacy model aliases for compatibility demonstrations. Runtime normalization maps known gpt-5.x variants (like `gpt-5.3-codex-low`) to base slugs (`gpt-5.3-codex`) before API submission; unknown/legacy IDs are lowercased and preserved without substring coercion.
 
 ## Table of Contents
 - [Config Loading Order](#config-loading-order)
@@ -95,8 +95,8 @@ Plugins can inject options via the `loader()` function.
   "provider": {
     "openai": {
       "models": {
-        "gpt-5-codex-medium": {
-          "name": "GPT 5 Codex Medium (OAuth)",
+        "gpt-5.3-codex-medium": {
+          "name": "GPT 5.3 Codex Medium (OAuth)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -118,9 +118,9 @@ Plugins can inject options via the `loader()` function.
 ```
 
 **What OpenCode Uses**:
-- **UI Display**: "GPT 5 Codex Medium (OAuth)" ✅
-- **Persistence**: `provider_id: "openai"` + `model_id: "gpt-5-codex-medium"` ✅
-- **Plugin lookup**: `models["gpt-5-codex-medium"]` → used to build Codex request ✅
+- **UI Display**: "GPT 5.3 Codex Medium (OAuth)" ✅
+- **Persistence**: `provider_id: "openai"` + `model_id: "gpt-5.3-codex-medium"` ✅
+- **Plugin lookup**: `models["gpt-5.3-codex-medium"]` → used to build Codex request ✅
 
 ### TUI Persistence
 
@@ -129,11 +129,11 @@ The TUI stores recently used models in `~/.config/opencode/tui`:
 ```toml
 [[recently_used_models]]
 provider_id = "openai"
-model_id = "gpt-5-codex"
+model_id = "gpt-5.3-codex"
 last_used = 2025-10-12T10:30:00Z
 ```
 
-**Key Point**: Custom display names are **UI-only**. The underlying `id` field is what gets persisted and sent to APIs.
+**Key Point**: Custom display names are **UI-only**. The underlying config key (persisted as model_id) is used for selection, while normalization determines the slug sent to APIs.
 
 **Source**: `tmp/opencode/packages/tui/internal/app/state.go:54-79`
 
@@ -223,8 +223,8 @@ For a given model, options are merged:
         "textVerbosity": "medium"
       },
       "models": {
-        "gpt-5-codex-high": {
-          "name": "GPT 5 Codex High (OAuth)",
+        "gpt-5.3-codex-high": {
+          "name": "GPT 5.3 Codex High (OAuth)",
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed"
@@ -244,7 +244,7 @@ For a given model, options are merged:
 ```
 
 **Result**:
-- `gpt-5-codex-high` uses `reasoningEffort: "high"` (overridden) + `textVerbosity: "medium"` (from global)
+- `gpt-5.3-codex-high` uses `reasoningEffort: "high"` (overridden) + `textVerbosity: "medium"` (from global)
 - `gpt-5-nano` uses `reasoningEffort: "minimal"` + `textVerbosity: "low"` (both overridden)
 
 ### Example 3: Full Configuration
@@ -252,7 +252,7 @@ For a given model, options are merged:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["opencode-openai-codex-multi-auth"],
-  "model": "openai/gpt-5-codex-medium",
+  "model": "openai/gpt-5.3-codex-medium",
   "provider": {
     "openai": {
       "options": {
@@ -262,14 +262,14 @@ For a given model, options are merged:
         "include": ["reasoning.encrypted_content"]
       },
       "models": {
-        "gpt-5-codex-low": {
-          "name": "GPT 5 Codex Low (OAuth)",
+        "gpt-5.3-codex-low": {
+          "name": "GPT 5.3 Codex Low (OAuth)",
           "options": {
             "reasoningEffort": "low"
           }
         },
-        "gpt-5-codex-high": {
-          "name": "GPT 5 Codex High (OAuth)",
+        "gpt-5.3-codex-high": {
+          "name": "GPT 5.3 Codex High (OAuth)",
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed"
@@ -344,15 +344,15 @@ Custom model names help you remember what each variant does:
 {
   "models": {
     "GPT 5 Codex - Fast & Cheap": {
-      "id": "gpt-5-codex",
+      "id": "gpt-5.3-codex",
       "options": { "reasoningEffort": "low" }
     },
     "GPT 5 Codex - Balanced": {
-      "id": "gpt-5-codex",
+      "id": "gpt-5.3-codex",
       "options": { "reasoningEffort": "medium" }
     },
     "GPT 5 Codex - Max Quality": {
-      "id": "gpt-5-codex",
+      "id": "gpt-5.3-codex",
       "options": { "reasoningEffort": "high" }
     }
   }

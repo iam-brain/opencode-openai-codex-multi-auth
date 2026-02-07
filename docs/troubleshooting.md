@@ -184,7 +184,7 @@ See [Multi-Account](multi-account.md) for details.
 
 ### "Model not found"
 
-**Error**: `Model 'openai/gpt-5-codex-low' not found`
+**Error**: `Model 'openai/gpt-5.3-codex-low' not found`
 
 **Cause 1: Config key mismatch**
 
@@ -192,26 +192,32 @@ See [Multi-Account](multi-account.md) for details.
 ```json
 {
   "models": {
-    "gpt-5-codex-low": { ... }  // ← This is the key
+    "gpt-5.3-codex-low": { ... }  // ← This is the key
   }
 }
 ```
 
-**CLI must match exactly:**
+**CLI Usage (Modern):**
 ```bash
-opencode run "test" --model=openai/gpt-5-codex-low  # Must match config key
+opencode run "test" --model=openai/gpt-5.3-codex --variant=low
+```
+
+**CLI Usage (Legacy Suffix):**
+```bash
+opencode run "test" --model=openai/gpt-5.3-codex-low  # Must match config key
 ```
 
 **Cause 2: Missing provider prefix**
 
 **❌ Wrong:**
 ```yaml
-model: gpt-5-codex-low
+model: gpt-5.3-codex-low
 ```
 
 **✅ Correct:**
 ```yaml
-model: openai/gpt-5-codex-low
+model: openai/gpt-5.3-codex
+variant: low
 ```
 
 ### Per-Model Options Not Applied
@@ -307,7 +313,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-error-response.json
 ```
 
 **Common causes:**
-1. Invalid options for model (e.g., `minimal` for gpt-5-codex)
+1. Invalid options for model (e.g., `minimal` for gpt-5.3-codex)
 2. Malformed request body
 3. Unsupported parameter
 
@@ -315,7 +321,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-error-response.json
 
 **Error:**
 ```
-Rate limit reached for gpt-5-codex
+Rate limit reached for gpt-5.3-codex
 ```
 
 **Solutions:**
@@ -326,10 +332,10 @@ Check headers in response logs:
 cat ~/.config/opencode/logs/codex-plugin/request-*-response.json | jq '.headers["x-codex-primary-reset-after-seconds"]'
 ```
 
-**2. Switch to different model:**
+**2. Use a specific model variant:**
 ```bash
-# If codex is rate limited, try gpt-5
-opencode run "task" --model=openai/gpt-5
+# Explicitly use variant via flag
+opencode run "task" --model=openai/gpt-5.3-codex --variant=high
 ```
 
 ### "Context Window Exceeded"
@@ -351,7 +357,7 @@ Your input exceeds the context window
 **2. Use compact mode** (if OpenCode supports it)
 
 **3. Switch to model with larger context:**
-- gpt-5.1-codex / gpt-5.2-codex presets have larger context windows than lightweight presets
+- gpt-5.3-codex / gpt-5.2-codex / gpt-5.1-codex presets have larger context windows than lightweight presets
 
 ---
 
@@ -377,7 +383,7 @@ Using cached instructions
 ls -lt ~/.config/opencode/cache/*-instructions-meta.json
 
 # Check lastChecked timestamp (example family)
-cat ~/.config/opencode/cache/gpt-5.1-instructions-meta.json | jq '.lastChecked'
+cat ~/.config/opencode/cache/gpt-5.3-codex-instructions-meta.json | jq '.lastChecked'
 
 # Check runtime model metadata fallback cache
 ls -lt ~/.config/opencode/cache/codex-models-cache.json
@@ -411,7 +417,7 @@ DEBUG_CODEX_PLUGIN=1 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test"
 
 ```bash
 # Run command with logging
-ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5-codex-low
+ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test" --model=openai/gpt-5.3-codex --variant=low
 
 # Check what was sent to API
 cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '{

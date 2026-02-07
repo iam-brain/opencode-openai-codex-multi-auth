@@ -78,6 +78,9 @@ import {
 import { formatToastMessage } from "./lib/formatting.js";
 import { logCritical } from "./lib/logger.js";
 import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
+import { warmCodexInstructions } from "./lib/prompts/codex.js";
+import { getCachedVariantEfforts, warmCodexModelCatalog } from "./lib/prompts/codex-models.js";
+import { buildInternalModelDefaults, mergeModelDefaults } from "./lib/catalog-defaults.js";
 
 const LEGACY_ALLOWED_METADATA_MODELS = new Set([
 	"gpt-5.2",
@@ -184,7 +187,7 @@ function looksLikeModelMetadataRegistry(models: Record<string, unknown>): boolea
 
 function normalizeProviderModelMetadata(
 	models: Record<string, unknown>,
-	options?: { force?: boolean },
+	options?: { force?: boolean; variantEfforts?: Map<string, string[]> },
 ): void {
 	if (!options?.force && !looksLikeModelMetadataRegistry(models)) return;
 
@@ -247,10 +250,21 @@ function normalizeProviderModelMetadata(
 			? (baseModel.variants as Record<string, unknown>)
 			: {};
 
-		const efforts = new Set<string>([
-			...codexVariantSet(baseId),
-			...entry.seenEfforts,
-		]);
+		const cachedEfforts = options?.variantEfforts?.get(baseId);
+		const efforts = cachedEfforts?.length
+			? new Set<string>(cachedEfforts)
+			: new Set<string>([...codexVariantSet(baseId), ...entry.seenEfforts]);
+
+		if (cachedEfforts?.length) {
+			const allowed = new Set(
+				cachedEfforts.map((effort) => effort.toLowerCase()),
+			);
+			for (const key of Object.keys(variants)) {
+				if (!allowed.has(key.toLowerCase())) {
+					delete variants[key];
+				}
+			}
+		}
 
 		for (const effort of efforts) {
 			const existingVariant = isObjectRecord(variants[effort])
@@ -283,6 +297,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	let cachedFetchOrchestrator: FetchOrchestrator | null = null;
 
 	configureStorageForPluginConfig(loadPluginConfig(), process.cwd());
+	void warmCodexInstructions();
+	void warmCodexModelCatalog();
 
 	const showToast = async (
 		message: string,
@@ -585,7 +601,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					if (!isOAuthAuth(auth)) return {};
 					const providerConfig = provider as { options?: Record<string, unknown>; models?: UserConfig["models"] } | undefined;
 					if (providerConfig?.models && isObjectRecord(providerConfig.models)) {
-						normalizeProviderModelMetadata(providerConfig.models, { force: true });
+						const variantEfforts = getCachedVariantEfforts();
+						normalizeProviderModelMetadata(providerConfig.models, {
+							force: true,
+							variantEfforts,
+						});
 					}
 
 				const pluginConfig = loadPluginConfig();
@@ -685,9 +705,17 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 		methods: authMethods,
 	},
 		config: async (cfg) => {
-			const openAIModels = (cfg as { provider?: { openai?: { models?: unknown } } })?.provider?.openai?.models;
-			if (openAIModels && isObjectRecord(openAIModels)) {
-				normalizeProviderModelMetadata(openAIModels, { force: true });
+			cfg.provider = cfg.provider || {};
+			cfg.provider.openai = cfg.provider.openai || {};
+			const openAIConfig = cfg.provider.openai as { models?: unknown };
+			const internalDefaults = buildInternalModelDefaults();
+			openAIConfig.models = mergeModelDefaults(openAIConfig.models, internalDefaults);
+			if (isObjectRecord(openAIConfig.models)) {
+				const variantEfforts = getCachedVariantEfforts();
+				normalizeProviderModelMetadata(openAIConfig.models, {
+					force: true,
+					variantEfforts,
+				});
 			}
 
 			cfg.command = cfg.command || {};

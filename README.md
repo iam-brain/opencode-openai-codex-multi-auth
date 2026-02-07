@@ -33,12 +33,12 @@ npx -y opencode-openai-codex-multi-auth@latest
 Then:
 ```bash
 opencode auth login
-opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=medium
+opencode run "write hello world to test.txt" --model=openai/gpt-5.3-codex --variant=medium
 ```
 Legacy OpenCode (v1.0.209 and below):
 ```bash
 npx -y opencode-openai-codex-multi-auth@latest --legacy
-opencode run "write hello world to test.txt" --model=openai/gpt-5.2-medium
+opencode run "write hello world to test.txt" --model=openai/gpt-5.3-codex-medium
 ```
 Uninstall:
 ```bash
@@ -57,6 +57,7 @@ opencode auth login
 
 ---
 ## 📦 Models
+- **gpt-5.3-codex** (low/medium/high/xhigh)
 - **gpt-5.2** (none/low/medium/high/xhigh)
 - **gpt-5.2-codex** (low/medium/high/xhigh)
 - **gpt-5.1-codex-max** (low/medium/high/xhigh)
@@ -72,20 +73,18 @@ opencode auth login
 
 Minimal configs are not supported for GPT‑5.x; use the full configs above.
 
-Personality is supported for all current and future models via `options.personality`:
+Personality is configured in `~/.config/opencode/openai-codex-auth-config.json` via `custom_settings`:
 
 ```json
 {
-  "provider": {
-    "openai": {
-      "options": {
-        "personality": "friendly"
-      },
-      "models": {
-        "gpt-5.3-codex": {
-          "options": {
-            "personality": "pragmatic"
-          }
+  "custom_settings": {
+    "options": {
+      "personality": "Idiot"
+    },
+    "models": {
+      "gpt-5.3-codex": {
+        "options": {
+          "personality": "pragmatic"
         }
       }
     }
@@ -93,7 +92,13 @@ Personality is supported for all current and future models via `options.personal
 }
 ```
 
-Accepted values: `none`, `friendly`, `pragmatic` (case-insensitive).
+Personality descriptions come from:
+- Project-local `.opencode/Personalities/*.md`
+- Global `~/.config/opencode/Personalities/*.md`
+
+The filename (case-insensitive) defines the key (e.g., `Idiot.md`), and the file contents are used verbatim.
+
+Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching personality file.
 
 Legacy note: `codexMode` is deprecated and now a no-op.
 ---
@@ -109,7 +114,7 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 ---
 ## ✅ Features
 - ChatGPT Plus/Pro OAuth authentication (official flow)
-- 22 model presets across GPT‑5.2 / GPT‑5.2 Codex / GPT‑5.1 families
+- Model presets across GPT‑5.3 Codex / GPT‑5.2 / GPT‑5.2 Codex / GPT‑5.1 families
 - Variant system support (v1.0.210+) + legacy presets
 - Multimodal input enabled for all models
 - Usage‑aware errors + automatic token refresh

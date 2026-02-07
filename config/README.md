@@ -35,7 +35,7 @@ OpenCode v1.0.210+ introduced a **variants system** that allows defining reasoni
 | `opencode-legacy.json` | 6 | Separate model entries | 20 individual model definitions |
 
 Both configs provide:
-- ✅ All supported GPT 5.2/5.1 variants: gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini
+- ✅ All supported GPT 5.x variants: gpt-5.3-codex, gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini
 - ✅ Proper reasoning effort settings for each variant (including `xhigh` for Codex Max/5.2)
 - ✅ Context limits (272k context / 128k output for all Codex families)
 - ✅ Required options: `store: false`, `include: ["reasoning.encrypted_content"]`
@@ -68,12 +68,12 @@ Both configs provide:
 3. **Run opencode**:
    ```bash
    # Modern config (v1.0.210+):
-   opencode run "task" --model=openai/gpt-5.2 --variant=medium
-   opencode run "task" --model=openai/gpt-5.2 --variant=high
+   opencode run "task" --model=openai/gpt-5.3-codex --variant=medium
+   opencode run "task" --model=openai/gpt-5.3-codex --variant=high
 
    # Legacy config:
-   opencode run "task" --model=openai/gpt-5.2-medium
-   opencode run "task" --model=openai/gpt-5.2-high
+   opencode run "task" --model=openai/gpt-5.3-codex-medium
+   opencode run "task" --model=openai/gpt-5.3-codex-high
    ```
 
 > **⚠️ Important**: Use the config file appropriate for your OpenCode version. Using the modern config with an older OpenCode version (v1.0.209 or below) will not work correctly.
@@ -84,6 +84,7 @@ Both configs provide:
 
 Both configs provide access to the same model families:
 
+- **gpt-5.3-codex** (low/medium/high/xhigh) - Primary Codex model
 - **gpt-5.2** (none/low/medium/high/xhigh) - Latest GPT 5.2 model with full reasoning support
 - **gpt-5.2-codex** (low/medium/high/xhigh) - GPT 5.2 Codex presets
 - **gpt-5.1-codex-max** (low/medium/high/xhigh) - Codex Max presets
@@ -91,7 +92,7 @@ Both configs provide access to the same model families:
 - **gpt-5.1-codex-mini** (medium/high) - Codex mini tier presets
 - **gpt-5.1** (none/low/medium/high) - General-purpose reasoning presets
 
-All appear in the opencode model selector as "GPT 5.1 Codex Low (OAuth)", "GPT 5.1 High (OAuth)", etc.
+All appear in the opencode model selector as "GPT 5.3 Codex Low (OAuth)", "GPT 5.3 High (OAuth)", etc.
 
 ## Configuration Options
 
