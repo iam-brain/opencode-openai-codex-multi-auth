@@ -5,6 +5,10 @@ import {
 	getPerProjectAccounts,
 	getSchedulingMode,
 	getMaxCacheFirstWaitSeconds,
+	getHardStopMaxWaitMs,
+	getHardStopOnUnknownModel,
+	getHardStopOnAllAuthFailed,
+	getHardStopMaxConsecutiveFailures,
 	getAuthDebugEnabled,
 	getNoBrowser,
 } from '../lib/config.js';
@@ -32,6 +36,10 @@ describe('Plugin Configuration', () => {
 		'CODEX_AUTH_PER_PROJECT_ACCOUNTS',
 		'CODEX_AUTH_SCHEDULING_MODE',
 		'CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS',
+		'CODEX_AUTH_HARD_STOP_MAX_WAIT_MS',
+		'CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL',
+		'CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED',
+		'CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES',
 		'CODEX_AUTH_DEBUG',
 		'OPENCODE_OPENAI_AUTH_DEBUG',
 		'DEBUG_CODEX_PLUGIN',
@@ -59,20 +67,24 @@ describe('Plugin Configuration', () => {
 		}
 	});
 
-	describe('loadPluginConfig', () => {
-		const expectedDefault = {
-			codexMode: false,
-			accountSelectionStrategy: 'sticky',
-			pidOffsetEnabled: true,
-			quietMode: false,
-			perProjectAccounts: false,
-			retryAllAccountsRateLimited: false,
-			retryAllAccountsMaxWaitMs: 30_000,
-			retryAllAccountsMaxRetries: 1,
-			tokenRefreshSkewMs: 60_000,
-			proactiveTokenRefresh: false,
-			authDebug: false,
-			rateLimitToastDebounceMs: 60_000,
+		describe('loadPluginConfig', () => {
+			const expectedDefault = {
+				codexMode: false,
+				accountSelectionStrategy: 'sticky',
+				pidOffsetEnabled: true,
+				quietMode: false,
+				perProjectAccounts: false,
+				retryAllAccountsRateLimited: false,
+				retryAllAccountsMaxWaitMs: 30_000,
+				retryAllAccountsMaxRetries: 1,
+				hardStopMaxWaitMs: 10_000,
+				hardStopOnUnknownModel: true,
+				hardStopOnAllAuthFailed: true,
+				hardStopMaxConsecutiveFailures: 5,
+				tokenRefreshSkewMs: 60_000,
+				proactiveTokenRefresh: false,
+				authDebug: false,
+				rateLimitToastDebounceMs: 60_000,
 			schedulingMode: 'cache_first',
 			maxCacheFirstWaitSeconds: 60,
 			switchOnFirstRateLimit: true,
@@ -235,6 +247,57 @@ describe('Plugin Configuration', () => {
 			const result = getMaxCacheFirstWaitSeconds(config);
 
 			expect(result).toBe(30);
+		});
+	});
+
+	describe('hard-stop settings', () => {
+		it('should default hard-stop max wait to 10 seconds', () => {
+			delete process.env.CODEX_AUTH_HARD_STOP_MAX_WAIT_MS;
+			const config: PluginConfig = {};
+			const result = getHardStopMaxWaitMs(config);
+			expect(result).toBe(10_000);
+		});
+
+		it('should clamp negative hard-stop max wait to zero', () => {
+			process.env.CODEX_AUTH_HARD_STOP_MAX_WAIT_MS = '-1';
+			const result = getHardStopMaxWaitMs({});
+			expect(result).toBe(0);
+		});
+
+		it('should default hard-stop unknown-model to true', () => {
+			delete process.env.CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL;
+			const result = getHardStopOnUnknownModel({});
+			expect(result).toBe(true);
+		});
+
+		it('should allow env override for hard-stop unknown-model', () => {
+			process.env.CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL = '0';
+			const result = getHardStopOnUnknownModel({ hardStopOnUnknownModel: true });
+			expect(result).toBe(false);
+		});
+
+		it('should default hard-stop all-auth-failed to true', () => {
+			delete process.env.CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED;
+			const result = getHardStopOnAllAuthFailed({});
+			expect(result).toBe(true);
+		});
+
+		it('should allow env override for hard-stop all-auth-failed', () => {
+			process.env.CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED = '0';
+			const result = getHardStopOnAllAuthFailed({ hardStopOnAllAuthFailed: true });
+			expect(result).toBe(false);
+		});
+
+		it('should default hard-stop max consecutive failures to 5', () => {
+			delete process.env.CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES;
+			const result = getHardStopMaxConsecutiveFailures({});
+			expect(result).toBe(5);
+		});
+
+		it('should clamp negative hard-stop max consecutive failures to zero', () => {
+			process.env.CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES = '-2';
+			const result = getHardStopMaxConsecutiveFailures({});
+			expect(result).toBe(0);
 		});
 	});
 

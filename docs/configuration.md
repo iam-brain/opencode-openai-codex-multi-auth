@@ -439,6 +439,15 @@ Add `$schema` for editor autocompletion:
 | `perProjectAccounts` | `boolean` | `false` | If `true`, the plugin will look for and use account storage in `.opencode/openai-codex-accounts.json` relative to the current project. |
 | `quietMode` | `boolean` | `false` | Disable TUI toasts for background operations (e.g., token refreshes). |
 
+#### Hard-Stop Settings
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `hardStopMaxWaitMs` | `number` | `10000` | Maximum wait before returning a hard-stop error when no accounts are available. |
+| `hardStopOnUnknownModel` | `boolean` | `true` | Return a hard-stop error for models not in the server catalog. |
+| `hardStopOnAllAuthFailed` | `boolean` | `true` | Return a hard-stop error when all accounts are in auth-failure cooldown. |
+| `hardStopMaxConsecutiveFailures` | `number` | `5` | Maximum consecutive failures before returning a hard-stop error. |
+
 #### Per-Project Storage
 
 **What it does:**
@@ -484,6 +493,10 @@ CODEX_AUTH_RATE_LIMIT_TOAST_DEBOUNCE_MS=60000
 CODEX_AUTH_RETRY_ALL_RATE_LIMITED=1
 CODEX_AUTH_RETRY_ALL_MAX_WAIT_MS=30000
 CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
+CODEX_AUTH_HARD_STOP_MAX_WAIT_MS=10000
+CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL=1
+CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED=1
+CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES=5
 ```
 
 ### Prompt caching

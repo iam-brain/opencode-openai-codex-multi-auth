@@ -164,6 +164,28 @@
       "minimum": 0,
       "default": 1,
       "description": "Maximum number of all-accounts wait cycles."
+    },
+    "hardStopMaxWaitMs": {
+      "type": "number",
+      "minimum": 0,
+      "default": 10000,
+      "description": "Maximum wait (ms) before returning a hard-stop error when no accounts are available."
+    },
+    "hardStopOnUnknownModel": {
+      "type": "boolean",
+      "default": true,
+      "description": "Return a hard-stop error when the requested model is not in the server catalog."
+    },
+    "hardStopOnAllAuthFailed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Return a hard-stop error when all accounts are in auth-failure cooldown."
+    },
+    "hardStopMaxConsecutiveFailures": {
+      "type": "number",
+      "minimum": 0,
+      "default": 5,
+      "description": "Maximum consecutive failures before returning a hard-stop error."
     }
   }
 }

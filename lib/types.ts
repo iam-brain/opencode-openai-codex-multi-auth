@@ -143,6 +143,30 @@ export interface PluginConfig {
 	 * @default 1
 	 */
 	retryAllAccountsMaxRetries?: number;
+
+	/**
+	 * Hard-stop max wait before returning synthetic error (ms).
+	 * @default 10000
+	 */
+	hardStopMaxWaitMs?: number;
+
+	/**
+	 * Hard-stop when model is not in the server catalog.
+	 * @default true
+	 */
+	hardStopOnUnknownModel?: boolean;
+
+	/**
+	 * Hard-stop when all accounts are in auth-failure cooldown.
+	 * @default true
+	 */
+	hardStopOnAllAuthFailed?: boolean;
+
+	/**
+	 * Max consecutive failures before hard-stop.
+	 * @default 5
+	 */
+	hardStopMaxConsecutiveFailures?: number;
 }
 
 export type AccountSelectionStrategy = "sticky" | "round-robin" | "hybrid";

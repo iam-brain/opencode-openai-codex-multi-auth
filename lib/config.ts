@@ -54,6 +54,10 @@ const DEFAULT_CONFIG: PluginConfig = {
 	retryAllAccountsRateLimited: false,
 	retryAllAccountsMaxWaitMs: 30_000,
 	retryAllAccountsMaxRetries: 1,
+	hardStopMaxWaitMs: 10_000,
+	hardStopOnUnknownModel: true,
+	hardStopOnAllAuthFailed: true,
+	hardStopMaxConsecutiveFailures: 5,
 	tokenRefreshSkewMs: 60_000,
 	proactiveTokenRefresh: false,
 	authDebug: false,
@@ -222,6 +226,41 @@ export function getRetryAllAccountsMaxRetries(pluginConfig: PluginConfig): numbe
 		{ min: 0 },
 	);
 }
+
+export function getHardStopMaxWaitMs(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_HARD_STOP_MAX_WAIT_MS",
+		pluginConfig.hardStopMaxWaitMs,
+		10_000,
+		{ min: 0 },
+	);
+}
+
+export function getHardStopOnUnknownModel(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL",
+		pluginConfig.hardStopOnUnknownModel,
+		true,
+	);
+}
+
+export function getHardStopOnAllAuthFailed(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED",
+		pluginConfig.hardStopOnAllAuthFailed,
+		true,
+	);
+}
+
+export function getHardStopMaxConsecutiveFailures(pluginConfig: PluginConfig): number {
+	return resolveNumberSetting(
+		"CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES",
+		pluginConfig.hardStopMaxConsecutiveFailures,
+		5,
+		{ min: 0 },
+	);
+}
+
 
 export function getSchedulingMode(pluginConfig: PluginConfig):
 	| "cache_first"
