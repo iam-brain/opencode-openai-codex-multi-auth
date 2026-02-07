@@ -370,6 +370,15 @@ describe('Request Transformer Module', () => {
 			expect(result.model).toBe('gpt-5-mini');
 		});
 
+		it('accepts base gpt-5.x model slugs', async () => {
+			const body: RequestBody = {
+				model: 'gpt-5.3',
+				input: [],
+			};
+			const result = await transformRequestBody(body, codexInstructions);
+			expect(result.model).toBe('gpt-5.3');
+		});
+
 		it('should apply default reasoning config', async () => {
 			const body: RequestBody = {
 				model: 'gpt-5',

@@ -112,9 +112,9 @@ const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
 const GPT_CODEX_DYNAMIC_REGEX =
 	/^(gpt-5\.\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
 const GPT_GENERAL_PRO_DYNAMIC_REGEX =
-	/^(gpt-5\.\d+(?:\.\d+)*-pro)(?:-(?:none|low|medium|high|xhigh))?$/i;
+	/^(gpt-5\.\d+(?:\.\d+)*-pro)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
 const GPT_GENERAL_DYNAMIC_REGEX =
-	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|low|medium|high|xhigh))$/i;
+	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
 const LEGACY_DYNAMIC_ALIASES: Record<string, string> = {};
 
 function applyDynamicAlias(baseModel: string): string {
