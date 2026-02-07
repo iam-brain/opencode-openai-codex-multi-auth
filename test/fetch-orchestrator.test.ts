@@ -5,6 +5,11 @@ import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
 import { PluginConfig } from '../lib/types.js';
+import {
+	ModelCatalogUnavailableError,
+	UnknownModelError,
+} from '../lib/request/errors.js';
+import { getCodexModelRuntimeDefaults } from '../lib/prompts/codex-models.js';
 
 vi.mock('../lib/storage.js', () => ({
 	quarantineAccountsByRefreshToken: vi.fn(),
@@ -35,6 +40,7 @@ describe('FetchOrchestrator', () => {
 	let quarantineAccountsByRefreshToken: any;
 
 	const mockFetch = vi.fn();
+	const mockedDefaults = vi.mocked(getCodexModelRuntimeDefaults);
 
 	beforeEach(async () => {
 		vi.useFakeTimers();
@@ -495,6 +501,59 @@ describe('FetchOrchestrator', () => {
 		const body = await response.json();
 		expect(body.error.type).toBe('all_accounts_auth_failed');
 		expect(body.error.message).toContain('auth');
+	});
+
+	it('hard-stops on unsupported model errors', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({
+			index: 0,
+			accountId: 'acc1',
+			email: 'acc1@example.com',
+		});
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+		mockedDefaults.mockRejectedValueOnce(
+			new UnknownModelError('gpt-0.0-bad', ['gpt-5.1']),
+		);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-0.0-bad' }),
+		});
+
+		expect(response.status).toBe(400);
+		const body = await response.json();
+		expect(body.error.type).toBe('unsupported_model');
+		expect(body.error.param).toBe('model');
+		expect(body.error.message).toContain('gpt-0.0-bad');
+	});
+
+	it('hard-stops when model catalog is unavailable', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({
+			index: 0,
+			accountId: 'acc1',
+			email: 'acc1@example.com',
+		});
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+		mockedDefaults.mockRejectedValueOnce(new ModelCatalogUnavailableError());
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.1' }),
+		});
+
+		expect(response.status).toBe(400);
+		const body = await response.json();
+		expect(body.error.type).toBe('unsupported_model');
+		expect(body.error.param).toBe('model');
+		expect(body.error.message).toContain('gpt-5.1');
+		expect(body.error.message).toContain('catalog');
 	});
 
 	it('should not loop infinitely on persistent 401', async () => {

@@ -52,6 +52,10 @@ import {
 	handleSuccessResponse,
 } from "./request/fetch-helpers.js";
 import { createSyntheticErrorResponse } from "./request/response-handler.js";
+import {
+	ModelCatalogUnavailableError,
+	UnknownModelError,
+} from "./request/errors.js";
 import { normalizeModel } from "./request/request-transformer.js";
 import { getModelFamily } from "./prompts/codex.js";
 import { logDebug, logWarn } from "./logger.js";
@@ -295,16 +299,36 @@ export class FetchOrchestrator {
 				}
 				account.accountId = accountId;
 
-				if (!transformation || transformationAccountId !== accountId) {
+			if (!transformation || transformationAccountId !== accountId) {
+				try {
 					transformation = await transformRequestForCodex(init, url, userConfig, {
 						accessToken: accountAuth.access,
 						accountId,
 						pluginConfig,
 					});
-					transformationAccountId = accountId;
-					requestInit = transformation?.updatedInit ?? init;
-					model = transformation?.body.model ?? model;
+				} catch (err) {
+					if (err instanceof UnknownModelError || err instanceof ModelCatalogUnavailableError) {
+						const attemptedModel =
+							typeof originalBody?.model === "string" && originalBody.model.trim()
+								? originalBody.model
+								: model ?? "unknown";
+						const detail =
+							err instanceof ModelCatalogUnavailableError
+								? " Model catalog unavailable; run once with network access to seed /codex/models."
+								: "";
+						return createSyntheticErrorResponse(
+							`Unsupported model "${attemptedModel}".${detail}`,
+							400,
+							"unsupported_model",
+							"model",
+						);
+					}
+					throw err;
 				}
+				transformationAccountId = accountId;
+				requestInit = transformation?.updatedInit ?? init;
+				model = transformation?.body.model ?? model;
+			}
 
 				const headers = createCodexHeaders(requestInit, accountId, accountAuth.access, { model, promptCacheKey: transformation?.body?.prompt_cache_key });
 
