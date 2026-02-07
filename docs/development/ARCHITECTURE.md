@@ -342,7 +342,7 @@ let include: Vec<String> = if reasoning.is_some() {
 | Feature | Codex CLI | This Plugin | Why? |
 |---------|-----------|-------------|------|
 | **OpenCode Runtime Metadata Preservation** | Native runtime | ✅ Preserve env/AGENTS developer messages | Keep harness context intact without duplicating tool contracts |
-| **Online-First Model Metadata Fallbacks** | Native model manager | ✅ `/codex/models` → cache → GitHub → static | Resilient runtime defaults + personality templates |
+| **Authoritative Model Catalog** | Native model manager | ✅ `/codex/models` → per-account cache (server-derived), fail closed if unavailable | Strict allowlist + runtime defaults |
 | **Orphan Tool Output Handling** | ✅ Drop orphans | ✅ Convert to messages | Preserve context + avoid 400s |
 | **Usage-limit messaging** | CLI prints status | ✅ Friendly error summary | Surface 5h/weekly windows in OpenCode |
 | **Per-Model Options** | CLI flags | ✅ Config file | Better UX in OpenCode |
