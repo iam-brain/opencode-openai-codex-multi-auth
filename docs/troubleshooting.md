@@ -303,7 +303,7 @@ AI_APICallError: Item with id 'msg_abc123' not found.
 Items are not persisted when `store` is set to false.
 ```
 
-**Cause**: Old plugin version (fixed in v2.1.2+)
+**Cause**: Older plugin version
 
 **Solution:**
 ```bash
