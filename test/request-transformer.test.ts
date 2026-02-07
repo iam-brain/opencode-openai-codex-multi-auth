@@ -4,7 +4,6 @@ import {
 	getModelConfig,
 	filterInput,
 	transformRequestBody,
-	UnknownModelError,
 } from '../lib/request/request-transformer.js';
 import type { RequestBody, UserConfig, InputItem } from '../lib/types.js';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -1273,25 +1272,7 @@ describe('Request Transformer Module', () => {
 			});
 		});
 
-		describe('unknown model handling', () => {
-			it('rejects unknown models with a clear error', async () => {
-				const body: RequestBody = {
-					model: 'unknown-model',
-					input: [],
-				};
-				const userConfig: UserConfig = {
-					global: {},
-					models: {},
-				};
-
-				await expect(
-					transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig),
-				).rejects.toThrow(UnknownModelError);
-				await expect(
-					transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig),
-				).rejects.toThrow('Unknown model "unknown-model"');
-			});
-		});
+		// Unknown model validation happens when runtime defaults are resolved from the server catalog.
 
 		// NEW: Integration tests for all config scenarios
 		describe('Integration: Complete Config Scenarios', () => {
@@ -1404,15 +1385,21 @@ describe('Request Transformer Module', () => {
 					},
 				};
 
-				it('rejects legacy verbose model names', async () => {
+				it('should find and apply old config format', async () => {
 					const body: RequestBody = {
 						model: 'GPT 5 Codex Low (ChatGPT Subscription)',
 						input: [],
 					};
 
-					await expect(
-						transformRequestBody(body, codexInstructions, userConfig),
-					).rejects.toThrow(UnknownModelError);
+					const result = await transformRequestBody(
+						body,
+						codexInstructions,
+						userConfig,
+					);
+
+					expect(result.model).toBe('gpt 5 codex low (chatgpt subscription)');
+					expect(result.reasoning?.effort).toBe('low');
+					expect(result.text?.verbosity).toBe('low');
 				});
 			});
 

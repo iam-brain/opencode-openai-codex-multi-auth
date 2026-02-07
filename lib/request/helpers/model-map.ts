@@ -112,9 +112,9 @@ const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
 const GPT_CODEX_DYNAMIC_REGEX =
 	/^(gpt-5\.\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
 const GPT_GENERAL_PRO_DYNAMIC_REGEX =
-	/^(gpt-5\.\d+(?:\.\d+)*-pro)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
+	/^(gpt-5\.\d+(?:\.\d+)*-pro)(?:-(?:none|low|medium|high|xhigh))?$/i;
 const GPT_GENERAL_DYNAMIC_REGEX =
-	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|minimal|low|medium|high|xhigh))?$/i;
+	/^(gpt-5\.\d+(?:\.\d+)*)(?:-(?:none|low|medium|high|xhigh))?$/i;
 const LEGACY_DYNAMIC_ALIASES: Record<string, string> = {};
 
 function applyDynamicAlias(baseModel: string): string {
@@ -141,6 +141,8 @@ function getDynamicNormalizedModel(modelId: string): string | undefined {
 
 	// Fallback for odd casing/formatting where only effort suffix needs stripping.
 	if (EFFORT_SUFFIX_REGEX.test(normalized) && normalized.startsWith("gpt-5.")) {
+		const effort = normalized.match(EFFORT_SUFFIX_REGEX)?.[1]?.toLowerCase();
+		if (effort === "minimal") return undefined;
 		return applyDynamicAlias(normalized.replace(EFFORT_SUFFIX_REGEX, ""));
 	}
 

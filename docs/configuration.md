@@ -509,9 +509,9 @@ CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
   - bundled static template fallback
 - Runtime model metadata is online-first:
   - Codex `/backend-api/codex/models`
-  - local `codex-models-cache-<hash>.json` per-account fallback
-  - Codex GitHub `models.json` fallback (`latest release` then `main`)
-  - static template defaults as final fallback
+  - local `codex-models-cache-<hash>.json` per-account fallback (server-derived)
+
+If the server catalog and its cache are unavailable, requests are rejected to avoid guessing supported models.
 
 Note: legacy `codex-models-cache.json` files are ignored after the per-account cache change; the first refresh will recreate the new cache files.
 

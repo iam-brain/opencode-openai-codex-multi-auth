@@ -9,11 +9,11 @@ import { refreshAccessToken } from "../auth/auth.js";
 import { logRequest, logWarn } from "../logger.js";
 import { getCodexInstructions, getModelFamily } from "../prompts/codex.js";
 import { getCodexModelRuntimeDefaults } from "../prompts/codex-models.js";
+import { transformRequestBody, normalizeModel } from "./request-transformer.js";
 import {
-	transformRequestBody,
-	normalizeModel,
+	ModelCatalogUnavailableError,
 	UnknownModelError,
-} from "./request-transformer.js";
+} from "./errors.js";
 import { convertSseToJson, ensureContentType } from "./response-handler.js";
 import type { UserConfig, RequestBody, PluginConfig } from "../types.js";
 import {
@@ -171,7 +171,7 @@ export async function transformRequestForCodex(
 			updatedInit: { ...init, body: JSON.stringify(transformedBody) },
 		};
 	} catch (e) {
-		if (e instanceof UnknownModelError) {
+		if (e instanceof UnknownModelError || e instanceof ModelCatalogUnavailableError) {
 			throw e;
 		}
 		logWarn(ERROR_MESSAGES.REQUEST_PARSE_ERROR, e);

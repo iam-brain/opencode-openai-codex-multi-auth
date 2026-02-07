@@ -33,14 +33,6 @@ const PERSONALITY_FALLBACK_TEXT: Record<Exclude<PersonalityOption, "none">, stri
 };
 const VERBOSITY_VALUES = new Set(["low", "medium", "high"]);
 let didLogInvalidPersonality = false;
-export class UnknownModelError extends Error {
-	constructor(modelId: string) {
-		super(
-			`Unknown model "${modelId}". Update your config to a supported model ID.`,
-		);
-		this.name = "UnknownModelError";
-	}
-}
 
 function normalizePersonalityKey(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
@@ -228,12 +220,6 @@ export function normalizeModel(model: string | undefined): string {
 
 	// Leave unknown/legacy models untouched to avoid false positives.
 	return trimmed.toLowerCase();
-}
-
-function getTrimmedModelId(model: string | undefined): string | undefined {
-	if (typeof model !== "string") return undefined;
-	const trimmed = model.includes("/") ? model.split("/").pop()!.trim() : model.trim();
-	return trimmed ? trimmed : undefined;
 }
 
 /**
@@ -513,10 +499,6 @@ export async function transformRequestBody(
 ): Promise<RequestBody> {
 	const originalModel = body.model;
 	const normalizedModel = normalizeModel(body.model);
-	const trimmedModel = getTrimmedModelId(originalModel);
-	if (trimmedModel && !getNormalizedModel(trimmedModel)) {
-		throw new UnknownModelError(trimmedModel);
-	}
 	const effectiveConfig = applyCustomSettings(userConfig, pluginConfig);
 	const globalOptions = effectiveConfig.global || {};
 	const lookupCandidates = getModelLookupCandidates(originalModel, normalizedModel);
