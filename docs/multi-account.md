@@ -68,6 +68,8 @@ The plugin exposes a few OpenCode tools to inspect or switch accounts:
 - `codex-toggle-account` - enable/disable account by index (1-based)
 - `codex-remove-account` - remove account by index (1-based)
 
+The remove tool requires `confirm: true` when called directly; the TUI slash command template includes confirmation automatically.
+
 These are primarily useful in the OpenCode TUI.
 To enable or disable accounts, re-run `opencode auth login` and choose **manage**.
 
@@ -111,6 +113,8 @@ It's not related to the npm package version; it exists so the file format can ev
 
 Accounts are matched by `accountId` + `email` + `plan` (strict identity). This allows multiple
 emails per account and multiple accounts per email without collisions.
+
+Legacy records that lack full identity are preserved but skipped for selection until hydration. Upgrades from v2-style storage may trigger repair/quarantine warnings; re-authenticate if needed.
 
 ### Fields
 
@@ -164,6 +168,14 @@ Configure in `~/.config/opencode/openai-codex-auth-config.json`:
 | `sticky` | Same account until rate-limited | Prompt cache preservation |
 | `round-robin` | Rotate to next account on every request | Maximum throughput |
 | `hybrid` | Deterministic selection using health score + token bucket + LRU bias | Best overall distribution |
+
+### Hybrid Strategy Details
+
+Hybrid selection prefers healthy accounts with available tokens, then falls back to LRU:
+
+- **Health score defaults:** start 70, success +1, rate limit -10, failure -20, min usable 50, max 100, recovery +2/hour.
+- **Token bucket defaults:** max 50 tokens, initial 50, regen 6/minute, stale after 1 hour.
+- **Tie-breaker:** most recently used order (LRU bias).
 
 ### Set Strategy via Environment Variable
 
