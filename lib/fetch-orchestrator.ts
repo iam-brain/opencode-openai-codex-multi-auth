@@ -26,6 +26,8 @@ import { type ProactiveRefreshQueue } from "./refresh-queue.js";
 import {
 	getAccountSelectionStrategy,
 	getAuthDebugEnabled,
+	getHardStopMaxWaitMs,
+	getHardStopOnAllAuthFailed,
 	getMaxCacheFirstWaitSeconds,
 	getRateLimitDedupWindowMs,
 	getRateLimitToastDebounceMs,
@@ -49,6 +51,7 @@ import {
 	handleErrorResponse,
 	handleSuccessResponse,
 } from "./request/fetch-helpers.js";
+import { createSyntheticErrorResponse } from "./request/response-handler.js";
 import { normalizeModel } from "./request/request-transformer.js";
 import { getModelFamily } from "./prompts/codex.js";
 import { logDebug, logWarn } from "./logger.js";
@@ -438,6 +441,22 @@ export class FetchOrchestrator {
 			}
 
 			const waitMs = await accountManager.getMinWaitTimeForFamilyWithHydration(modelFamily, model);
+			if (getHardStopOnAllAuthFailed(pluginConfig) && accountManager.allAccountsCoolingDown("auth-failure")) {
+				return createSyntheticErrorResponse(
+					"All accounts failed authentication. Run `opencode auth login` to reauthenticate.",
+					HTTP_STATUS.UNAUTHORIZED,
+					"all_accounts_auth_failed",
+				);
+			}
+
+			const hardStopMaxWaitMs = getHardStopMaxWaitMs(pluginConfig);
+			if (hardStopMaxWaitMs > 0 && waitMs > hardStopMaxWaitMs) {
+				return createSyntheticErrorResponse(
+					`All ${accountCount} account(s) rate-limited for ${formatWaitTime(waitMs)}. Try again later or raise hardStopMaxWaitMs.`,
+					HTTP_STATUS.TOO_MANY_REQUESTS,
+					"all_accounts_rate_limited",
+				);
+			}
 			if (getRetryAllAccountsRateLimited(pluginConfig) && accountManager.getAccountCount() > 0 && waitMs > 0 && (getRetryAllAccountsMaxWaitMs(pluginConfig) === 0 || waitMs <= getRetryAllAccountsMaxWaitMs(pluginConfig)) && allRateLimitedRetries < getRetryAllAccountsMaxRetries(pluginConfig)) {
 				allRateLimitedRetries += 1;
 				await sleep(waitMs);

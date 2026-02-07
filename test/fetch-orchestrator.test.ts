@@ -11,6 +11,18 @@ vi.mock('../lib/storage.js', () => ({
 	replaceAccountsFile: vi.fn(),
 }));
 
+vi.mock('../lib/prompts/codex-models.js', async () => {
+	const actual = await vi.importActual<typeof import('../lib/prompts/codex-models.js')>(
+		'../lib/prompts/codex-models.js',
+	);
+	return {
+		...actual,
+		getCodexModelRuntimeDefaults: vi.fn().mockResolvedValue({
+			staticDefaultPersonality: 'pragmatic',
+		}),
+	};
+});
+
 describe('FetchOrchestrator', () => {
 	let config: FetchOrchestratorConfig;
 	let orchestrator: FetchOrchestrator;
@@ -59,6 +71,7 @@ describe('FetchOrchestrator', () => {
 			getMinTokenWaitMsForFamily: vi.fn().mockReturnValue(0),
 			getAccountsSnapshot: vi.fn().mockReturnValue([]),
 			getActiveIndexForFamily: vi.fn(),
+			allAccountsCoolingDown: vi.fn().mockReturnValue(false),
 		};
 
 		rateLimitTracker = {
@@ -408,6 +421,7 @@ describe('FetchOrchestrator', () => {
 	});
 
 	it('should return 429 if all accounts are exhausted', async () => {
+		pluginConfig.hardStopMaxWaitMs = 0;
 		// Use 2 accounts to force "switch" action instead of "wait" (infinite loop for 1 account)
 		accountManager.getAccountCount.mockReturnValue(2);
 		accountManager.getCurrentOrNextForFamily
@@ -436,6 +450,51 @@ describe('FetchOrchestrator', () => {
 		expect(response.status).toBe(429);
 		const body = await response.json();
 		expect(body.error.message).toContain('All 2 account(s) unavailable');
+	});
+
+	it('hard-stops when all accounts rate-limited beyond max wait', async () => {
+		accountManager.getAccountCount.mockReturnValue(2);
+		accountManager.getCurrentOrNextForFamily
+			.mockReturnValueOnce({ index: 0, accountId: 'acc1', email: 'acc1@example.com' })
+			.mockReturnValueOnce({ index: 1, accountId: 'acc2', email: 'acc2@example.com' });
+		accountManager.getAccountsSnapshot.mockReturnValue([
+			{ index: 0, accountId: 'acc1', email: 'acc1@example.com', enabled: true },
+			{ index: 1, accountId: 'acc2', email: 'acc2@example.com', enabled: true }
+		]);
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('Rate limit', {
+			status: 429,
+			headers: { 'retry-after': '60' }
+		})));
+		rateLimitTracker.getBackoff.mockReturnValue({ delayMs: 60000, attempt: 1 });
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(60000);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(429);
+		const body = await response.json();
+		expect(body.error.type).toBe('all_accounts_rate_limited');
+		expect(body.error.message).toContain('rate-limited');
+	});
+
+	it('hard-stops when all accounts auth-failed', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue(null);
+		accountManager.getAccountsSnapshot.mockReturnValue([
+			{ index: 0, accountId: 'acc1', email: 'acc1@example.com', enabled: true, cooldownReason: 'auth-failure' }
+		]);
+		accountManager.getMinWaitTimeForFamilyWithHydration.mockResolvedValue(60000);
+		accountManager.allAccountsCoolingDown.mockReturnValue(true);
+
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		expect(response.status).toBe(401);
+		const body = await response.json();
+		expect(body.error.type).toBe('all_accounts_auth_failed');
+		expect(body.error.message).toContain('auth');
 	});
 
 	it('should not loop infinitely on persistent 401', async () => {

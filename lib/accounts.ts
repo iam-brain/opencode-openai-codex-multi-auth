@@ -680,6 +680,18 @@ export class AccountManager {
 		return true;
 	}
 
+	allAccountsCoolingDown(reason?: CooldownReason): boolean {
+		const eligible = this.accounts.filter(
+			(account) => hasCompleteIdentity(account) && isAccountEnabled(account),
+		);
+		if (eligible.length === 0) return false;
+		for (const account of eligible) {
+			if (!this.isAccountCoolingDown(account)) return false;
+			if (reason && account.cooldownReason !== reason) return false;
+		}
+		return true;
+	}
+
 	shouldShowAccountToast(accountIndex: number, debounceMs = 30_000): boolean {
 		const now = nowMs();
 		if (accountIndex === this.lastToastAccountIndex && now - this.lastToastTime < debounceMs) {
