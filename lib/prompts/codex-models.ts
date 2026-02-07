@@ -21,10 +21,6 @@ import {
 import { getOpencodeCacheDir, getOpencodeConfigDir } from "../paths.js";
 import { logDebug, logWarn } from "../logger.js";
 import { getLatestReleaseTag } from "./codex.js";
-import {
-	ModelCatalogUnavailableError,
-	UnknownModelError,
-} from "../request/errors.js";
 
 type PersonalityOption = "none" | "friendly" | "pragmatic";
 
@@ -242,10 +238,29 @@ function readModelsCache(accountId?: string): ModelsCache | null {
 		if (!existsSync(cacheFile)) return null;
 		const raw = readFileSync(cacheFile, "utf8");
 		const parsed = JSON.parse(raw) as ModelsCache;
-		if (!Array.isArray(parsed.models)) return null;
-		if (!Number.isFinite(parsed.fetchedAt)) return null;
+		if (!Array.isArray(parsed.models)) {
+			try {
+				unlinkSync(cacheFile);
+			} catch {
+				// ignore
+			}
+			return null;
+		}
+		if (!Number.isFinite(parsed.fetchedAt)) {
+			try {
+				unlinkSync(cacheFile);
+			} catch {
+				// ignore
+			}
+			return null;
+		}
 		return parsed;
 	} catch {
+		try {
+			unlinkSync(cacheFile);
+		} catch {
+			// ignore
+		}
 		return null;
 	}
 }
@@ -609,20 +624,6 @@ function resolveModelInfo(
 	return bySlug.get(target) ?? bySlug.get(stripEffortSuffix(target));
 }
 
-function resolveServerCatalog(
-	serverModels?: ModelInfo[],
-	cachedModels?: ModelInfo[],
-	cachedSource?: ModelsCache["source"],
-	serverIsCache?: boolean,
-): ModelInfo[] | null {
-	if (serverModels?.length) {
-		if (serverIsCache && cachedSource === "github") return null;
-		return serverModels;
-	}
-	if (cachedModels?.length && cachedSource !== "github") return cachedModels;
-	return null;
-}
-
 export async function getCodexModelRuntimeDefaults(
 	normalizedModel: string,
 	options: ModelsFetchOptions = {},
@@ -630,26 +631,41 @@ export async function getCodexModelRuntimeDefaults(
 	const accountId = options.accountId;
 	const { serverModels, cachedModels, cachedSource, serverIsCache } =
 		await loadServerAndCacheCatalog(options);
-	const serverCatalog = resolveServerCatalog(
-		serverModels,
-		cachedModels,
-		cachedSource,
-		serverIsCache,
-	);
-	if (!serverCatalog || serverCatalog.length === 0) {
-		throw new ModelCatalogUnavailableError();
+	let modelSource: "server" | "cache" | "github" | "static" = "static";
+	let model = resolveModelInfo(serverModels ?? [], normalizedModel);
+	if (model) {
+		if (serverIsCache) {
+			modelSource = cachedSource === "github" ? "github" : "cache";
+		} else {
+			modelSource = "server";
+		}
 	}
-	const availableModels = Array.from(
-		new Set(serverCatalog.map((modelInfo) => modelInfo.slug)),
-	).sort();
-	if (!availableModels.includes(normalizedModel)) {
-		throw new UnknownModelError(normalizedModel, availableModels);
+
+	if (!model && cachedModels) {
+		model = resolveModelInfo(cachedModels, normalizedModel);
+		if (model) {
+			modelSource = cachedSource === "github" ? "github" : "cache";
+		}
 	}
-	const modelSource: "server" | "cache" =
-		serverIsCache && cachedSource !== "github" ? "cache" : "server";
-	const model = resolveModelInfo(serverCatalog, normalizedModel);
+
 	if (!model) {
-		throw new UnknownModelError(normalizedModel, availableModels);
+		try {
+			const githubModels = await fetchModelsFromGitHub(options);
+			if (githubModels) {
+				const updated: ModelsCache = {
+					fetchedAt: Date.now(),
+					source: "github",
+					models: githubModels,
+					etag: null,
+				};
+				writeInMemoryModelsCache(updated, accountId);
+				await writeModelsCache(updated, accountId);
+				model = resolveModelInfo(githubModels, normalizedModel);
+				if (model) modelSource = "github";
+			}
+		} catch (error) {
+			logDebug("GitHub models fallback failed; using static template defaults", error);
+		}
 	}
 
 	const staticDefaults = readStaticTemplateDefaults();
