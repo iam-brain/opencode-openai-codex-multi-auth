@@ -1,5 +1,7 @@
 # Privacy & Data Handling
 
+**Last Updated:** Feb 2026
+
 This page explains how the OpenCode OpenAI Codex Auth Plugin handles your data and protects your privacy.
 
 ## Overview
@@ -34,7 +36,7 @@ All data is stored **locally on your machine**:
 - **Contents:**
   - `gpt-5.1-codex-instructions.md`, `gpt-5.3-codex-instructions.md`, `gpt-5.3-codex-instructions-v2.md`, etc. (Codex system instructions)
   - `*-instructions-meta.json` (ETag/tag/timestamp metadata per family)
-  - `codex-models-cache-<hash>.json` (per-account runtime `/codex/models` fallback cache)
+  - `codex-models-cache-<hash>.json` (per-account hashed `/codex/models` cache)
 - **Purpose:** Reduce GitHub API calls, preserve offline fallbacks, and improve startup/runtime performance
 
 ### Personality Cache Files
