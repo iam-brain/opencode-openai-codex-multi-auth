@@ -83,11 +83,12 @@ export interface ModelsFetchOptions {
 }
 
 const CACHE_DIR = getOpencodeCacheDir();
-const MODELS_CACHE_FILE = join(CACHE_DIR, "codex-models-cache.json");
+const MODELS_CACHE_FILE_BASE = join(CACHE_DIR, "codex-models-cache");
 const CLIENT_VERSION_CACHE_FILE = join(CACHE_DIR, "codex-client-version.json");
 const MODELS_FETCH_TIMEOUT_MS = 5_000;
 const MODELS_CACHE_TTL_MS = 15 * 60 * 1000;
 const MODELS_SERVER_RETRY_BACKOFF_MS = 60 * 1000;
+const MODELS_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour hard limit for session cache
 const CLIENT_VERSION_TTL_MS = 60 * 60 * 1000;
 const STATIC_DEFAULT_PERSONALITY: PersonalityOption = "none";
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
@@ -109,10 +110,22 @@ const STATIC_TEMPLATE_FILES = ["opencode-modern.json", "opencode-legacy.json"];
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const STATIC_TEMPLATE_DEFAULTS = new Map<string, Map<string, ConfigOptions>>();
-let inMemoryModelsCache: ModelsCache | null = null;
+// In-memory cache is now scoped by accountId (null = unauthenticated/shared)
+const inMemoryModelsCacheByAccount = new Map<string | null, ModelsCache>();
 const lastServerAttemptByAuth = new Map<string, number>();
 let cachedClientVersion: string | null = null;
 let cachedClientVersionAt: number | null = null;
+
+/**
+ * Get cache file path scoped to account identity.
+ * Pro/Enterprise users may have access to different models (e.g., gpt-5.2-pro).
+ */
+function getModelsCacheFile(accountId?: string): string {
+	if (!accountId) return `${MODELS_CACHE_FILE_BASE}.json`;
+	// Use first 16 chars of accountId hash to avoid path issues
+	const sanitized = accountId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 16);
+	return `${MODELS_CACHE_FILE_BASE}-${sanitized}.json`;
+}
 
 const LOCK_OPTIONS = {
 	stale: 10_000,
@@ -213,10 +226,11 @@ async function resolveCodexClientVersion(fetchImpl?: typeof fetch): Promise<stri
 	return cachedClientVersion ?? "1.0.0";
 }
 
-function readModelsCache(): ModelsCache | null {
+function readModelsCache(accountId?: string): ModelsCache | null {
+	const cacheFile = getModelsCacheFile(accountId);
 	try {
-		if (!existsSync(MODELS_CACHE_FILE)) return null;
-		const raw = readFileSync(MODELS_CACHE_FILE, "utf8");
+		if (!existsSync(cacheFile)) return null;
+		const raw = readFileSync(cacheFile, "utf8");
 		const parsed = JSON.parse(raw) as ModelsCache;
 		if (!Array.isArray(parsed.models)) return null;
 		if (!Number.isFinite(parsed.fetchedAt)) return null;
@@ -254,19 +268,26 @@ function writeClientVersionCache(version: string): void {
 	}
 }
 
-function readInMemoryModelsCache(): ModelsCache | null {
-	return inMemoryModelsCache;
+function readInMemoryModelsCache(accountId?: string): ModelsCache | null {
+	return inMemoryModelsCacheByAccount.get(accountId ?? null) ?? null;
 }
 
-function writeInMemoryModelsCache(cache: ModelsCache): void {
-	inMemoryModelsCache = cache;
+function writeInMemoryModelsCache(cache: ModelsCache, accountId?: string): void {
+	inMemoryModelsCacheByAccount.set(accountId ?? null, cache);
 }
 
-function readSessionModelsCache(): ModelsCache | null {
-	const cached = readInMemoryModelsCache();
-	if (cached) return cached;
-	const disk = readModelsCache();
-	if (disk) writeInMemoryModelsCache(disk);
+function readSessionModelsCache(accountId?: string): ModelsCache | null {
+	const cached = readInMemoryModelsCache(accountId);
+	if (cached) {
+		// Apply hard session limit (Issue 8)
+		if (Date.now() - cached.fetchedAt > MODELS_SESSION_MAX_AGE_MS) {
+			inMemoryModelsCacheByAccount.delete(accountId ?? null);
+			return readModelsCache(accountId);
+		}
+		return cached;
+	}
+	const disk = readModelsCache(accountId);
+	if (disk) writeInMemoryModelsCache(disk, accountId);
 	return disk;
 }
 
@@ -299,7 +320,8 @@ function isCacheFresh(cache: ModelsCache | null): boolean {
 	return Date.now() - cache.fetchedAt < MODELS_CACHE_TTL_MS;
 }
 
-async function writeModelsCache(cache: ModelsCache): Promise<void> {
+async function writeModelsCache(cache: ModelsCache, accountId?: string): Promise<void> {
+	const cacheFile = getModelsCacheFile(accountId);
 	try {
 		if (!existsSync(CACHE_DIR)) {
 			mkdirSync(CACHE_DIR, { recursive: true });
@@ -307,10 +329,10 @@ async function writeModelsCache(cache: ModelsCache): Promise<void> {
 		let release: (() => Promise<void>) | null = null;
 		try {
 			release = await lockfile.lock(CACHE_DIR, LOCK_OPTIONS);
-			const tmpPath = `${MODELS_CACHE_FILE}.${randomBytes(6).toString("hex")}.tmp`;
+			const tmpPath = `${cacheFile}.${randomBytes(6).toString("hex")}.tmp`;
 			try {
 				writeFileSync(tmpPath, JSON.stringify(cache, null, 2), "utf8");
-				renameSync(tmpPath, MODELS_CACHE_FILE);
+				renameSync(tmpPath, cacheFile);
 			} catch (error) {
 				try {
 					unlinkSync(tmpPath);
@@ -481,25 +503,35 @@ function readStaticTemplateDefaults(moduleDir: string = __dirname): Map<string, 
 async function loadServerAndCacheCatalog(
 	options: ModelsFetchOptions,
 ): Promise<{ serverModels?: ModelInfo[]; cachedModels?: ModelInfo[] }> {
-	const cached = readSessionModelsCache();
+	const accountId = options.accountId;
+	const cached = readSessionModelsCache(accountId);
 	const cacheIsFresh = isCacheFresh(cached);
 	if (cached && cacheIsFresh && !options.forceRefresh) {
 		return { serverModels: cached.models, cachedModels: cached.models };
 	}
+	
+	// Build auth key for backoff tracking (per-account or shared "auth" bucket)
 	const authKey = options.accessToken
 		? (options.accountId ?? "auth")
 		: null;
+	
+	// Apply backoff guard BEFORE any server attempt (even on cold start)
+	// This prevents hammering the server when it's down
 	if (!options.forceRefresh && authKey) {
 		const lastAttempt = lastServerAttemptByAuth.get(authKey);
 		if (lastAttempt && Date.now() - lastAttempt < MODELS_SERVER_RETRY_BACKOFF_MS) {
-			return {
-				serverModels: cached?.models,
-				cachedModels: cached?.models,
-			};
+			// Return cached if available, otherwise signal to use GitHub/static fallback
+			if (cached?.models) {
+				return { serverModels: cached.models, cachedModels: cached.models };
+			}
+			// No cache - caller should use GitHub fallback without server retry
+			logDebug(`Server backoff active for ${authKey}; skipping /models fetch`);
+			return { cachedModels: undefined };
 		}
 	}
 
 	try {
+		// Record attempt timestamp BEFORE the call (gate future calls immediately)
 		if (authKey) {
 			lastServerAttemptByAuth.set(authKey, Date.now());
 		}
@@ -510,8 +542,8 @@ async function loadServerAndCacheCatalog(
 				etag: server.etag ?? cached.etag ?? null,
 				fetchedAt: Date.now(),
 			};
-			writeInMemoryModelsCache(updated);
-			await writeModelsCache(updated);
+			writeInMemoryModelsCache(updated, accountId);
+			await writeModelsCache(updated, accountId);
 			return {
 				serverModels: cached.models,
 				cachedModels: cached.models,
@@ -524,14 +556,15 @@ async function loadServerAndCacheCatalog(
 				models: server.models,
 				etag: server.etag,
 			};
-			writeInMemoryModelsCache(updated);
-			await writeModelsCache(updated);
+			writeInMemoryModelsCache(updated, accountId);
+			await writeModelsCache(updated, accountId);
 			return {
 				serverModels: server.models,
 				cachedModels: cached?.models,
 			};
 		}
 	} catch (error) {
+		// Backoff is already set before the call, so future calls will be gated
 		logDebug("Server /models fetch failed; attempting fallbacks", error);
 	}
 
@@ -551,6 +584,7 @@ export async function getCodexModelRuntimeDefaults(
 	normalizedModel: string,
 	options: ModelsFetchOptions = {},
 ): Promise<CodexModelRuntimeDefaults> {
+	const accountId = options.accountId;
 	const { serverModels, cachedModels } = await loadServerAndCacheCatalog(options);
 	let model = resolveModelInfo(serverModels ?? [], normalizedModel);
 
@@ -568,8 +602,8 @@ export async function getCodexModelRuntimeDefaults(
 					models: githubModels,
 					etag: null,
 				};
-				writeInMemoryModelsCache(updated);
-				await writeModelsCache(updated);
+				writeInMemoryModelsCache(updated, accountId);
+				await writeModelsCache(updated, accountId);
 				model = resolveModelInfo(githubModels, normalizedModel);
 			}
 		} catch (error) {
@@ -633,11 +667,12 @@ export async function getCodexModelRuntimeDefaults(
 export async function warmCodexModelCatalog(
 	options: ModelsFetchOptions = {},
 ): Promise<void> {
+	const accountId = options.accountId;
 	try {
-		if (readInMemoryModelsCache()) return;
-		const cached = readModelsCache();
+		if (readInMemoryModelsCache(accountId)) return;
+		const cached = readModelsCache(accountId);
 		if (!cached) return;
-		writeInMemoryModelsCache(cached);
+		writeInMemoryModelsCache(cached, accountId);
 		if (isCacheFresh(cached)) return;
 		if (!options.fetchImpl && !options.accessToken && !options.accountId) return;
 		await loadServerAndCacheCatalog(options);
@@ -647,7 +682,8 @@ export async function warmCodexModelCatalog(
 }
 
 export const __internal = {
-	MODELS_CACHE_FILE,
+	MODELS_CACHE_FILE_BASE,
+	getModelsCacheFile,
 	CLIENT_VERSION_CACHE_FILE,
 	readStaticTemplateDefaults,
 	resolveStaticTemplateFiles,

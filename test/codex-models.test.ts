@@ -179,7 +179,7 @@ describe("codex model metadata resolver", () => {
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 		let capturedUrl = "";
 
-		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		const cacheDir = dirname(__internal.getModelsCacheFile());
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
 			__internal.CLIENT_VERSION_CACHE_FILE,
@@ -283,10 +283,12 @@ describe("codex model metadata resolver", () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-online-first-"));
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
-		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		// Use account-scoped cache file
+		const accountId = "account";
+		const cacheDir = dirname(__internal.getModelsCacheFile(accountId));
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.MODELS_CACHE_FILE,
+			__internal.getModelsCacheFile(accountId),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -322,7 +324,7 @@ describe("codex model metadata resolver", () => {
 
 		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
 			accessToken: "token",
-			accountId: "account",
+			accountId: accountId,
 			fetchImpl: refreshFetch as unknown as typeof fetch,
 		});
 
@@ -336,10 +338,11 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, warmCodexModelCatalog, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		// Seed unauthenticated cache (no accountId)
+		const cacheDir = dirname(__internal.getModelsCacheFile());
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.MODELS_CACHE_FILE,
+			__internal.getModelsCacheFile(),
 			JSON.stringify({
 				fetchedAt: Date.now(),
 				source: "server",
@@ -365,10 +368,11 @@ describe("codex model metadata resolver", () => {
 			throw new Error("unexpected fetch");
 		});
 
+		// Warm unauthenticated cache
 		await warmCodexModelCatalog();
+		
+		// Call without accountId to use the same unauthenticated cache
 		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account",
 			fetchImpl: mockFetch as unknown as typeof fetch,
 		});
 
@@ -433,10 +437,10 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		const cacheDir = dirname(__internal.getModelsCacheFile());
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.MODELS_CACHE_FILE,
+			__internal.getModelsCacheFile(),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -491,10 +495,10 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		const cacheDir = dirname(__internal.getModelsCacheFile());
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.MODELS_CACHE_FILE,
+			__internal.getModelsCacheFile(),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -548,10 +552,10 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.MODELS_CACHE_FILE);
+		const cacheDir = dirname(__internal.getModelsCacheFile());
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.MODELS_CACHE_FILE,
+			__internal.getModelsCacheFile(),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -948,6 +952,179 @@ describe("codex model metadata resolver", () => {
 		const defaults = __internal.readStaticTemplateDefaults(moduleDir);
 		expect(defaults.get("gpt-5.9-codex")?.personality).toBe("friendly");
 		expect(__internal.readStaticTemplateDefaults(moduleDir)).toBe(defaults);
+
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("applies backoff guard even on cold start with no cache", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-backoff-coldstart-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+		let serverCallCount = 0;
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				serverCallCount++;
+				throw new Error("Server unavailable");
+			}
+			if (url.includes("github.com")) {
+				throw new Error("GitHub also down");
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		// First call - should attempt server and fail
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account1",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+		expect(serverCallCount).toBe(1);
+
+		// Second call - should be gated by backoff (no server call)
+		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			accountId: "account1",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+		expect(serverCallCount).toBe(1); // Still 1 - backoff prevented call
+
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("scopes model cache by account identity", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-account-scope-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults, __internal } = await loadModule();
+
+		// Account 1 gets one set of models
+		const mockFetchAccount1 = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								base_instructions: "Account1 instructions",
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"acc1"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		// Account 2 gets different models (e.g., pro tier)
+		const mockFetchAccount2 = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								base_instructions: "Account2 PRO instructions",
+							},
+							{
+								slug: "gpt-5.2-pro",
+								base_instructions: "Pro-only model",
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"acc2"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		// Fetch for account1
+		const defaults1 = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token1",
+			accountId: "account1",
+			fetchImpl: mockFetchAccount1 as unknown as typeof fetch,
+			forceRefresh: true,
+		});
+		expect(defaults1.baseInstructions).toBe("Account1 instructions");
+
+		// Fetch for account2 (should get different cache)
+		const defaults2 = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token2",
+			accountId: "account2",
+			fetchImpl: mockFetchAccount2 as unknown as typeof fetch,
+			forceRefresh: true,
+		});
+		expect(defaults2.baseInstructions).toBe("Account2 PRO instructions");
+
+		// Verify cache files are separate
+		const cacheFile1 = __internal.getModelsCacheFile("account1");
+		const cacheFile2 = __internal.getModelsCacheFile("account2");
+		expect(cacheFile1).not.toBe(cacheFile2);
+		expect(cacheFile1).toContain("account1");
+		expect(cacheFile2).toContain("account2");
+
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("applies session TTL hard limit to in-memory cache", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-session-ttl-"));
+		process.env.XDG_CONFIG_HOME = root;
+		
+		// Create stale cache on disk (older than session max age)
+		const cacheDir = join(root, "opencode", "cache");
+		mkdirSync(cacheDir, { recursive: true });
+		const staleCache = {
+			fetchedAt: Date.now() - (61 * 60 * 1000), // 61 minutes ago (past 1hr limit)
+			source: "server",
+			models: [{ slug: "gpt-5.3-codex", base_instructions: "Stale instructions" }],
+			etag: '"stale"',
+		};
+		writeFileSync(
+			join(cacheDir, "codex-models-cache.json"),
+			JSON.stringify(staleCache),
+			"utf8",
+		);
+
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+		let serverCalled = false;
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			const release = maybeReleaseTagResponse(url);
+			if (release) return release;
+			if (url.includes("/codex/models")) {
+				serverCalled = true;
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								base_instructions: "Fresh instructions",
+							},
+						],
+					}),
+					{ status: 200, headers: { etag: '"fresh"' } },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accessToken: "token",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		// Should have fetched fresh data (cache was beyond session TTL)
+		expect(serverCalled).toBe(true);
+		expect(defaults.baseInstructions).toBe("Fresh instructions");
 
 		rmSync(root, { recursive: true, force: true });
 	});

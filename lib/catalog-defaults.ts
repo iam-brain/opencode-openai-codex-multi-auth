@@ -118,22 +118,38 @@ function readCachedCatalogModels(cacheFile: string): CatalogModel[] {
 	}
 }
 
+/**
+ * Find the appropriate template ID for a model slug.
+ * 
+ * Rules:
+ * - Codex models (contain "-codex") → fall back to codex templates
+ * - Non-codex GPT models → fall back to non-codex templates
+ * - Never mix: don't apply codex defaults to non-codex models
+ */
 function pickTemplateId(baseId: string, defaults: Map<string, ModelConfig>): string | null {
+	// Direct match first
 	if (defaults.has(baseId)) return baseId;
-	if (baseId.includes("-codex-max") && defaults.has("gpt-5.1-codex-max")) {
-		return "gpt-5.1-codex-max";
-	}
-	if (baseId.includes("-codex-mini") && defaults.has("gpt-5.1-codex-mini")) {
-		return "gpt-5.1-codex-mini";
-	}
-	if (baseId.includes("-codex")) {
+	
+	const isCodexModel = baseId.includes("-codex");
+	
+	if (isCodexModel) {
+		// Codex model fallbacks (most specific to least specific)
+		if (baseId.includes("-codex-max") && defaults.has("gpt-5.1-codex-max")) {
+			return "gpt-5.1-codex-max";
+		}
+		if (baseId.includes("-codex-mini") && defaults.has("gpt-5.1-codex-mini")) {
+			return "gpt-5.1-codex-mini";
+		}
+		// Generic codex fallback - newest available
 		if (defaults.has("gpt-5.3-codex")) return "gpt-5.3-codex";
 		if (defaults.has("gpt-5.2-codex")) return "gpt-5.2-codex";
-	}
-	if (baseId.startsWith("gpt-5.")) {
-		if (defaults.has("gpt-5.3-codex")) return "gpt-5.3-codex";
+		if (defaults.has("gpt-5.1-codex")) return "gpt-5.1-codex";
+	} else if (baseId.startsWith("gpt-5.")) {
+		// Non-codex GPT model fallbacks (e.g., gpt-5.2-pro, gpt-5.3)
 		if (defaults.has("gpt-5.2")) return "gpt-5.2";
+		if (defaults.has("gpt-5.1")) return "gpt-5.1";
 	}
+	
 	return null;
 }
 

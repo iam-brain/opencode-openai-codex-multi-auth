@@ -82,15 +82,86 @@ import { warmCodexInstructions } from "./lib/prompts/codex.js";
 import { getCachedVariantEfforts, warmCodexModelCatalog } from "./lib/prompts/codex-models.js";
 import { buildInternalModelDefaults, mergeModelDefaults } from "./lib/catalog-defaults.js";
 
-const LEGACY_ALLOWED_METADATA_MODELS = new Set([
+/**
+ * Fallback model slugs when server is unavailable.
+ * The server response is the source of truth; this is only used as a fallback.
+ */
+const FALLBACK_MODEL_SLUGS = new Set([
+	"gpt-5.3-codex",
+	"gpt-5.2-codex",
 	"gpt-5.2",
 	"gpt-5.1",
-	"gpt-5-codex",
-	"codex-mini-latest",
+	"gpt-5.1-codex",
+	"gpt-5.1-codex-max",
+	"gpt-5.1-codex-mini",
 ]);
 
+function parseGptVersion(slug: string): { major: number; minor: number } | null {
+	const match = slug.toLowerCase().match(/^gpt-(\d+)\.(\d+)/);
+	if (!match) return null;
+	const major = Number(match[1]);
+	const minor = Number(match[2]);
+	if (!Number.isFinite(major) || !Number.isFinite(minor)) return null;
+	return { major, minor };
+}
+
+function pickLowestAvailable(available: Set<string>, pattern: RegExp): string | null {
+	let best: { slug: string; major: number; minor: number } | null = null;
+	for (const slug of available) {
+		if (!pattern.test(slug)) continue;
+		const version = parseGptVersion(slug);
+		if (!version) continue;
+		if (!best) {
+			best = { slug, ...version };
+			continue;
+		}
+		if (version.major < best.major) {
+			best = { slug, ...version };
+			continue;
+		}
+		if (version.major === best.major && version.minor < best.minor) {
+			best = { slug, ...version };
+		}
+	}
+	return best?.slug ?? null;
+}
+
+/**
+ * Legacy model slug mappings for automatic upgrade.
+ * Maps obsolete identifiers to their modern equivalents.
+ * The target slugs are dynamically resolved from available models.
+ */
+const LEGACY_MODEL_PATTERNS: Array<{
+	pattern: RegExp;
+	upgrade: (available: Set<string>) => string | null;
+}> = [
+	// gpt-5 → lowest available gpt-5.X (dynamic)
+	{
+		pattern: /^gpt-5$/,
+		upgrade: (available) =>
+			pickLowestAvailable(available, /^gpt-5\.\d+$/i) ?? "gpt-5.1",
+	},
+	// gpt-5-codex → lowest available gpt-5.X-codex (dynamic)
+	{
+		pattern: /^gpt-5-codex$/,
+		upgrade: (available) =>
+			pickLowestAvailable(available, /^gpt-5\.\d+-codex$/i) ?? "gpt-5.1-codex",
+	},
+	// codex-mini-latest → lowest available gpt-5.X-codex-mini (dynamic)
+	{
+		pattern: /^codex-mini-latest$/,
+		upgrade: (available) =>
+			pickLowestAvailable(available, /^gpt-5\.\d+-codex-mini$/i) ??
+			"gpt-5.1-codex-mini",
+	},
+];
+
+/**
+ * Matches official Codex model slugs with optional effort suffix.
+ * Format: gpt-X.Y[-codex[-max|-mini|-pro]][-effort]
+ */
 const CODEX_METADATA_REGEX =
-	/^(gpt-\d+(?:\.\d+)*-codex(?:-(?:max|mini))?)(?:-(none|minimal|low|medium|high|xhigh))?$/i;
+	/^(gpt-\d+\.\d+(?:-codex)?(?:-(?:max|mini|pro))?)(?:-(none|minimal|low|medium|high|xhigh))?$/i;
 
 const CODEX_STANDARD_VARIANTS = ["low", "medium", "high"] as const;
 const CODEX_XHIGH_VARIANTS = ["low", "medium", "high", "xhigh"] as const;
@@ -139,10 +210,68 @@ function codexVariantSet(baseId: string): readonly string[] {
 	return CODEX_STANDARD_VARIANTS;
 }
 
+/**
+ * Get available model slugs from the cached server response.
+ * Falls back to FALLBACK_MODEL_SLUGS when cache is empty.
+ */
+function getAvailableModelSlugs(): Set<string> {
+	const cached = getCachedVariantEfforts();
+	if (cached.size > 0) {
+		return new Set(cached.keys());
+	}
+	return new Set(FALLBACK_MODEL_SLUGS);
+}
+
+/**
+ * Upgrade legacy model slugs to their modern equivalents.
+ * Uses dynamic resolution based on available models from server.
+ */
+function upgradeLegacyModelSlug(modelId: string): string {
+	const normalized = modelId.toLowerCase().trim();
+	const available = getAvailableModelSlugs();
+	
+	for (const { pattern, upgrade } of LEGACY_MODEL_PATTERNS) {
+		if (pattern.test(normalized)) {
+			const upgraded = upgrade(available);
+			if (upgraded) return upgraded;
+		}
+	}
+	
+	return normalized;
+}
+
+/**
+ * Check if a model ID is an officially supported Codex model slug.
+ * 
+ * Allowed:
+ * - Models from server catalog (getCachedVariantEfforts)
+ * - Fallback slugs when server unavailable
+ * - Models matching official pattern: gpt-X.Y[-codex[-max|-mini|-pro]]
+ * 
+ * NOT allowed:
+ * - Legacy slugs with effort suffixes like "gpt-5.2-high" (use variants instead)
+ * - Old slugs like "gpt-5" or "gpt-5-codex" (auto-upgraded internally)
+ */
 function isAllowedMetadataModel(modelId: string): boolean {
-	const normalized = modelId.toLowerCase();
-	if (LEGACY_ALLOWED_METADATA_MODELS.has(normalized)) return true;
-	return parseCodexMetadataModel(normalized) !== undefined;
+	const normalized = modelId.toLowerCase().trim();
+	const available = getAvailableModelSlugs();
+	
+	// Check if it's directly available from server/fallback
+	if (available.has(normalized)) return true;
+	
+	// Check if it's a legacy slug that can be upgraded
+	const upgraded = upgradeLegacyModelSlug(normalized);
+	if (upgraded !== normalized && available.has(upgraded)) return true;
+	
+	// Check if it matches the official format pattern (for new models from server)
+	const parsed = parseCodexMetadataModel(normalized);
+	if (!parsed) return false;
+	
+	// Base ID must be available or match the official gpt-X.Y pattern
+	// This allows new models like gpt-5.2-pro from server
+	if (available.has(parsed.baseId)) return true;
+	
+	return /^gpt-\d+\.\d+(?:-codex)?(?:-(?:max|mini|pro))?$/.test(parsed.baseId);
 }
 
 function cloneModelMetadata(

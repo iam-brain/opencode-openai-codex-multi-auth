@@ -13,7 +13,7 @@ import lockfile from "proper-lockfile";
 import type { CacheMetadata, GitHubRelease } from "../types.js";
 import { getOpencodeCacheDir, migrateLegacyCacheFiles } from "../paths.js";
 import { MODEL_FAMILIES, type ModelFamily } from "../constants.js";
-import { logWarn } from "../logger.js";
+import { logDebug, logWarn } from "../logger.js";
 
 export { MODEL_FAMILIES, type ModelFamily };
 
@@ -21,18 +21,19 @@ const GITHUB_API_RELEASES =
 	"https://api.github.com/repos/openai/codex/releases/latest";
 const GITHUB_HTML_RELEASES =
 	"https://github.com/openai/codex/releases/latest";
+const GITHUB_CORE_PATH = "codex-rs/core";
 const CACHE_DIR = getOpencodeCacheDir();
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const PROMPT_FILE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Prompt file mapping for each model family
- * Based on codex-rs/core/src/model_family.rs logic
+ * Static fallback prompt file mapping for each model family.
+ * Used when dynamic discovery fails or for immediate startup.
  */
-const PROMPT_FILES: Record<ModelFamily, string> = {
-	// Reuse gpt-5.2 codex prompt until a dedicated 5.3 prompt ships upstream.
+const FALLBACK_PROMPT_FILES: Record<ModelFamily, string> = {
 	"gpt-5.3-codex": "gpt-5.2-codex_prompt.md",
 	"gpt-5.2-codex": "gpt-5.2-codex_prompt.md",
 	"codex-max": "gpt-5.1-codex-max_prompt.md",
@@ -40,6 +41,138 @@ const PROMPT_FILES: Record<ModelFamily, string> = {
 	"gpt-5.2": "gpt_5_2_prompt.md",
 	"gpt-5.1": "gpt_5_1_prompt.md",
 };
+
+// Dynamic prompt file mapping cache (discovered from GitHub)
+let discoveredPromptFiles: Map<string, string> | null = null;
+let promptFilesDiscoveredAt: number | null = null;
+
+/**
+ * Prompt file name patterns to search for in codex-rs/core.
+ * Patterns: *_prompt.md, prompt*.md, prompt.md
+ */
+const PROMPT_FILE_PATTERNS = [
+	/_prompt\.md$/i,      // e.g., gpt_5_3_codex_prompt.md
+	/^prompt.*\.md$/i,    // e.g., prompt_gpt5.md
+	/^prompt\.md$/i,      // fallback prompt.md
+];
+
+/**
+ * Normalize a model family to a prompt file search pattern.
+ * Converts "gpt-5.3-codex" → ["gpt_5_3_codex", "gpt-5.3-codex", "gpt_5.3_codex"]
+ */
+function modelFamilyToPromptPatterns(family: ModelFamily): string[] {
+	const patterns: string[] = [];
+	const normalized = family.toLowerCase();
+	
+	// Add underscored version (gpt-5.3-codex → gpt_5_3_codex)
+	patterns.push(normalized.replace(/[-.]/g, "_"));
+	// Add hyphenated version
+	patterns.push(normalized.replace(/\./g, "_"));
+	// Add mixed version
+	patterns.push(normalized);
+	
+	return patterns;
+}
+
+/**
+ * Match a prompt filename to a model family.
+ * Returns the model family if matched, otherwise null.
+ */
+function matchPromptFileToFamily(filename: string): ModelFamily | null {
+	const lower = filename.toLowerCase();
+	if (!lower.endsWith("_prompt.md") && !lower.startsWith("prompt")) {
+		return null;
+	}
+	
+	// Extract the model identifier from the filename
+	const base = lower.replace(/_prompt\.md$/, "").replace(/^prompt_?/, "").replace(/\.md$/, "");
+	if (!base) return null;
+	
+	// Try to match against known model families
+	for (const family of MODEL_FAMILIES) {
+		const patterns = modelFamilyToPromptPatterns(family);
+		for (const pattern of patterns) {
+			if (base === pattern || base.includes(pattern) || pattern.includes(base)) {
+				return family;
+			}
+		}
+	}
+	
+	return null;
+}
+
+/**
+ * Discover prompt files from GitHub repository.
+ * Fetches the file listing from codex-rs/core and maps them to model families.
+ */
+async function discoverPromptFilesFromGitHub(
+	tag: string,
+	fetchImpl: typeof fetch = fetch,
+): Promise<Map<string, string>> {
+	const discovered = new Map<string, string>();
+	
+	try {
+		// Use GitHub API to list files in the directory
+		const apiUrl = `https://api.github.com/repos/openai/codex/contents/${GITHUB_CORE_PATH}?ref=${tag}`;
+		const response = await fetchImpl(apiUrl, {
+			headers: {
+				Accept: "application/vnd.github.v3+json",
+				"User-Agent": "opencode-openai-codex-plugin",
+			},
+		});
+		
+		if (!response.ok) {
+			logDebug(`Failed to list GitHub directory: HTTP ${response.status}`);
+			return discovered;
+		}
+		
+		const files = (await response.json()) as Array<{ name: string; type: string }>;
+		const promptFiles = files
+			.filter((f) => f.type === "file")
+			.filter((f) => PROMPT_FILE_PATTERNS.some((p) => p.test(f.name)))
+			.map((f) => f.name);
+		
+		logDebug(`Discovered prompt files from GitHub: ${promptFiles.join(", ")}`);
+		
+		// Map discovered files to model families
+		for (const file of promptFiles) {
+			const family = matchPromptFileToFamily(file);
+			if (family && !discovered.has(family)) {
+				discovered.set(family, file);
+			}
+		}
+		
+		// Also store raw filenames for direct lookup
+		for (const file of promptFiles) {
+			if (!discovered.has(file)) {
+				discovered.set(file, file);
+			}
+		}
+	} catch (error) {
+		logDebug("Failed to discover prompt files from GitHub", error);
+	}
+	
+	return discovered;
+}
+
+/**
+ * Get the prompt file for a model family.
+ * Uses dynamic discovery with fallback to static mapping.
+ */
+function getPromptFileForFamily(modelFamily: ModelFamily): string {
+	// Check dynamic cache first (if fresh)
+	if (
+		discoveredPromptFiles &&
+		promptFilesDiscoveredAt &&
+		Date.now() - promptFilesDiscoveredAt < PROMPT_FILE_CACHE_TTL_MS
+	) {
+		const discovered = discoveredPromptFiles.get(modelFamily);
+		if (discovered) return discovered;
+	}
+	
+	// Fall back to static mapping
+	return FALLBACK_PROMPT_FILES[modelFamily];
+}
 
 /**
  * Cache file mapping for each model family
@@ -228,7 +361,7 @@ export async function getCodexInstructions(
 	const modelFamily = getModelFamily(normalizedModel);
 	const inMemory = readInMemoryInstructions(modelFamily);
 	if (inMemory) return inMemory;
-	const promptFile = PROMPT_FILES[modelFamily];
+	const promptFile = getPromptFileForFamily(modelFamily);
 	const cacheFile = join(CACHE_DIR, CACHE_FILES[modelFamily]);
 	const cacheMetaFile = join(
 		CACHE_DIR,
@@ -255,7 +388,21 @@ export async function getCodexInstructions(
 
 		// Get the latest release tag (only if cache is stale or missing)
 		const latestTag = await getLatestReleaseTag(fetch);
-		const CODEX_INSTRUCTIONS_URL = `https://raw.githubusercontent.com/openai/codex/${latestTag}/codex-rs/core/${promptFile}`;
+		
+		// Try to discover prompt files dynamically (updates cache for future calls)
+		if (!discoveredPromptFiles || !promptFilesDiscoveredAt || 
+		    Date.now() - promptFilesDiscoveredAt > PROMPT_FILE_CACHE_TTL_MS) {
+			try {
+				discoveredPromptFiles = await discoverPromptFilesFromGitHub(latestTag, fetch);
+				promptFilesDiscoveredAt = Date.now();
+			} catch {
+				// Discovery failure is non-fatal; continue with fallback
+			}
+		}
+		
+		// Re-resolve prompt file after discovery (may have found a new one)
+		const resolvedPromptFile = getPromptFileForFamily(modelFamily);
+		const CODEX_INSTRUCTIONS_URL = `https://raw.githubusercontent.com/openai/codex/${latestTag}/${GITHUB_CORE_PATH}/${resolvedPromptFile}`;
 
 		// If tag changed, we need to fetch new instructions
 		if (cachedTag !== latestTag) {
@@ -278,6 +425,13 @@ export async function getCodexInstructions(
 				return instructions;
 			}
 			response = await fetch(CODEX_INSTRUCTIONS_URL);
+		}
+		
+		// 404 Not Found - try fallback to generic prompt.md
+		if (response.status === 404 && resolvedPromptFile !== "prompt.md") {
+			logDebug(`Prompt file ${resolvedPromptFile} not found; trying prompt.md fallback`);
+			const fallbackUrl = `https://raw.githubusercontent.com/openai/codex/${latestTag}/${GITHUB_CORE_PATH}/prompt.md`;
+			response = await fetch(fallbackUrl);
 		}
 
 		// 200 OK - new content or first fetch
