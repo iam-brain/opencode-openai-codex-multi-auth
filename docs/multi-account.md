@@ -66,6 +66,7 @@ The plugin exposes a few OpenCode tools to inspect or switch accounts:
 - `codex-status` - list accounts and status
 - `codex-switch-accounts` - switch active account by index (1-based)
 - `codex-toggle-account` - enable/disable account by index (1-based)
+- `codex-remove-account` - remove account by index (1-based)
 
 These are primarily useful in the OpenCode TUI.
 To enable or disable accounts, re-run `opencode auth login` and choose **manage**.

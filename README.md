@@ -1,7 +1,7 @@
 ![Image 1: opencode-openai-codex-auth](assets/readme-hero.svg)
 
 
-**This project is now EOL and no further developments will be made. A complete rewrite, based on the current native implementation of OpenAI's OAuth in Opencode, is now underway and will be available at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-openai-multi) when complete.**
+**Maintenance fork:** This project continues to receive hardening and compatibility updates while a full rewrite (based on OpenCode's native OAuth) is underway at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-openai-multi).
 
   
 Fork maintained by [iam-brain](https://github.com/iam-brain).
@@ -110,6 +110,7 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 | `/codex-status` | Shows current rate limits (5h/Weekly), credits, and account status (percent left). |
 | `/codex-switch-accounts <index>` | Switch the active account by its 1-based index from the status list. |
 | `/codex-toggle-account <index>` | Enable or disable an account by its 1-based index (prevents auto-selection). |
+| `/codex-remove-account <index>` | Remove an account by its 1-based index. |
 
 ---
 ## ✅ Features
@@ -121,6 +122,7 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 - Online-first template/model metadata resolution with resilient fallbacks
 - Multi-account support with sticky selection + PID offset (great for parallel agents)
 - Account enable/disable management (via `opencode auth login` manage)
+- Hard-stop safety loops for unavailable accounts and unsupported models
 - Strict account identity matching (`accountId` + `email` + `plan`)
 - Hybrid account selection strategy (health score + token bucket + LRU bias)
 - Optional round-robin account rotation (maximum throughput)
