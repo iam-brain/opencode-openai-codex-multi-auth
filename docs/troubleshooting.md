@@ -268,6 +268,7 @@ variant: low
 **Solutions:**
 - Run once with network access to seed the catalog cache
 - Retry after the catalog cache is available
+- Check for `codex-models-cache-<hash>.json` under `~/.config/opencode/cache/` (per-account hashed)
 
 ### Per-Model Options Not Applied
 
