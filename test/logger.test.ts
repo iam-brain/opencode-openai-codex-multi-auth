@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { LOGGING_ENABLED, logRequest } from '../lib/logger.js';
 
@@ -64,6 +67,29 @@ describe('Logger Module', () => {
 					boolean: true,
 				});
 			}).not.toThrow();
+		});
+
+		it('redacts prompt_cache_key in request logs', async () => {
+			const root = mkdtempSync(join(tmpdir(), 'opencode-logs-'));
+			await withEnv({ ENABLE_PLUGIN_REQUEST_LOGGING: '1', XDG_CONFIG_HOME: root }, async () => {
+				vi.resetModules();
+				const { logRequest: logRequestWithEnv } = await import('../lib/logger.js');
+				logRequestWithEnv('after-transform', {
+					body: {
+						prompt_cache_key: 'sess_123',
+						kept: 'ok',
+					},
+				});
+
+				const logDir = join(root, 'opencode', 'logs', 'codex-plugin');
+				const files = readdirSync(logDir);
+				expect(files.length).toBe(1);
+				const payload = JSON.parse(
+					readFileSync(join(logDir, files[0]!), 'utf8'),
+				) as { body?: { prompt_cache_key?: string } };
+				expect(payload.body?.prompt_cache_key).toBe('[redacted]');
+			});
+			rmSync(root, { recursive: true, force: true });
 		});
 	});
 
