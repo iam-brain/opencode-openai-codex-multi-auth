@@ -5,12 +5,22 @@ import {
 	filterInput,
 	transformRequestBody,
 } from '../lib/request/request-transformer.js';
+import { createSyntheticErrorResponse } from '../lib/request/response-handler.js';
 import type { RequestBody, UserConfig, InputItem } from '../lib/types.js';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 describe('Request Transformer Module', () => {
+	describe('synthetic error responses', () => {
+		it('creates JSON error payloads', async () => {
+			const response = createSyntheticErrorResponse('Bad model', 400, 'unsupported_model');
+			const payload = await response.json();
+			expect(payload.error.message).toContain('Bad model');
+			expect(payload.error.type).toBe('unsupported_model');
+		});
+	});
+
 	describe('normalizeModel', () => {
 		it('should normalize known gpt-5.x codex models', async () => {
 			expect(normalizeModel('gpt-5.3-codex')).toBe('gpt-5.3-codex');

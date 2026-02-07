@@ -108,3 +108,26 @@ export function ensureContentType(headers: Headers): Headers {
 
 	return responseHeaders;
 }
+
+export function createSyntheticErrorResponse(
+	message: string,
+	status = 400,
+	type = "hard_stop",
+	param?: string,
+): Response {
+	const errorPayload: { error: { message: string; type: string; param?: string } } = {
+		error: {
+			message,
+			type,
+		},
+	};
+
+	if (param) {
+		errorPayload.error.param = param;
+	}
+
+	return new Response(JSON.stringify(errorPayload), {
+		status,
+		headers: { "content-type": "application/json; charset=utf-8" },
+	});
+}
