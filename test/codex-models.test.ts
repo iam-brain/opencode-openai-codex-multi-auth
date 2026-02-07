@@ -23,7 +23,11 @@ function maybeReleaseTagResponse(url: string): Response | null {
 
 async function loadModule() {
 	vi.resetModules();
-	return import("../lib/prompts/codex-models.js");
+	const [models, errors] = await Promise.all([
+		import("../lib/prompts/codex-models.js"),
+		import("../lib/request/errors.js"),
+	]);
+	return { ...models, ...errors };
 }
 
 describe("codex model metadata resolver", () => {
@@ -133,10 +137,10 @@ describe("codex model metadata resolver", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("does not overwrite personality cache when using static defaults", async () => {
+	it("does not overwrite personality cache when catalog is unavailable", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-personality-static-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } = await loadModule();
 
 		const personalityDir = join(root, "opencode", "Personalities");
 		mkdirSync(personalityDir, { recursive: true });
@@ -160,11 +164,13 @@ describe("codex model metadata resolver", () => {
 			throw new Error(`Unexpected URL: ${url}`);
 		});
 
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account",
-			fetchImpl: fetchMock as unknown as typeof fetch,
-		});
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+				accessToken: "token",
+				accountId: "account",
+				fetchImpl: fetchMock as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 
 		expect(readFileSync(join(personalityDir, "Friendly.md"), "utf8")).toBe(
 			"Old friendly",
@@ -234,7 +240,8 @@ describe("codex model metadata resolver", () => {
 	it("does not seed personalities from GitHub-sourced cache", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-personality-github-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
+		const { __internal, getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } =
+			await loadModule();
 
 		mkdirSync(dirname(__internal.getModelsCacheFile("account")), { recursive: true });
 		writeFileSync(
@@ -257,9 +264,11 @@ describe("codex model metadata resolver", () => {
 			"utf8",
 		);
 
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accountId: "account",
-		});
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+				accountId: "account",
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 
 		const personalityDir = join(root, "opencode", "Personalities");
 		expect(existsSync(personalityDir)).toBe(false);
@@ -461,7 +470,7 @@ describe("codex model metadata resolver", () => {
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 		let capturedUrl = "";
 
-		const cacheDir = dirname(__internal.getModelsCacheFile());
+		const cacheDir = dirname(__internal.getModelsCacheFile("account"));
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
 			__internal.CLIENT_VERSION_CACHE_FILE,
@@ -739,10 +748,10 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.getModelsCacheFile());
+		const cacheDir = dirname(__internal.getModelsCacheFile("account"));
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.getModelsCacheFile(),
+			__internal.getModelsCacheFile("account"),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -774,12 +783,12 @@ describe("codex model metadata resolver", () => {
 			throw new Error(`Unexpected URL: ${url}`);
 		});
 
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+		const defaultsFirst = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
 			accessToken: "token",
 			accountId: "account",
 			fetchImpl: fetchMock as unknown as typeof fetch,
 		});
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+		const defaultsSecond = await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
 			accessToken: "token",
 			accountId: "account",
 			fetchImpl: fetchMock as unknown as typeof fetch,
@@ -789,6 +798,8 @@ describe("codex model metadata resolver", () => {
 			call[0]?.toString().includes("/codex/models"),
 		).length;
 		expect(serverCalls).toBe(1);
+		expect(defaultsFirst.personalityMessages?.friendly).toBe("Friendly from stale cache");
+		expect(defaultsSecond.personalityMessages?.friendly).toBe("Friendly from stale cache");
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -797,10 +808,10 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.getModelsCacheFile());
+		const cacheDir = dirname(__internal.getModelsCacheFile("account"));
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.getModelsCacheFile(),
+			__internal.getModelsCacheFile("account"),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -833,6 +844,7 @@ describe("codex model metadata resolver", () => {
 		});
 
 		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+			accountId: "account",
 			fetchImpl: fetchMock as unknown as typeof fetch,
 		});
 		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
@@ -854,10 +866,10 @@ describe("codex model metadata resolver", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		const { __internal, getCodexModelRuntimeDefaults } = await loadModule();
 
-		const cacheDir = dirname(__internal.getModelsCacheFile());
+		const cacheDir = dirname(__internal.getModelsCacheFile("account"));
 		mkdirSync(cacheDir, { recursive: true });
 		writeFileSync(
-			__internal.getModelsCacheFile(),
+			__internal.getModelsCacheFile("account"),
 			JSON.stringify({
 				fetchedAt: 0,
 				source: "server",
@@ -915,7 +927,7 @@ describe("codex model metadata resolver", () => {
 	it("suppresses repeated server fetches without cache during backoff", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-backoff-nocache-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } = await loadModule();
 
 		let serverCalls = 0;
 		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -932,16 +944,20 @@ describe("codex model metadata resolver", () => {
 			throw new Error(`Unexpected URL: ${url}`);
 		});
 
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account",
-			fetchImpl: fetchMock as unknown as typeof fetch,
-		});
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account",
-			fetchImpl: fetchMock as unknown as typeof fetch,
-		});
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+				accessToken: "token",
+				accountId: "account",
+				fetchImpl: fetchMock as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+				accessToken: "token",
+				accountId: "account",
+				fetchImpl: fetchMock as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 
 		expect(serverCalls).toBe(1);
 		rmSync(root, { recursive: true, force: true });
@@ -1017,7 +1033,7 @@ describe("codex model metadata resolver", () => {
 	it("falls back to GitHub when server catalog succeeds but lacks requested model", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-server-miss-github-hit-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, UnknownModelError } = await loadModule();
 
 		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = input.toString();
@@ -1069,22 +1085,20 @@ describe("codex model metadata resolver", () => {
 			throw new Error(`Unexpected URL: ${url}`);
 		});
 
-		const defaults = await getCodexModelRuntimeDefaults("gpt-5.4-codex", {
-			accessToken: "token",
-			accountId: "account",
-			fetchImpl: mockFetch as unknown as typeof fetch,
-		});
-
-		expect(defaults.personalityMessages?.friendly).toBe(
-			"Friendly from GitHub targeted fallback",
-		);
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.4-codex", {
+				accessToken: "token",
+				accountId: "account",
+				fetchImpl: mockFetch as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(UnknownModelError);
 		rmSync(root, { recursive: true, force: true });
 	});
 
 	it("falls back to GitHub models when cache is missing and server fails", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-github-fallback-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } = await loadModule();
 
 		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = input.toString();
@@ -1119,19 +1133,18 @@ describe("codex model metadata resolver", () => {
 			throw new Error(`Unexpected URL: ${url}`);
 		});
 
-		const defaults = await getCodexModelRuntimeDefaults("gpt-5.4-codex", {
-			fetchImpl: mockFetch as unknown as typeof fetch,
-		});
-
-		expect(defaults.onlineDefaultPersonality).toBeUndefined();
-		expect(defaults.personalityMessages?.friendly).toBe("Friendly from GitHub");
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.4-codex", {
+				fetchImpl: mockFetch as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 		rmSync(root, { recursive: true, force: true });
 	});
 
 	it("falls back to GitHub main when release tag lookup fails", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-github-main-fallback-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } = await loadModule();
 
 		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = input.toString();
@@ -1164,11 +1177,11 @@ describe("codex model metadata resolver", () => {
 			throw new Error(`Unexpected URL: ${url}`);
 		});
 
-		const defaults = await getCodexModelRuntimeDefaults("gpt-5.4-codex", {
-			fetchImpl: mockFetch as unknown as typeof fetch,
-		});
-
-		expect(defaults.personalityMessages?.friendly).toBe("Friendly from GitHub main");
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.4-codex", {
+				fetchImpl: mockFetch as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -1212,18 +1225,17 @@ describe("codex model metadata resolver", () => {
 	it("falls back to static template defaults when server/cache/GitHub are unavailable", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-static-fallback-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } = await loadModule();
 
 		const failingFetch = vi.fn(async () => {
 			throw new Error("offline");
 		});
 
-		const defaults = await getCodexModelRuntimeDefaults("gpt-5.9-codex", {
-			fetchImpl: failingFetch as unknown as typeof fetch,
-		});
-
-		expect(defaults.onlineDefaultPersonality).toBeUndefined();
-		expect(defaults.staticDefaultPersonality).toBe("none");
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.9-codex", {
+				fetchImpl: failingFetch as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -1261,7 +1273,7 @@ describe("codex model metadata resolver", () => {
 	it("applies backoff guard even on cold start with no cache", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-backoff-coldstart-"));
 		process.env.XDG_CONFIG_HOME = root;
-		const { getCodexModelRuntimeDefaults } = await loadModule();
+		const { getCodexModelRuntimeDefaults, ModelCatalogUnavailableError } = await loadModule();
 		let serverCallCount = 0;
 
 		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -1279,19 +1291,23 @@ describe("codex model metadata resolver", () => {
 		});
 
 		// First call - should attempt server and fail
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account1",
-			fetchImpl: mockFetch as unknown as typeof fetch,
-		});
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+				accessToken: "token",
+				accountId: "account1",
+				fetchImpl: mockFetch as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 		expect(serverCallCount).toBe(1);
 
 		// Second call - should be gated by backoff (no server call)
-		await getCodexModelRuntimeDefaults("gpt-5.3-codex", {
-			accessToken: "token",
-			accountId: "account1",
-			fetchImpl: mockFetch as unknown as typeof fetch,
-		});
+		await expect(
+			getCodexModelRuntimeDefaults("gpt-5.3-codex", {
+				accessToken: "token",
+				accountId: "account1",
+				fetchImpl: mockFetch as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(ModelCatalogUnavailableError);
 		expect(serverCallCount).toBe(1); // Still 1 - backoff prevented call
 
 		rmSync(root, { recursive: true, force: true });
