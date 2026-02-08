@@ -48,7 +48,7 @@ function applyCustomSettings(
 	if (!custom) return userConfig;
 
 	const merged: UserConfig = {
-		global: { ...userConfig.global, ...(custom.options ?? {}) },
+		global: { ...(custom.options ?? {}), ...userConfig.global },
 		models: { ...userConfig.models },
 	};
 
@@ -56,20 +56,30 @@ function applyCustomSettings(
 		for (const [modelId, override] of Object.entries(custom.models)) {
 			const existing = merged.models[modelId] ?? {};
 			const mergedOptions = {
-				...(existing.options ?? {}),
 				...(override.options ?? {}),
+				...(existing.options ?? {}),
 			};
 			const mergedVariants = {
-				...(existing.variants ?? {}),
 				...(override.variants ?? {}),
+				...(existing.variants ?? {}),
 			};
 			merged.models[modelId] = {
-				...existing,
 				...override,
+				...existing,
 				options: mergedOptions,
 				variants: mergedVariants,
 			};
 		}
+	}
+
+	if (
+		typeof custom.thinking_summaries === "boolean" &&
+		merged.global.reasoningSummary === undefined
+	) {
+		merged.global = {
+			...merged.global,
+			reasoningSummary: custom.thinking_summaries ? "auto" : "off",
+		};
 	}
 
 	return merged;
@@ -278,6 +288,7 @@ function resolveReasoningConfig(
 		}
 		let summary =
 			existingSummary ?? modelConfig.reasoningSummary ?? "auto";
+		if (summary === "on") summary = "auto";
 		if (summaryUnsupported) summary = "off";
 		return {
 			effort: effort as ReasoningConfig["effort"],

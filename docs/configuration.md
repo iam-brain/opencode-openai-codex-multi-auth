@@ -19,7 +19,7 @@ Complete reference for configuring the OpenCode OpenAI Codex Auth Plugin.
       },
       "models": {
         "gpt-5.3-codex-low": {
-          "name": "GPT 5.3 Codex Low (OAuth)",
+          "name": "GPT 5.3 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -106,7 +106,8 @@ Controls reasoning summary verbosity.
 - `concise` - Short summaries
 - `detailed` - Verbose summaries
 - `off` - Disable reasoning summary (Codex Max supports)
-- `on` - Force enable summary (Codex Max supports)
+
+`on` is accepted in legacy configs but normalized to `auto`.
 
 **Example:**
 ```json
@@ -374,11 +375,12 @@ Advanced plugin settings in `~/.config/opencode/openai-codex-auth-config.json`.
 ### Custom Settings Overrides
 
 Use `custom_settings` to override OpenCode provider options without editing `opencode.json`.
-These settings are merged on top of the OpenCode config at request time.
+These settings are merged on top of the OpenCode config at request time, but `opencode.json` always wins if the same option is set in both places.
 
 ```json
 {
   "custom_settings": {
+    "thinking_summaries": true,
     "options": {
       "personality": "friendly"
     },
@@ -392,6 +394,8 @@ These settings are merged on top of the OpenCode config at request time.
   }
 }
 ```
+
+`thinking_summaries` toggles reasoning summaries globally. When omitted, summaries default to on for models that support them and off for models that report `reasoning_summary_format: "none"`.
 
 Personality descriptions come from:
 - `.opencode/Personalities/*.md` (project-local)
@@ -653,7 +657,7 @@ Old verbose names still work:
 {
   "models": {
     "gpt-5-codex-low": {
-      "name": "GPT 5 Codex Low (OAuth)",
+      "name": "GPT 5 Codex Low (Codex)",
       "options": { "reasoningEffort": "low" }
     }
   }
@@ -668,7 +672,7 @@ Use the official config file (`opencode-modern.json` for v1.0.210+, `opencode-le
 {
   "models": {
     "gpt-5.3-codex-low": {
-      "name": "GPT 5.3 Codex Low (OAuth)",
+      "name": "GPT 5.3 Codex Low (Codex)",
       "limit": {
         "context": 272000,
         "output": 128000

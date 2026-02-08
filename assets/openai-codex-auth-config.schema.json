@@ -13,6 +13,10 @@
       "type": "object",
       "description": "Override provider options (including personality) without editing opencode.json.",
       "properties": {
+        "thinking_summaries": {
+          "type": "boolean",
+          "description": "Enable or disable reasoning summaries globally (default: true when supported by the model)."
+        },
         "options": {
           "type": "object",
           "description": "Global OpenAI provider option overrides.",

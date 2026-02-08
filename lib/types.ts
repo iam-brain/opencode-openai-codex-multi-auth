@@ -108,6 +108,7 @@ export interface PluginConfig {
 	 * Custom personality configuration (global).
 	 */
 	custom_settings?: {
+		thinking_summaries?: boolean;
 		options?: ConfigOptions;
 		models?: {
 			[modelName: string]: {

@@ -399,6 +399,114 @@ describe('Request Transformer Module', () => {
 			expect(result.reasoning?.summary).toBe('auto');
 		});
 
+		it('defaults reasoning summary to auto when runtime supports summaries', async () => {
+			const body: RequestBody = {
+				model: 'gpt-5.3-codex',
+				input: [],
+			};
+			const runtimeDefaults = {
+				staticDefaultPersonality: 'none',
+				supportedReasoningEfforts: ['low', 'medium'],
+				defaultReasoningEffort: 'medium',
+				supportsReasoningSummaries: true,
+				reasoningSummaryFormat: 'experimental',
+			};
+			const result = await transformRequestBody(
+				body,
+				codexInstructions,
+				{ global: {}, models: {} },
+				runtimeDefaults as any,
+			);
+
+			expect(result.reasoning?.summary).toBe('auto');
+		});
+
+		it('normalizes reasoning summary on to auto', async () => {
+			const body: RequestBody = {
+				model: 'gpt-5.3-codex',
+				input: [],
+			};
+			const userConfig: UserConfig = {
+				global: { reasoningSummary: 'on' },
+				models: {},
+			};
+			const runtimeDefaults = {
+				staticDefaultPersonality: 'none',
+				supportedReasoningEfforts: ['low', 'medium'],
+				defaultReasoningEffort: 'medium',
+				supportsReasoningSummaries: true,
+				reasoningSummaryFormat: 'experimental',
+			};
+			const result = await transformRequestBody(
+				body,
+				codexInstructions,
+				userConfig,
+				runtimeDefaults as any,
+			);
+
+			expect(result.reasoning?.summary).toBe('auto');
+		});
+
+		it('disables reasoning summaries via custom settings toggle', async () => {
+			const body: RequestBody = {
+				model: 'gpt-5.3-codex',
+				input: [],
+			};
+			const runtimeDefaults = {
+				staticDefaultPersonality: 'none',
+				supportedReasoningEfforts: ['low', 'medium'],
+				defaultReasoningEffort: 'medium',
+				supportsReasoningSummaries: true,
+				reasoningSummaryFormat: 'experimental',
+			};
+			const pluginConfig = {
+				custom_settings: {
+					thinking_summaries: false,
+				},
+			};
+			const result = await transformRequestBody(
+				body,
+				codexInstructions,
+				{ global: {}, models: {} },
+				runtimeDefaults as any,
+				pluginConfig as any,
+			);
+
+			expect(result.reasoning?.summary).toBe('off');
+		});
+
+		it('prefers opencode config over custom_settings for reasoning summary', async () => {
+			const body: RequestBody = {
+				model: 'gpt-5.3-codex',
+				input: [],
+			};
+			const runtimeDefaults = {
+				staticDefaultPersonality: 'none',
+				supportedReasoningEfforts: ['low', 'medium'],
+				defaultReasoningEffort: 'medium',
+				supportsReasoningSummaries: true,
+				reasoningSummaryFormat: 'experimental',
+			};
+			const userConfig: UserConfig = {
+				global: { reasoningSummary: 'detailed' },
+				models: {},
+			};
+			const pluginConfig = {
+				custom_settings: {
+					thinking_summaries: false,
+				},
+			};
+			const result = await transformRequestBody(
+				body,
+				codexInstructions,
+				userConfig,
+				runtimeDefaults as any,
+				pluginConfig as any,
+			);
+
+			expect(result.reasoning?.summary).toBe('detailed');
+		});
+
 		it('should apply user reasoning config', async () => {
 			const body: RequestBody = {
 				model: 'gpt-5',
@@ -1141,6 +1249,9 @@ describe('Request Transformer Module', () => {
 			});
 
 			it('defaults to pragmatic when no custom personality set', async () => {
+				const root = mkdtempSync(join(tmpdir(), 'personality-default-'));
+				const originalXdg = process.env.XDG_CONFIG_HOME;
+				process.env.XDG_CONFIG_HOME = root;
 				const body: RequestBody = {
 					model: 'gpt-5.3-codex',
 					input: [],
@@ -1154,14 +1265,23 @@ describe('Request Transformer Module', () => {
 					},
 					staticDefaultPersonality: 'pragmatic',
 				};
-				const result = await transformRequestBody(
-					body,
-					'BASE INSTRUCTIONS',
-					userConfig,
-					runtimeDefaults as any,
-					{} as any,
-				);
-				expect(result.instructions).toContain('Pragmatic from runtime');
+				try {
+					const result = await transformRequestBody(
+						body,
+						'BASE INSTRUCTIONS',
+						userConfig,
+						runtimeDefaults as any,
+						{} as any,
+					);
+					expect(result.instructions).toContain('Pragmatic from runtime');
+				} finally {
+					if (originalXdg === undefined) {
+						delete process.env.XDG_CONFIG_HOME;
+					} else {
+						process.env.XDG_CONFIG_HOME = originalXdg;
+					}
+					rmSync(root, { recursive: true, force: true });
+				}
 			});
 
 			it('uses runtime default when personality is set to default', async () => {
