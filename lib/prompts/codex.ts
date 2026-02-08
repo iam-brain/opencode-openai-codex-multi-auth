@@ -83,6 +83,7 @@ function matchPromptFileToFamily(filename: string): ModelFamily | null {
 	if (!lower.endsWith("_prompt.md") && !lower.startsWith("prompt")) {
 		return null;
 	}
+	if (lower === "prompt.md") return "codex";
 	
 	// Extract the model identifier from the filename
 	const base = lower.replace(/_prompt\.md$/, "").replace(/^prompt_?/, "").replace(/\.md$/, "");
@@ -101,6 +102,54 @@ function matchPromptFileToFamily(filename: string): ModelFamily | null {
 	return null;
 }
 
+function resolveCacheFamily(
+	modelFamily: ModelFamily,
+	promptFile: string,
+): ModelFamily {
+	if (promptFile === "prompt.md") return "codex";
+	return matchPromptFileToFamily(promptFile) ?? modelFamily;
+}
+
+async function pruneInstructionCaches(
+	discovered: Map<string, string>,
+): Promise<void> {
+	const available = new Set<ModelFamily>();
+	for (const family of MODEL_FAMILIES) {
+		if (discovered.has(family)) available.add(family);
+	}
+	if (available.size === 0) return;
+	if (!existsSync(CACHE_DIR)) return;
+
+	let release: (() => Promise<void>) | null = null;
+	try {
+		release = await lockfile.lock(CACHE_DIR, LOCK_OPTIONS);
+		for (const family of MODEL_FAMILIES) {
+			if (available.has(family)) continue;
+			const cacheFile = join(CACHE_DIR, CACHE_FILES[family]);
+			const cacheMetaFile = join(
+				CACHE_DIR,
+				`${CACHE_FILES[family].replace(".md", "-meta.json")}`,
+			);
+			try {
+				unlinkSync(cacheFile);
+			} catch {
+				// best-effort
+			}
+			try {
+				unlinkSync(cacheMetaFile);
+			} catch {
+				// best-effort
+			}
+		}
+	} catch (error) {
+		logWarn("Failed to prune instruction caches", error);
+	} finally {
+		if (release) {
+			await release().catch(() => undefined);
+		}
+	}
+}
+
 /**
  * Discover prompt files from GitHub repository.
  * Fetches the file listing from codex-rs/core and maps them to model families.
@@ -108,7 +157,7 @@ function matchPromptFileToFamily(filename: string): ModelFamily | null {
 async function discoverPromptFilesFromGitHub(
 	tag: string,
 	fetchImpl: typeof fetch = fetch,
-): Promise<Map<string, string>> {
+): Promise<{ discovered: Map<string, string>; ok: boolean }> {
 	const discovered = new Map<string, string>();
 	
 	try {
@@ -123,7 +172,7 @@ async function discoverPromptFilesFromGitHub(
 		
 		if (!response.ok) {
 			logDebug(`Failed to list GitHub directory: HTTP ${response.status}`);
-			return discovered;
+			return { discovered, ok: false };
 		}
 		
 		const files = (await response.json()) as Array<{ name: string; type: string }>;
@@ -150,9 +199,10 @@ async function discoverPromptFilesFromGitHub(
 		}
 	} catch (error) {
 		logDebug("Failed to discover prompt files from GitHub", error);
+		return { discovered, ok: false };
 	}
 	
-	return discovered;
+	return { discovered, ok: true };
 }
 
 /**
@@ -362,10 +412,11 @@ export async function getCodexInstructions(
 	const inMemory = readInMemoryInstructions(modelFamily);
 	if (inMemory) return inMemory;
 	const promptFile = getPromptFileForFamily(modelFamily);
-	const cacheFile = join(CACHE_DIR, CACHE_FILES[modelFamily]);
-	const cacheMetaFile = join(
+	let cacheFamily = resolveCacheFamily(modelFamily, promptFile);
+	let cacheFile = join(CACHE_DIR, CACHE_FILES[cacheFamily]);
+	let cacheMetaFile = join(
 		CACHE_DIR,
-		`${CACHE_FILES[modelFamily].replace(".md", "-meta.json")}`,
+		`${CACHE_FILES[cacheFamily].replace(".md", "-meta.json")}`,
 	);
 
 	try {
@@ -393,8 +444,12 @@ export async function getCodexInstructions(
 		if (!discoveredPromptFiles || !promptFilesDiscoveredAt || 
 		    Date.now() - promptFilesDiscoveredAt > PROMPT_FILE_CACHE_TTL_MS) {
 			try {
-				discoveredPromptFiles = await discoverPromptFilesFromGitHub(latestTag, fetch);
-				promptFilesDiscoveredAt = Date.now();
+				const discovery = await discoverPromptFilesFromGitHub(latestTag, fetch);
+				if (discovery.ok) {
+					discoveredPromptFiles = discovery.discovered;
+					promptFilesDiscoveredAt = Date.now();
+					await pruneInstructionCaches(discovery.discovered);
+				}
 			} catch {
 				// Discovery failure is non-fatal; continue with fallback
 			}
@@ -402,6 +457,31 @@ export async function getCodexInstructions(
 		
 		// Re-resolve prompt file after discovery (may have found a new one)
 		const resolvedPromptFile = getPromptFileForFamily(modelFamily);
+		const resolvedCacheFamily = resolveCacheFamily(
+			modelFamily,
+			resolvedPromptFile,
+		);
+		if (resolvedCacheFamily !== cacheFamily) {
+			cacheFamily = resolvedCacheFamily;
+			cacheFile = join(CACHE_DIR, CACHE_FILES[cacheFamily]);
+			cacheMetaFile = join(
+				CACHE_DIR,
+				`${CACHE_FILES[cacheFamily].replace(".md", "-meta.json")}`,
+			);
+			const resolvedMeta = readCacheMetadata(cacheMetaFile);
+			cachedETag = resolvedMeta?.etag ?? null;
+			cachedTag = resolvedMeta?.tag ?? null;
+			cachedTimestamp = resolvedMeta?.lastChecked ?? null;
+			if (
+				cachedTimestamp &&
+				Date.now() - cachedTimestamp < CACHE_TTL_MS &&
+				existsSync(cacheFile)
+			) {
+				const instructions = readFileSync(cacheFile, "utf8");
+				writeInMemoryInstructions(modelFamily, instructions);
+				return instructions;
+			}
+		}
 		const CODEX_INSTRUCTIONS_URL = `https://raw.githubusercontent.com/openai/codex/${latestTag}/${GITHUB_CORE_PATH}/${resolvedPromptFile}`;
 
 		// If tag changed, we need to fetch new instructions
@@ -481,10 +561,12 @@ export async function warmCodexInstructions(): Promise<void> {
 	const tasks = MODEL_FAMILIES.map(async (modelFamily) => {
 		try {
 			if (readInMemoryInstructions(modelFamily)) return;
-			const cacheFile = join(CACHE_DIR, CACHE_FILES[modelFamily]);
+			const promptFile = getPromptFileForFamily(modelFamily);
+			const cacheFamily = resolveCacheFamily(modelFamily, promptFile);
+			const cacheFile = join(CACHE_DIR, CACHE_FILES[cacheFamily]);
 			const cacheMetaFile = join(
 				CACHE_DIR,
-				`${CACHE_FILES[modelFamily].replace(".md", "-meta.json")}`,
+				`${CACHE_FILES[cacheFamily].replace(".md", "-meta.json")}`,
 			);
 			const metadata = readCacheMetadata(cacheMetaFile);
 			const hasCacheFile = existsSync(cacheFile);

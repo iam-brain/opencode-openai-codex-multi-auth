@@ -33,7 +33,7 @@ function seedInstructionsCache(modelFamily: 'gpt-5.3-codex' | 'gpt-5.1'): void {
 	mkdirSync(cacheDir, { recursive: true });
 	const fileName =
 		modelFamily === 'gpt-5.3-codex'
-			? 'gpt-5.3-codex-instructions.md'
+			? 'gpt-5.2-codex-instructions.md'
 			: 'gpt-5.1-instructions.md';
 	const cacheFile = join(cacheDir, fileName);
 	const metaFile = join(cacheDir, fileName.replace('.md', '-meta.json'));

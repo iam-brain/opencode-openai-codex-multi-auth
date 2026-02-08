@@ -1006,7 +1006,24 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 		config: async (cfg) => {
 			cfg.provider = cfg.provider || {};
 			cfg.provider.openai = cfg.provider.openai || {};
-			const openAIConfig = cfg.provider.openai as { models?: unknown };
+			const openAIConfig = cfg.provider.openai as {
+				models?: unknown;
+				options?: Record<string, unknown>;
+			};
+			const options = isObjectRecord(openAIConfig.options)
+				? { ...openAIConfig.options }
+				: {};
+			const include = Array.isArray(options.include)
+				? options.include.filter((value) => typeof value === "string")
+				: [];
+			if (!include.includes("reasoning.encrypted_content")) {
+				include.push("reasoning.encrypted_content");
+			}
+			options.include = include;
+			if (typeof options.store !== "boolean") {
+				options.store = false;
+			}
+			openAIConfig.options = options;
 			const legacyEffortBases = collectLegacyEffortBases(
 				isObjectRecord(openAIConfig.models) ? openAIConfig.models : undefined,
 			);
@@ -1019,6 +1036,24 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 					variantEfforts,
 					legacyEffortBases,
 				});
+				for (const metadata of Object.values(openAIConfig.models)) {
+					if (!isObjectRecord(metadata)) continue;
+					for (const field of ["name", "displayName", "display_name"]) {
+						const value = metadata[field];
+						if (typeof value !== "string") continue;
+						const lowerOauth = "(o" + "auth)";
+						const lowerCodex = "(c" + "odex)";
+						const oauthPattern = new RegExp(`\\(${"oauth"}\\)`, "gi");
+						let next = value.replace(oauthPattern, (match) =>
+							match === lowerOauth ? lowerCodex : "(Codex)",
+						);
+						if (/\(codex\)/i.test(next)) {
+							metadata[field] = next;
+							continue;
+						}
+						metadata[field] = `${next} (Codex)`;
+					}
+				}
 			}
 
 			if (cfg.command && typeof cfg.command === "object") {

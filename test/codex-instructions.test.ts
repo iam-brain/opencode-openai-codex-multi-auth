@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -186,6 +193,104 @@ describe("codex instructions cache", () => {
 		expect(meta.tag).toBe("rust-v9.9.9");
 		expect(meta.etag).toBe('"next"');
 		expect(meta.lastChecked).toBeGreaterThan(staleChecked);
+
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("reuses cache family based on resolved prompt file", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-instructions-family-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const cacheDir = join(root, "opencode", "cache");
+		mkdirSync(cacheDir, { recursive: true });
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			if (url.includes("api.github.com/repos/openai/codex/releases/latest")) {
+				return new Response(JSON.stringify({ tag_name: "rust-v9.9.9" }), {
+					status: 200,
+				});
+			}
+			if (url.includes("api.github.com/repos/openai/codex/contents/")) {
+				return new Response(JSON.stringify([]), { status: 200 });
+			}
+			if (url.includes("raw.githubusercontent.com/openai/codex/rust-v9.9.9")) {
+				if (url.includes("gpt-5.2-codex_prompt.md")) {
+					return new Response("prompt for gpt-5.2", {
+						status: 200,
+						headers: { etag: '"etag"' },
+					});
+				}
+				throw new Error(`Unexpected URL: ${url}`);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { getCodexInstructions } = await loadModule();
+		const instructions = await getCodexInstructions("gpt-5.3-codex");
+		expect(instructions).toContain("prompt for gpt-5.2");
+
+		const gpt52Cache = join(cacheDir, "gpt-5.2-codex-instructions.md");
+		const gpt52Meta = join(cacheDir, "gpt-5.2-codex-instructions-meta.json");
+		const gpt53Cache = join(cacheDir, "gpt-5.3-codex-instructions.md");
+		const gpt53Meta = join(cacheDir, "gpt-5.3-codex-instructions-meta.json");
+
+		expect(existsSync(gpt52Cache)).toBe(true);
+		expect(existsSync(gpt52Meta)).toBe(true);
+		expect(existsSync(gpt53Cache)).toBe(false);
+		expect(existsSync(gpt53Meta)).toBe(false);
+
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("removes instruction caches when prompt files are missing in GitHub", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-instructions-prune-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const cacheDir = join(root, "opencode", "cache");
+		mkdirSync(cacheDir, { recursive: true });
+
+		const staleCache = join(cacheDir, "gpt-5.3-codex-instructions.md");
+		const staleMeta = join(cacheDir, "gpt-5.3-codex-instructions-meta.json");
+		writeFileSync(staleCache, "stale", "utf8");
+		writeFileSync(
+			staleMeta,
+			JSON.stringify({
+				tag: "rust-v1.0.0",
+				etag: null,
+				lastChecked: Date.now(),
+				url: "https://example.test",
+			}),
+			"utf8",
+		);
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			if (url.includes("api.github.com/repos/openai/codex/releases/latest")) {
+				return new Response(JSON.stringify({ tag_name: "rust-v9.9.9" }), {
+					status: 200,
+				});
+			}
+			if (url.includes("api.github.com/repos/openai/codex/contents/")) {
+				return new Response(
+					JSON.stringify([
+						{ name: "gpt-5.2-codex_prompt.md", type: "file" },
+						{ name: "gpt_5_1_prompt.md", type: "file" },
+					]),
+					{ status: 200 },
+				);
+			}
+			if (url.includes("raw.githubusercontent.com/openai/codex/rust-v9.9.9")) {
+				return new Response("prompt", { status: 200, headers: { etag: '"etag"' } });
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { getCodexInstructions } = await loadModule();
+		await getCodexInstructions("gpt-5.3-codex");
+
+		expect(existsSync(staleCache)).toBe(false);
+		expect(existsSync(staleMeta)).toBe(false);
 
 		rmSync(root, { recursive: true, force: true });
 	});
