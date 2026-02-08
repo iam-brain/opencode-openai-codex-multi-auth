@@ -248,8 +248,8 @@ describe('Install script', () => {
       "timeout": 60000,
       "models": {
         "custom-model": { "name": "Custom" },
-        "gpt-5.2": { "name": "GPT 5.2 (OAuth)" },
-        "gpt-5.2-codex": { "name": "GPT 5.2 Codex (OAuth)" }
+			"gpt-5.2": { "name": "GPT 5.2 (Codex)" },
+			"gpt-5.2-codex": { "name": "GPT 5.2 Codex (Codex)" }
       }
     },
     "anthropic": { "models": { "claude": { "name": "Claude" } } }

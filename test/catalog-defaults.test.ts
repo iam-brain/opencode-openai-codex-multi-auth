@@ -39,7 +39,7 @@ describe("catalog internal defaults", () => {
 
 			expect(defaults["gpt-5.3-codex"]).toBeDefined();
 			expect(defaults["gpt-5.3-codex"].name).toBe(
-				"GPT 5.3 Codex (OAuth)",
+				"GPT 5.3 Codex (Codex)",
 			);
 			expect(defaults["gpt-5.3-codex"].limit?.context).toBe(
 				defaults["gpt-5.2-codex"].limit?.context,
@@ -69,7 +69,7 @@ describe("catalog internal defaults", () => {
 
 			expect(defaults["gpt-5.9-codex"]).toBeDefined();
 			expect(defaults["gpt-5.9-codex"].name).toBe(
-				"GPT 5.9 Codex (OAuth)",
+				"GPT 5.9 Codex (Codex)",
 			);
 			// Should have variants from gpt-5.3-codex, not gpt-5.2-codex
 			// (They are currently identical in opencode-modern.json, but 5.3 is the better template)

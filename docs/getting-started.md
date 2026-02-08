@@ -74,7 +74,7 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
       },
       "models": {
         "gpt-5.3-codex": {
-          "name": "GPT 5.3 Codex (OAuth)",
+          "name": "GPT 5.3 Codex (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -88,7 +88,7 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
           }
         },
         "gpt-5.3-codex-low": {
-          "name": "GPT 5.3 Codex Low (OAuth)",
+          "name": "GPT 5.3 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -102,7 +102,7 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
           }
         },
         "gpt-5.3-codex-high": {
-          "name": "GPT 5.3 Codex High (OAuth)",
+          "name": "GPT 5.3 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -116,7 +116,7 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
           }
         },
         "gpt-5.2-codex": {
-          "name": "GPT 5.2 Codex (OAuth)",
+          "name": "GPT 5.2 Codex (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -130,7 +130,7 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
           }
         },
         "gpt-5.2": {
-          "name": "GPT 5.2 (OAuth)",
+          "name": "GPT 5.2 (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000

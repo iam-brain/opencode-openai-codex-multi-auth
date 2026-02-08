@@ -50,11 +50,11 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
       },
       "models": {
         "gpt-5.3-codex-low": {
-          "name": "GPT 5 Codex Low (OAuth)",
+          "name": "GPT 5 Codex Low (Codex)",
           "options": { "reasoningEffort": "low" }
         },
         "gpt-5.3-codex-high": {
-          "name": "GPT 5 Codex High (OAuth)",
+          "name": "GPT 5 Codex High (Codex)",
           "options": { "reasoningEffort": "high" }
         }
       }
@@ -123,7 +123,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
     "openai": {
       "models": {
         "gpt-5.3-codex-low": {
-          "name": "GPT 5 Codex Low (OAuth)",
+          "name": "GPT 5 Codex Low (Codex)",
           "options": { "reasoningEffort": "low" }
         }
       }
@@ -326,7 +326,7 @@ Turn 4: > now delete it
 {
   "models": {
     "gpt-5.3-codex-low": {
-      "name": "GPT 5 Codex Low (OAuth)",
+      "name": "GPT 5 Codex Low (Codex)",
       "options": { "reasoningEffort": "low" }
     }
   }
@@ -335,7 +335,7 @@ Turn 4: > now delete it
 
 **Expected:**
 - CLI: `--model=openai/gpt-5.3-codex-low` ✅
-- TUI: Shows "GPT 5 Codex Low (OAuth)" ✅
+- TUI: Shows "GPT 5 Codex Low (Codex)" ✅
 - Plugin: Finds and applies per-model options ✅
 - API: Receives `"gpt-5.3-codex"` ✅
 
@@ -479,11 +479,11 @@ cat > ~/.config/opencode/opencode.jsonc <<'EOF'
     "openai": {
       "models": {
         "gpt-5.3-codex-low": {
-          "name": "GPT 5 Codex Low (OAuth)",
+          "name": "GPT 5 Codex Low (Codex)",
           "options": { "reasoningEffort": "low" }
         },
         "gpt-5.3-codex-high": {
-          "name": "GPT 5 Codex High (OAuth)",
+          "name": "GPT 5 Codex High (Codex)",
           "options": { "reasoningEffort": "high" }
         }
       }

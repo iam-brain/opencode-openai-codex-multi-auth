@@ -96,7 +96,7 @@ Plugins can inject options via the `loader()` function.
     "openai": {
       "models": {
         "gpt-5.3-codex-medium": {
-          "name": "GPT 5.3 Codex Medium (OAuth)",
+          "name": "GPT 5.3 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -118,7 +118,7 @@ Plugins can inject options via the `loader()` function.
 ```
 
 **What OpenCode Uses**:
-- **UI Display**: "GPT 5.3 Codex Medium (OAuth)" ✅
+- **UI Display**: "GPT 5.3 Codex Medium (Codex)" ✅
 - **Persistence**: `provider_id: "openai"` + `model_id: "gpt-5.3-codex-medium"` ✅
 - **Plugin lookup**: `models["gpt-5.3-codex-medium"]` → used to build Codex request ✅
 
@@ -234,14 +234,14 @@ For a given model, options are merged:
       },
       "models": {
         "gpt-5.3-codex-high": {
-          "name": "GPT 5.3 Codex High (OAuth)",
+          "name": "GPT 5.3 Codex High (Codex)",
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed"
           }
         },
         "gpt-5-nano": {
-          "name": "GPT 5 Nano (OAuth)",
+          "name": "GPT 5 Nano (Codex)",
           "options": {
             "reasoningEffort": "minimal",
             "textVerbosity": "low"
@@ -273,13 +273,13 @@ For a given model, options are merged:
       },
       "models": {
         "gpt-5.3-codex-low": {
-          "name": "GPT 5.3 Codex Low (OAuth)",
+          "name": "GPT 5.3 Codex Low (Codex)",
           "options": {
             "reasoningEffort": "low"
           }
         },
         "gpt-5.3-codex-high": {
-          "name": "GPT 5.3 Codex High (OAuth)",
+          "name": "GPT 5.3 Codex High (Codex)",
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed"

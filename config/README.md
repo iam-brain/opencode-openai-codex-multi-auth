@@ -92,7 +92,7 @@ Both configs provide access to the same model families:
 - **gpt-5.1-codex-mini** (medium/high) - Codex mini tier presets
 - **gpt-5.1** (none/low/medium/high) - General-purpose reasoning presets
 
-All appear in the opencode model selector as "GPT 5.3 Codex Low (OAuth)", "GPT 5.3 High (OAuth)", etc.
+All appear in the opencode model selector as "GPT 5.3 Codex Low (Codex)", "GPT 5.3 High (Codex)", etc.
 
 ## Configuration Options
 

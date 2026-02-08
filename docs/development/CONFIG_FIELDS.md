@@ -83,7 +83,7 @@ openai: async () => {
 
 ### `name` Field (Optional)
 
-**Example:** `"GPT 5 Codex Low (OAuth)"`
+**Example:** `"GPT 5 Codex Low (Codex)"`
 
 **Used For:**
 - ✅ **TUI Model Picker**: Display name shown in the model selection UI
@@ -117,9 +117,9 @@ const parsedModel: ModelsDev.Model = {
 │  ┌──────────────────────────────────┐                          │
 │  │ Select Model:                    │                          │
 │  │                                  │                          │
-│  │ ○ GPT 5 Codex Low (OAuth) ←──────┼── name field            │
-│  │ ○ GPT 5 Codex Medium (OAuth)     │                          │
-│  │ ○ GPT 5 Codex High (OAuth)       │                          │
+│  │ ○ GPT 5 Codex Low (Codex) ←──────┼── name field            │
+│  │ ○ GPT 5 Codex Medium (Codex)     │                          │
+│  │ ○ GPT 5 Codex High (Codex)       │                          │
 │  └──────────────────────────────────┘                          │
 │                                                                 │
 │  Config Lookup (Plugin):                                       │
@@ -220,7 +220,7 @@ const parsedModel: ModelsDev.Model = {
 ### `name` Field: UI Display
 
 ```json
-"name": "GPT 5 Codex Low (OAuth)"
+"name": "GPT 5 Codex Low (Codex)"
          └──────────┬──────────┘
               NAME FIELD
 ```
@@ -242,7 +242,7 @@ const parsedModel: ModelsDev.Model = {
 {
   "gpt-5.3-codex-low": {
     "id": "gpt-5.3-codex",
-    "name": "GPT 5 Codex Low (OAuth)",
+    "name": "GPT 5 Codex Low (Codex)",
     "options": { "reasoningEffort": "low" }
   }
 }
@@ -250,7 +250,7 @@ const parsedModel: ModelsDev.Model = {
 
 **When user selects `openai/gpt-5.3-codex-low`:**
 - CLI: Uses `"gpt-5.3-codex-low"` (config key)
-- TUI: Shows `"GPT 5 Codex Low (OAuth)"` (name field)
+- TUI: Shows `"GPT 5 Codex Low (Codex)"` (name field)
 - Plugin receives: `body.model = "gpt-5.3-codex-low"` (config key)
 - Plugin looks up: `models["gpt-5.3-codex-low"]` ✅ Found
 - Plugin sends to API: `"gpt-5.3-codex"` (normalized)
@@ -265,11 +265,11 @@ const parsedModel: ModelsDev.Model = {
 {
   "gpt-5.3-codex-low": {
     "id": "gpt-5.3-codex",
-    "name": "GPT 5 Codex Low (OAuth)"
+    "name": "GPT 5 Codex Low (Codex)"
   },
   "gpt-5.3-codex-high": {
     "id": "gpt-5.3-codex",
-    "name": "GPT 5 Codex High (OAuth)"
+    "name": "GPT 5 Codex High (Codex)"
   }
 }
 ```
@@ -289,12 +289,12 @@ const parsedModel: ModelsDev.Model = {
 {
   "gpt-5.3-codex": {
     "id": "gpt-5.3-codex",
-    "name": "GPT 5 Codex Low (OAuth)",
+    "name": "GPT 5 Codex Low (Codex)",
     "options": { "reasoningEffort": "low" }
   },
   "gpt-5.3-codex": {  // ❌ DUPLICATE KEY ERROR!
     "id": "gpt-5.3-codex",
-    "name": "GPT 5 Codex High (OAuth)",
+    "name": "GPT 5 Codex High (Codex)",
     "options": { "reasoningEffort": "high" }
   }
 }
@@ -363,7 +363,7 @@ const parsedModel: ModelsDev.Model = {
 ```json
 "gpt-5.3-codex-low": {
   "id": "gpt-5.3-codex",
-  "name": "GPT 5 Codex Low (OAuth)",
+  "name": "GPT 5 Codex Low (Codex)",
   "options": { "reasoningEffort": "low" }
 }
 ```
@@ -469,7 +469,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 ```json
 {
   "gpt-5.3-codex-low": {
-    "name": "GPT 5 Codex Low (OAuth)",
+    "name": "GPT 5 Codex Low (Codex)",
     "options": { "reasoningEffort": "low" }
   }
 }
@@ -477,7 +477,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 
 **Benefits:**
 - ✅ Clean config key: `gpt-5.3-codex-low` (matches Codex CLI presets)
-- ✅ Friendly display: `"GPT 5 Codex Low (OAuth)"` (UX)
+- ✅ Friendly display: `"GPT 5 Codex Low (Codex)"` (UX)
 - ✅ No redundant fields
 - ✅ OpenCode auto-sets `id` to config key
 
@@ -513,7 +513,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 {
   "gpt-5.3-codex-low": {
     "id": "gpt-5.3-codex",
-    "name": "GPT 5 Codex Low (OAuth)",
+    "name": "GPT 5 Codex Low (Codex)",
     "options": { "reasoningEffort": "low" }
   }
 }
@@ -533,7 +533,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 | **CLI `--model` flag** | Config Key | `openai/gpt-5.3-codex-low` |
 | **Custom commands** | Config Key | `model: openai/gpt-5.3-codex-low` |
 | **Agent config** | Config Key | `"model": "openai/gpt-5.3-codex-low"` |
-| **TUI display** | `name` field | `"GPT 5 Codex Low (OAuth)"` |
+| **TUI display** | `name` field | `"GPT 5 Codex Low (Codex)"` |
 | **Plugin config lookup** | Config Key | `models["gpt-5.3-codex-low"]` |
 | **AI SDK receives** | Config Key | `body.model = "gpt-5.3-codex-low"` |
 | **Plugin normalizes** | Transformed | `"gpt-5.3-codex"` (sent to API) |

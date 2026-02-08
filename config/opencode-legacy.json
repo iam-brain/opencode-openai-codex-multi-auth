@@ -16,7 +16,7 @@
       },
       "models": {
         "gpt-5.2-none": {
-          "name": "GPT 5.2 None (OAuth)",
+        "name": "GPT 5.2 None (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -41,7 +41,7 @@
           }
         },
         "gpt-5.2-low": {
-          "name": "GPT 5.2 Low (OAuth)",
+        "name": "GPT 5.2 Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -66,7 +66,7 @@
           }
         },
         "gpt-5.2-medium": {
-          "name": "GPT 5.2 Medium (OAuth)",
+        "name": "GPT 5.2 Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -91,7 +91,7 @@
           }
         },
         "gpt-5.2-high": {
-          "name": "GPT 5.2 High (OAuth)",
+        "name": "GPT 5.2 High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -116,7 +116,7 @@
           }
         },
         "gpt-5.2-xhigh": {
-          "name": "GPT 5.2 Extra High (OAuth)",
+        "name": "GPT 5.2 Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -141,7 +141,7 @@
           }
         },
         "gpt-5.3-codex-low": {
-          "name": "GPT 5.3 Codex Low (OAuth)",
+        "name": "GPT 5.3 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -166,7 +166,7 @@
           }
         },
         "gpt-5.3-codex-medium": {
-          "name": "GPT 5.3 Codex Medium (OAuth)",
+        "name": "GPT 5.3 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -191,7 +191,7 @@
           }
         },
         "gpt-5.3-codex-high": {
-          "name": "GPT 5.3 Codex High (OAuth)",
+        "name": "GPT 5.3 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -216,7 +216,7 @@
           }
         },
         "gpt-5.3-codex-xhigh": {
-          "name": "GPT 5.3 Codex Extra High (OAuth)",
+        "name": "GPT 5.3 Codex Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -241,7 +241,7 @@
           }
         },
         "gpt-5.2-codex-low": {
-          "name": "GPT 5.2 Codex Low (OAuth)",
+        "name": "GPT 5.2 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -266,7 +266,7 @@
           }
         },
         "gpt-5.2-codex-medium": {
-          "name": "GPT 5.2 Codex Medium (OAuth)",
+        "name": "GPT 5.2 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -291,7 +291,7 @@
           }
         },
         "gpt-5.2-codex-high": {
-          "name": "GPT 5.2 Codex High (OAuth)",
+        "name": "GPT 5.2 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -316,7 +316,7 @@
           }
         },
         "gpt-5.2-codex-xhigh": {
-          "name": "GPT 5.2 Codex Extra High (OAuth)",
+        "name": "GPT 5.2 Codex Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -341,7 +341,7 @@
           }
         },
         "gpt-5.1-codex-max-low": {
-          "name": "GPT 5.1 Codex Max Low (OAuth)",
+        "name": "GPT 5.1 Codex Max Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -366,7 +366,7 @@
           }
         },
         "gpt-5.1-codex-max-medium": {
-          "name": "GPT 5.1 Codex Max Medium (OAuth)",
+        "name": "GPT 5.1 Codex Max Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -391,7 +391,7 @@
           }
         },
         "gpt-5.1-codex-max-high": {
-          "name": "GPT 5.1 Codex Max High (OAuth)",
+        "name": "GPT 5.1 Codex Max High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -416,7 +416,7 @@
           }
         },
         "gpt-5.1-codex-max-xhigh": {
-          "name": "GPT 5.1 Codex Max Extra High (OAuth)",
+        "name": "GPT 5.1 Codex Max Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -441,7 +441,7 @@
           }
         },
         "gpt-5.1-codex-low": {
-          "name": "GPT 5.1 Codex Low (OAuth)",
+        "name": "GPT 5.1 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -466,7 +466,7 @@
           }
         },
         "gpt-5.1-codex-medium": {
-          "name": "GPT 5.1 Codex Medium (OAuth)",
+        "name": "GPT 5.1 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -491,7 +491,7 @@
           }
         },
         "gpt-5.1-codex-high": {
-          "name": "GPT 5.1 Codex High (OAuth)",
+        "name": "GPT 5.1 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -516,7 +516,7 @@
           }
         },
         "gpt-5.1-codex-mini-medium": {
-          "name": "GPT 5.1 Codex Mini Medium (OAuth)",
+        "name": "GPT 5.1 Codex Mini Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -541,7 +541,7 @@
           }
         },
         "gpt-5.1-codex-mini-high": {
-          "name": "GPT 5.1 Codex Mini High (OAuth)",
+        "name": "GPT 5.1 Codex Mini High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -566,7 +566,7 @@
           }
         },
         "gpt-5.1-none": {
-          "name": "GPT 5.1 None (OAuth)",
+        "name": "GPT 5.1 None (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -591,7 +591,7 @@
           }
         },
         "gpt-5.1-low": {
-          "name": "GPT 5.1 Low (OAuth)",
+        "name": "GPT 5.1 Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -616,7 +616,7 @@
           }
         },
         "gpt-5.1-medium": {
-          "name": "GPT 5.1 Medium (OAuth)",
+        "name": "GPT 5.1 Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -641,7 +641,7 @@
           }
         },
         "gpt-5.1-high": {
-          "name": "GPT 5.1 High (OAuth)",
+        "name": "GPT 5.1 High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000

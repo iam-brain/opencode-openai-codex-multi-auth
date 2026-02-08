@@ -155,7 +155,7 @@ function pickTemplateId(baseId: string, defaults: Map<string, ModelConfig>): str
 
 function formatModelDisplayName(baseId: string): string {
 	const parts = baseId.split("-").filter(Boolean);
-	if (parts.length === 0) return `${baseId} (OAuth)`;
+	if (parts.length === 0) return `${baseId} (Codex)`;
 	let label = "";
 	if (parts[0] === "gpt" && parts[1]) {
 		label = `GPT ${parts[1]}`;
@@ -167,7 +167,7 @@ function formatModelDisplayName(baseId: string): string {
 			.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
 			.join(" ");
 	}
-	return `${label} (OAuth)`;
+	return `${label} (Codex)`;
 }
 
 function applyCatalogMetadata(

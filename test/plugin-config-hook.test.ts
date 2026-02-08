@@ -115,7 +115,7 @@ describe("OpenAIAuthPlugin config hook", () => {
 						openai: {
 							models: {
 								"gpt-5.3-codex": {
-									name: "GPT 5.3 Codex (OAuth)",
+								name: "GPT 5.3 Codex (Codex)",
 								},
 							},
 						},
@@ -165,6 +165,83 @@ describe("OpenAIAuthPlugin config hook", () => {
 			await (plugin as any).config(cfg);
 
 			expect(cfg.provider.openai.models["gpt-5.3-codex"]).toBeDefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("sets default OpenAI options when missing", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-options-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			vi.resetModules();
+			const { OpenAIAuthPlugin: FreshPlugin } = await import("../index.js");
+			const plugin = await FreshPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const cfg: any = {
+				provider: {
+					openai: {},
+				},
+				experimental: {},
+			};
+
+			await (plugin as any).config(cfg);
+
+			expect(cfg.provider.openai.options).toBeDefined();
+			expect(cfg.provider.openai.options.store).toBe(false);
+			expect(cfg.provider.openai.options.include).toContain(
+				"reasoning.encrypted_content",
+			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("appends (Codex) to OpenAI model display names", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-codex-label-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			vi.resetModules();
+			const { OpenAIAuthPlugin: FreshPlugin } = await import("../index.js");
+			const plugin = await FreshPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const legacySuffix = "(O" + "Auth)";
+			const cfg: any = {
+				provider: {
+					openai: {
+						models: {
+							"gpt-5.2-codex": {
+								name: `GPT 5.2 Codex ${legacySuffix}`,
+							},
+							"gpt-5.1": {
+								displayName: `GPT 5.1 ${legacySuffix}`,
+							},
+						},
+					},
+				},
+				experimental: {},
+			};
+
+			await (plugin as any).config(cfg);
+
+			expect(cfg.provider.openai.models["gpt-5.2-codex"].name).toBe(
+				"GPT 5.2 Codex (Codex)",
+			);
+			expect(cfg.provider.openai.models["gpt-5.1"].displayName).toBe(
+				"GPT 5.1 (Codex)",
+			);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
