@@ -8,6 +8,7 @@ import { createJwt } from "./helpers/jwt.js";
 
 const mockLoadAccounts = vi.fn();
 const mockSaveAccountsWithLock = vi.fn();
+const mockRunAuthMenuOnce = vi.fn();
 let capturedStorage: AccountStorageV3 | null = null;
 
 vi.mock("@opencode-ai/plugin", () => {
@@ -43,6 +44,10 @@ vi.mock("../lib/storage.js", async () => {
 	};
 });
 
+vi.mock("../lib/ui/auth-menu-runner.js", () => ({
+	runAuthMenuOnce: (...args: unknown[]) => mockRunAuthMenuOnce(...args),
+}));
+
 const fixture = JSON.parse(
 	readFileSync(
 		new URL("./fixtures/openai-codex-accounts.json", import.meta.url),
@@ -72,6 +77,8 @@ describe("auth login workflow", () => {
 	beforeEach(() => {
 		mockLoadAccounts.mockReset();
 		mockSaveAccountsWithLock.mockReset();
+		mockRunAuthMenuOnce.mockReset();
+		mockRunAuthMenuOnce.mockResolvedValue("exit");
 		capturedStorage = null;
 	});
 
@@ -111,6 +118,53 @@ describe("auth login workflow", () => {
 		);
 		expect(labels).toHaveLength(3);
 	});
+
+	it("skips interactive auth menu for provider connect flow", async () => {
+		const originalNoBrowser = process.env.OPENCODE_NO_BROWSER;
+		const originalStdinTty = (process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY;
+		const originalStdoutTty = (process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
+		process.env.OPENCODE_NO_BROWSER = "1";
+		(process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY = true;
+		(process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY = true;
+
+		try {
+			mockLoadAccounts.mockResolvedValue(fixture);
+			const OpenAIAuthPlugin = await loadPlugin();
+			const plugin = await OpenAIAuthPlugin(createPluginInput());
+			const oauthMethod = plugin.auth?.methods.find((method) => method.label === AUTH_LABELS.OAUTH);
+			const flow = await (oauthMethod as any).authorize();
+
+			expect(mockRunAuthMenuOnce).not.toHaveBeenCalled();
+			expect((flow as any).instructions).toBe(AUTH_LABELS.INSTRUCTIONS_MANUAL);
+		} finally {
+			process.env.OPENCODE_NO_BROWSER = originalNoBrowser;
+			(process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY = originalStdinTty;
+			(process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY = originalStdoutTty;
+		}
+	});
+
+	it("shows interactive auth menu for cli login flow", async () => {
+		const originalStdinTty = (process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY;
+		const originalStdoutTty = (process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
+		(process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY = true;
+		(process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY = true;
+
+		try {
+			mockLoadAccounts.mockResolvedValue(fixture);
+			mockRunAuthMenuOnce.mockResolvedValueOnce("exit");
+			const OpenAIAuthPlugin = await loadPlugin();
+			const plugin = await OpenAIAuthPlugin(createPluginInput());
+			const oauthMethod = plugin.auth?.methods.find((method) => method.label === AUTH_LABELS.OAUTH);
+			const flow = await (oauthMethod as any).authorize({});
+
+			expect(mockRunAuthMenuOnce).toHaveBeenCalledTimes(1);
+			expect((flow as any).instructions).toBe("Login cancelled.");
+		} finally {
+			(process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY = originalStdinTty;
+			(process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY = originalStdoutTty;
+		}
+	});
+
 	it("falls back to access token claims when id token is missing identity", async () => {
 		const originalNoBrowser = process.env.OPENCODE_NO_BROWSER;
 		process.env.OPENCODE_NO_BROWSER = "1";
