@@ -2,7 +2,7 @@
  * OpenAI ChatGPT (Codex) OAuth Plugin
  */
 
-import { tool, type Plugin, type PluginInput } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import type { Auth } from "@opencode-ai/sdk";
 import {
 	createAuthorizationFlow,
@@ -29,7 +29,6 @@ import {
 	CODEX_BASE_URL,
 	DEFAULT_MODEL_FAMILY,
 	DUMMY_API_KEY,
-	MODEL_FAMILIES,
 	PLUGIN_NAME,
 	PROVIDER_ID,
 } from "./lib/constants.js";
@@ -39,7 +38,6 @@ import {
 	extractAccountEmail,
 	extractAccountId,
 	extractAccountPlan,
-	formatAccountLabel,
 	isOAuthAuth,
 	sanitizeEmail,
 } from "./lib/accounts.js";
@@ -48,18 +46,13 @@ import {
 	promptManageAccounts,
 } from "./lib/cli.js";
 import { normalizePlanTypeOrDefault } from "./lib/plan-utils.js";
-import {
-	configureStorageForCurrentCwd,
-	configureStorageForPluginConfig,
-} from "./lib/storage-scope.js";
+import { configureStorageForPluginConfig } from "./lib/storage-scope.js";
 import {
 	getStoragePath,
-	getStorageScope,
 	autoQuarantineCorruptAccountsFile,
 	loadAccounts,
 	quarantineAccounts,
 	replaceAccountsFile,
-	saveAccounts,
 	saveAccountsWithLock,
 	toggleAccountEnabled,
 } from "./lib/storage.js";
@@ -68,11 +61,10 @@ import { findAccountMatchIndex } from "./lib/account-matching.js";
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 import { RateLimitTracker } from "./lib/rate-limit.js";
-import { codexStatus, type CodexRateLimitSnapshot } from "./lib/codex-status.js";
-import { renderObsidianDashboard } from "./lib/codex-status-ui.js";
+import { codexStatus } from "./lib/codex-status.js";
 import { renderQuotaReport } from "./lib/ui/codex-quota-report.js";
 import { runAuthMenuOnce } from "./lib/ui/auth-menu-runner.js";
-import type { AuthMenuAccount } from "./lib/ui/auth-menu.js";
+import type { AccountInfo } from "./lib/ui/auth-menu.js";
 import {
 	ProactiveRefreshQueue,
 	createRefreshScheduler,
@@ -97,6 +89,14 @@ const FALLBACK_MODEL_SLUGS = new Set([
 	"gpt-5.1-codex",
 	"gpt-5.1-codex-max",
 	"gpt-5.1-codex-mini",
+]);
+
+const LEGACY_CODEX_COMMAND_KEYS = new Set([
+	"codex-auth",
+	"codex-status",
+	"codex-switch-accounts",
+	"codex-toggle-account",
+	"codex-remove-account",
 ]);
 
 function parseGptVersion(slug: string): { major: number; minor: number } | null {
@@ -652,22 +652,47 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			enabled: account.enabled,
 		}));
 
+	const hasActiveCooldown = (
+		resetTimes: Record<string, number | undefined> | undefined,
+		now: number,
+	): boolean => {
+		if (!resetTimes) return false;
+		return Object.values(resetTimes).some(
+			(resetAt) => typeof resetAt === "number" && Number.isFinite(resetAt) && resetAt > now,
+		);
+	};
+
 	const buildAuthMenuAccounts = (
 		accounts: ReturnType<AccountManager["getAccountsSnapshot"]>,
 		activeIndex: number,
-	): AuthMenuAccount[] =>
-		accounts.map((account) => ({
-			index: account.index,
-			accountId: account.accountId,
-			email: account.email,
-			plan: account.plan,
-			enabled: account.enabled,
-			lastUsed: account.lastUsed,
-			rateLimitResetTimes: account.rateLimitResetTimes,
-			coolingDownUntil: account.coolingDownUntil,
-			cooldownReason: account.cooldownReason,
-			isActive: account.index === activeIndex,
-		}));
+	): AccountInfo[] => {
+		const now = Date.now();
+		return accounts.map((account) => {
+			const isCurrentAccount = account.index === activeIndex;
+			let status: AccountInfo["status"] = "unknown";
+			if (account.cooldownReason === "auth-failure") {
+				status = "expired";
+			} else if (
+				(account.coolingDownUntil && account.coolingDownUntil > now) ||
+				hasActiveCooldown(account.rateLimitResetTimes, now)
+			) {
+				status = "rate-limited";
+			} else if (isCurrentAccount) {
+				status = "active";
+			}
+			return {
+				index: account.index,
+				accountId: account.accountId,
+				email: account.email,
+				plan: account.plan,
+				addedAt: account.addedAt,
+				lastUsed: account.lastUsed,
+				enabled: account.enabled,
+				status,
+				isCurrentAccount,
+			};
+		});
+	};
 
 	const runInteractiveAuthMenu = async (options: { allowExit: boolean }): Promise<"add" | "exit"> => {
 		while (true) {
@@ -675,11 +700,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			const accounts = accountManager.getAccountsSnapshot();
 			const activeIndex = accountManager.getActiveIndexForFamily(DEFAULT_MODEL_FAMILY);
 			const menuAccounts = buildAuthMenuAccounts(accounts, activeIndex);
-			const now = Date.now();
-
 			const result = await runAuthMenuOnce({
 				accounts: menuAccounts,
-				now,
 				input: process.stdin,
 				output: process.stdout,
 				handlers: {
@@ -762,7 +784,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				let existingStorage = await loadAccounts();
 				if (existingStorage?.accounts?.length) {
 					if (process.stdin.isTTY && process.stdout.isTTY) {
-						await runInteractiveAuthMenu({ allowExit: false });
+						const menuResult = await runInteractiveAuthMenu({ allowExit: true });
+						if (menuResult === "exit") {
+							return {
+								url: "about:blank",
+								method: "code" as const,
+								instructions: "Login cancelled.",
+								callback: async () => ({ type: "failed" as const }),
+							};
+						}
 					} else {
 						while (true) {
 							const existingLabels = buildExistingAccountLabels(existingStorage);
@@ -991,153 +1021,18 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 				});
 			}
 
-			cfg.command = cfg.command || {};
-			delete cfg.command["codex-status"];
-			delete cfg.command["codex-switch-accounts"];
-			delete cfg.command["codex-toggle-account"];
-			delete cfg.command["codex-remove-account"];
-			cfg.command["codex-auth"] = {
-				template:
-					"Run the codex-auth tool and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
-				description: "Open the interactive Codex auth menu.",
-			};
-
-			cfg.experimental = cfg.experimental || {};
-			cfg.experimental.primary_tools = cfg.experimental.primary_tools || [];
-			cfg.experimental.primary_tools = cfg.experimental.primary_tools.filter(
-				(toolName) =>
-					!new Set(["codex-status", "codex-switch-accounts", "codex-toggle-account", "codex-remove-account"]).has(
-						toolName,
-					),
-			);
-			if (!cfg.experimental.primary_tools.includes("codex-auth")) {
-				cfg.experimental.primary_tools.push("codex-auth");
+			if (cfg.command && typeof cfg.command === "object") {
+				for (const key of LEGACY_CODEX_COMMAND_KEYS) {
+					if (key in cfg.command) delete cfg.command[key];
+				}
+			}
+			if (cfg.experimental?.primary_tools) {
+				cfg.experimental.primary_tools = cfg.experimental.primary_tools.filter(
+					(toolName) => !LEGACY_CODEX_COMMAND_KEYS.has(toolName),
+				);
 			}
 		},
-		tool: {
-			"codex-auth": tool({
-				description: "Open the interactive Codex auth menu.",
-				args: {},
-				async execute() {
-					if (!process.stdin.isTTY || !process.stdout.isTTY) {
-						return "Interactive auth menu requires a TTY. Run `opencode auth login`.";
-					}
-					const result = await runInteractiveAuthMenu({ allowExit: true });
-					if (result === "add") {
-						return "Add accounts with `opencode auth login`.";
-					}
-					return "Done.";
-				},
-			}),
-			"codex-status": tool({
-				description: "List all configured OpenAI Codex accounts and their current rate limits.",
-				args: {},
-			async execute() {
-				configureStorageForCurrentCwd();
-				const accountManager = await AccountManager.loadFromDisk();
-				const accounts = accountManager.getAccountsSnapshot();
-				const { scope, storagePath } = getStorageScope();
-				if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
-
-				await Promise.all(accounts.map(async (acc, index) => {
-					if (acc.enabled === false) return;
-					const live = accountManager.getAccountByIndex(index);
-					if (!live) return;
-
-					try {
-					const auth = accountManager.toAuthDetails(live);
-					if (auth.access && auth.expires > Date.now()) {
-						await codexStatus.fetchFromBackend(live, auth.access);
-					}
-					} catch {
-					}
-				}));
-
-					const enabledCount = accounts.filter(a => a.enabled !== false).length;
-				const activeIndex = accountManager.getActiveIndexForFamily(DEFAULT_MODEL_FAMILY);
-					const snapshots = await codexStatus.getAllSnapshots();
-
-					const lines: string[] = [
-						`OpenAI Codex Status`, 
-						``, 
-						`  Scope: ${scope}`, 
-						`  Accounts: ${enabledCount}/${accounts.length} enabled`, 
-						``,
-						...renderObsidianDashboard(accounts, activeIndex, snapshots)
-					];
-
-					lines.push(``);
-					lines.push(`Storage: ${storagePath}`);
-					return lines.join("\n");
-				},
-			}),
-			"codex-switch-accounts": tool({
-				description: "Switch active OpenAI account by index (1-based).",
-				args: { index: tool.schema.number().describe("Account number (1-based)") },
-				async execute({ index }) {
-					configureStorageForCurrentCwd();
-					const storage = await loadAccounts();
-					if (!storage || storage.accounts.length === 0) return "No OpenAI accounts configured.";
-					const targetIndex = Math.floor((index ?? 0) - 1);
-					if (targetIndex < 0 || targetIndex >= storage.accounts.length) return `Invalid account number: ${index}. Valid range: 1-${storage.accounts.length}`;
-					storage.activeIndex = targetIndex;
-					storage.activeIndexByFamily = storage.activeIndexByFamily ?? {};
-					for (const family of MODEL_FAMILIES) storage.activeIndexByFamily[family] = targetIndex;
-					await saveAccounts(storage, { preserveRefreshTokens: true });
-					if (cachedAccountManager) { cachedAccountManager.setActiveIndex(targetIndex); await cachedAccountManager.saveToDisk(); }
-					return `Switched to ${formatAccountLabel(storage.accounts[targetIndex], targetIndex)}`;
-				},
-			}),
-			"codex-toggle-account": tool({
-				description: "Enable or disable an OpenAI account by index (1-based).",
-				args: { index: tool.schema.number().describe("Account number (1-based)") },
-				async execute({ index }) {
-					configureStorageForCurrentCwd();
-					const storage = await loadAccounts();
-					if (!storage || storage.accounts.length === 0) return "No OpenAI accounts configured.";
-					const targetIndex = Math.floor((index ?? 0) - 1);
-					if (targetIndex < 0 || targetIndex >= storage.accounts.length) return `Invalid account number: ${index}. Valid range: 1-${storage.accounts.length}`;
-					const updated = toggleAccountEnabled(storage, targetIndex);
-					if (!updated) return `Failed to toggle account number: ${index}`;
-					await saveAccounts(updated, { preserveRefreshTokens: true });
-					if (cachedAccountManager) {
-						const live = cachedAccountManager.getAccountByIndex(targetIndex);
-						if (live) { live.enabled = updated.accounts[targetIndex]?.enabled !== false; await cachedAccountManager.saveToDisk(); }
-					}
-					return `${updated.accounts[targetIndex]?.enabled !== false ? "Enabled" : "Disabled"} ${formatAccountLabel(updated.accounts[targetIndex], targetIndex)}`;
-				},
-			}),
-			"codex-remove-account": tool({
-				description: "Remove an OpenAI account by index (1-based). This is permanent.",
-				args: {
-					index: tool.schema.number().describe("Account number (1-based)"),
-					confirm: tool.schema.boolean().optional().describe("Confirm removal (required)"),
-				},
-				async execute({ index, confirm }) {
-					if (!confirm) {
-						return "To remove account, call with confirm: true";
-					}
-					configureStorageForCurrentCwd();
-					const accountManager = cachedAccountManager ?? await AccountManager.loadFromDisk();
-					const snapshot = accountManager.getAccountsSnapshot();
-					if (snapshot.length === 0) return "No OpenAI accounts configured.";
-
-					const targetIndex = Math.floor((index ?? 0) - 1);
-					if (targetIndex < 0 || targetIndex >= snapshot.length) {
-						return `Invalid account number: ${index}.`;
-					}
-					const account = accountManager.getAccountByIndex(targetIndex);
-					if (!account) return `Invalid account number: ${index}.`;
-
-					const label = formatAccountLabel(account, targetIndex);
-					const success = await accountManager.removeAccountByIndex(targetIndex);
-
-					if (!success) return `Failed to remove account ${index}.`;
-					
-					return `Removed ${label}.`;
-				},
-			}),
-		},
+		tool: {},
 	};
 };
 

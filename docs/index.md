@@ -21,6 +21,7 @@ Users are responsible for compliance with [OpenAI's Terms of Use](https://openai
 ## Quick Links
 
 ### For Users
+
 - [Getting Started](getting-started.md) - Complete installation and setup guide
 - [Configuration Guide](configuration.md) - Advanced config options and patterns
 - [Multi-Account](multi-account.md) - Multiple accounts, rotation behavior, and account tools
@@ -29,7 +30,9 @@ Users are responsible for compliance with [OpenAI's Terms of Use](https://openai
 - [Release Notes](https://github.com/iam-brain/opencode-openai-codex-multi-auth/releases) - Version history and updates
 
 ### For Developers
+
 Explore the engineering depth behind this plugin:
+
 - [Architecture](development/ARCHITECTURE.md) - Technical design, AI SDK compatibility, store:false explained
 - [Config System](development/CONFIG_FLOW.md) - How configuration loading and merging works
 - [Config Fields](development/CONFIG_FIELDS.md) - Understanding config keys, `id`, and `name` fields
@@ -132,6 +135,7 @@ This plugin represents significant engineering effort to bridge OpenCode and the
 - **Comprehensive test coverage** with actual API verification
 
 **Explore the development docs** to see the depth of implementation:
+
 - [Architecture Deep Dive](development/ARCHITECTURE.md)
 - [Configuration System Internals](development/CONFIG_FLOW.md)
 - [Testing & Verification](development/TESTING.md)

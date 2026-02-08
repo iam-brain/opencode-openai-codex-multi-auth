@@ -12,6 +12,6 @@ Bugfix release: toast debounce configuration and legacy account removal.
 **Reliability & Data Safety**
 
 - **Toast Spam Fix**: Notifications for rate-limit account switching now respect the 60s debounce timer (`rateLimitToastDebounceMs`) instead of the 2s dedupe window, preventing UI spam during heavy load.
-- **Account Removal Safety**: `codex-remove-account` now safely removes accounts even if their tokens were rotated in memory during the same session, preventing "zombie" accounts from persisting in storage.
+- **Account Removal Safety**: account removal now safely handles in-memory token rotations during the same session, preventing "zombie" accounts from persisting in storage.
 
 **Full Changelog**: https://github.com/iam-brain/opencode-openai-codex-multi-auth/compare/v4.5.24...v4.5.25

@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Auth } from "@opencode-ai/sdk";
 import { AUTH_LABELS, DEFAULT_MODEL_FAMILY, JWT_CLAIM_PATH } from "../lib/constants.js";
-import { AccountManager } from "../lib/accounts.js";
 import * as logger from "../lib/logger.js";
 import { createJwt } from "./helpers/jwt.js";
 import { promptLoginMode, promptManageAccounts } from "../lib/cli.js";
@@ -112,131 +111,17 @@ describe("OpenAIAuthPlugin loader", () => {
 		}
 	});
 
-	it("codex-status is read-only (does not refresh or save)", async () => {
-		const root = mkdtempSync(join(tmpdir(), "opencode-status-"));
+	it("does not register codex tools", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-tools-"));
 		process.env.XDG_CONFIG_HOME = root;
-		let refreshSpy: any;
-		let saveSpy: any;
 		try {
-			const storageDir = join(root, "opencode");
-			mkdirSync(storageDir, { recursive: true });
-			const now = Date.now();
-			const storage = {
-				version: 3,
-				accounts: [
-					{
-						refreshToken: "status-refresh",
-						accountId: "acct_status",
-						email: "status@example.com",
-						plan: "Plus",
-						enabled: true,
-						addedAt: now,
-						lastUsed: now,
-					},
-				],
-				activeIndex: 0,
-				activeIndexByFamily: { codex: 0 },
-			};
-			writeFileSync(
-				join(storageDir, "openai-codex-accounts.json"),
-				JSON.stringify(storage, null, 2),
-				"utf-8",
-			);
-
-			refreshSpy = vi
-				.spyOn(AccountManager.prototype, "refreshAccountWithFallback")
-				.mockResolvedValue({ type: "failed" } as any);
-			saveSpy = vi.spyOn(AccountManager.prototype, "saveToDisk").mockResolvedValue();
-
-			const client = {
-				tui: { showToast: vi.fn() },
-				auth: { set: vi.fn() },
-			};
-
-			const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
-			await (plugin as any).tool["codex-status"].execute({});
-
-			expect(refreshSpy).not.toHaveBeenCalled();
-			expect(saveSpy).not.toHaveBeenCalled();
-		} finally {
-			refreshSpy?.mockRestore();
-			saveSpy?.mockRestore();
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("codex-auth tool reports non-tty requirement", async () => {
-		const root = mkdtempSync(join(tmpdir(), "opencode-codex-auth-"));
-		process.env.XDG_CONFIG_HOME = root;
-		const originalIsTTY = process.stdin.isTTY;
-		try {
-			Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
 			const client = {
 				tui: { showToast: vi.fn() },
 				auth: { set: vi.fn() },
 			};
 			const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
-			const result = await (plugin as any).tool["codex-auth"].execute({});
-			expect(result).toContain("TTY");
-		} finally {
-			Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("codex-status highlights active account for default family", async () => {
-		const root = mkdtempSync(join(tmpdir(), "opencode-status-active-"));
-		process.env.XDG_CONFIG_HOME = root;
-		try {
-			const storageDir = join(root, "opencode");
-			mkdirSync(storageDir, { recursive: true });
-			const now = Date.now();
-			const storage = {
-				version: 3,
-				accounts: [
-					{
-						refreshToken: "status-refresh-1",
-						accountId: "acct_status_1",
-						email: "one@example.com",
-						plan: "Plus",
-						enabled: true,
-						addedAt: now,
-						lastUsed: now,
-					},
-					{
-						refreshToken: "status-refresh-2",
-						accountId: "acct_status_2",
-						email: "two@example.com",
-						plan: "Plus",
-						enabled: true,
-						addedAt: now,
-						lastUsed: now,
-					},
-				],
-				activeIndex: 0,
-				activeIndexByFamily: {
-					[DEFAULT_MODEL_FAMILY]: 0,
-					"gpt-5.2": 1,
-				},
-			};
-			writeFileSync(
-				join(storageDir, "openai-codex-accounts.json"),
-				JSON.stringify(storage, null, 2),
-				"utf-8",
-			);
-
-			const client = {
-				tui: { showToast: vi.fn() },
-				auth: { set: vi.fn() },
-			};
-
-			const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
-			const output = await (plugin as any).tool["codex-status"].execute({});
-			const activeLine = output
-				.split("\n")
-				.find((line: string) => line.includes("●") && line.includes("ACTIVE"));
-
-			expect(activeLine).toContain("one@example.com");
+			const toolKeys = Object.keys((plugin as any).tool ?? {});
+			expect(toolKeys.some((key) => key.startsWith("codex-"))).toBe(false);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -343,59 +228,6 @@ describe("OpenAIAuthPlugin loader", () => {
 		}
 	});
 
-	it("removes the correct account when legacy records exist", async () => {
-		const root = mkdtempSync(join(tmpdir(), "opencode-remove-"));
-		process.env.XDG_CONFIG_HOME = root;
-
-		const storageDir = join(root, "opencode");
-		mkdirSync(storageDir, { recursive: true });
-		const now = Date.now();
-		const legacyAccount = {
-			refreshToken: "legacy-refresh",
-			addedAt: now,
-			lastUsed: now,
-			enabled: true,
-		};
-		const fullAccount = {
-			refreshToken: "full-refresh",
-			accountId: "acct_123",
-			email: "user@example.com",
-			plan: "Plus",
-			addedAt: now,
-			lastUsed: now,
-			enabled: true,
-		};
-		const storage = {
-			version: 3,
-			accounts: [legacyAccount, fullAccount],
-			activeIndex: 0,
-			activeIndexByFamily: { codex: 0 },
-		};
-		writeFileSync(
-			join(storageDir, "openai-codex-accounts.json"),
-			JSON.stringify(storage, null, 2),
-			"utf-8",
-		);
-
-		const client = {
-			tui: { showToast: vi.fn() },
-			auth: { set: vi.fn() },
-		};
-
-		const plugin = await OpenAIAuthPlugin({ client: client as any } as any);
-		await (plugin as any).auth.loader(() => Promise.resolve(createAuth()), {} as any);
-
-		const result = await (plugin as any).tool["codex-remove-account"].execute({ index: 2, confirm: true });
-		expect(result).toContain("Removed");
-
-		const updated = JSON.parse(
-			readFileSync(join(storageDir, "openai-codex-accounts.json"), "utf-8"),
-		);
-		expect(updated.accounts).toHaveLength(1);
-		expect(updated.accounts[0].refreshToken).toBe("legacy-refresh");
-
-		await rmSync(root, { recursive: true, force: true });
-	});
 
 	it("toggles the targeted account if storage shifts", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-manage-"));

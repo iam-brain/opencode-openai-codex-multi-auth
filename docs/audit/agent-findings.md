@@ -12,14 +12,14 @@ Chronological record of all agent audit findings (spec + quality + general audit
 - Per-request disk/CPU:
   - Reads instruction cache/meta each request (`lib/prompts/codex.ts:148`).
   - Reads models cache + static defaults each request (`lib/prompts/codex-models.ts:93`, `lib/prompts/codex-models.ts:227`).
-  - Codex status snapshots write per response + per SSE token_count (`lib/codex-status.ts:156`, `lib/codex-status.ts:330`).
+  - Status snapshots write per response + per SSE token_count (`lib/codex-status.ts:156`, `lib/codex-status.ts:330`).
 - Existing caching:
   - Instructions: ETag + 15-min TTL, on-disk cache (`lib/prompts/codex.ts`).
   - Models: on-disk cache exists but server fetch happens before cache (`lib/prompts/codex-models.ts`).
 - Suggested caching points:
   - In-memory cache for instructions/model catalog; ETag for `/codex/models`.
   - Memoize static template defaults to avoid repeated disk reads.
-  - Debounce codex-status disk writes.
+  - Debounce status snapshot disk writes.
 
 ## 2026-02-06 – General Audit (second pass)
 

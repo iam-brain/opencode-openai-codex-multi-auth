@@ -5,6 +5,7 @@ This document explains how OpenCode configuration flows from user files through 
 > Note: Some examples use legacy model aliases for compatibility demonstrations. Runtime normalization maps known gpt-5.x variants (like `gpt-5.3-codex-low`) to base slugs (`gpt-5.3-codex`) before API submission; unknown/legacy IDs are lowercased and preserved without substring coercion.
 
 ## Table of Contents
+
 - [Config Loading Order](#config-loading-order)
 - [Provider Options Flow](#provider-options-flow)
 - [Model Selection & Persistence](#model-selection--persistence)
@@ -19,12 +20,14 @@ This document explains how OpenCode configuration flows from user files through 
 OpenCode loads and merges configuration from multiple sources in this order (**last wins**):
 
 ### 1. Global Config
+
 ```
 ~/.config/opencode/opencode.jsonc
 ~/.config/opencode/opencode.json
 ```
 
 ### 2. Project Configs (traversed upward from cwd)
+
 ```
 <project>/.opencode/opencode.jsonc
 <project>/.opencode/opencode.json
@@ -34,6 +37,7 @@ OpenCode loads and merges configuration from multiple sources in this order (**l
 ```
 
 ### 3. Custom Config (via flags)
+
 ```bash
 OPENCODE_CONFIG=/path/to/config.json opencode
 # or
@@ -41,6 +45,7 @@ OPENCODE_CONFIG_CONTENT='{"model":"openai/gpt-5"}' opencode
 ```
 
 ### 4. Auth Configs
+
 ```
 # From .well-known/opencode endpoints (for OAuth providers)
 https://auth.example.com/.well-known/opencode
@@ -55,17 +60,21 @@ https://auth.example.com/.well-known/opencode
 Options are merged at multiple stages before reaching the plugin:
 
 ### Stage 1: Database Defaults
+
 Models.dev provides baseline capabilities for each provider/model.
 
 ### Stage 2: Environment Variables
+
 ```bash
 export OPENAI_API_KEY="sk-..."
 ```
 
 ### Stage 3: Custom Loaders
+
 Plugins can inject options via the `loader()` function.
 
 ### Stage 4: User Config (HIGHEST PRIORITY)
+
 ```json
 {
   "provider": {
@@ -90,6 +99,7 @@ Plugins can inject options via the `loader()` function.
 ### Display Names vs Internal IDs
 
 **Your Config** (`config/opencode-legacy.json`):
+
 ```json
 {
   "provider": {
@@ -105,9 +115,7 @@ Plugins can inject options via the `loader()` function.
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         }
@@ -118,6 +126,7 @@ Plugins can inject options via the `loader()` function.
 ```
 
 **What OpenCode Uses**:
+
 - **UI Display**: "GPT 5.3 Codex Medium (OAuth)" ✅
 - **Persistence**: `provider_id: "openai"` + `model_id: "gpt-5.3-codex-medium"` ✅
 - **Plugin lookup**: `models["gpt-5.3-codex-medium"]` → used to build Codex request ✅
@@ -144,6 +153,7 @@ last_used = 2025-10-12T10:30:00Z
 ### How This Plugin Receives Config
 
 **Plugin Entry Point** (`index.ts:64-86`):
+
 ```typescript
 async loader(getAuth: () => Promise<Auth>, provider: unknown) {
   const providerConfig = provider as {
@@ -195,6 +205,7 @@ type UserConfig = {
 ### Option Precedence
 
 For a given model, options are merged:
+
 1. **Global options** (`provider.openai.options`)
 2. **Model-specific options** (`provider.openai.models[modelName].options`) ← WINS
 
@@ -205,6 +216,7 @@ For a given model, options are merged:
 ## Examples
 
 ### Example 1: Global Options Only
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -223,6 +235,7 @@ For a given model, options are merged:
 **Result**: All OpenAI models use these options.
 
 ### Example 2: Per-Model Override
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -254,10 +267,12 @@ For a given model, options are merged:
 ```
 
 **Result**:
+
 - `gpt-5.3-codex-high` uses `reasoningEffort: "high"` (overridden) + `textVerbosity: "medium"` (from global)
 - `gpt-5-nano` uses `reasoningEffort: "minimal"` + `textVerbosity: "low"` (both overridden)
 
 ### Example 3: Full Configuration
+
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
@@ -296,9 +311,11 @@ For a given model, options are merged:
 ## Best Practices
 
 ### 1. Use Per-Model Options for Variants
+
 Instead of duplicating global options, override only what's different:
 
 ❌ **Bad**:
+
 ```json
 {
   "models": {
@@ -323,6 +340,7 @@ Instead of duplicating global options, override only what's different:
 ```
 
 ✅ **Good**:
+
 ```json
 {
   "options": {
@@ -348,6 +366,7 @@ Instead of duplicating global options, override only what's different:
 ```
 
 ### 2. Keep Display Names Meaningful
+
 Custom model names help you remember what each variant does:
 
 ```json
@@ -370,6 +389,7 @@ Custom model names help you remember what each variant does:
 ```
 
 ### 3. Set Defaults at Global Level
+
 Most common settings should be global:
 
 ```json
@@ -384,6 +404,7 @@ Most common settings should be global:
 ```
 
 ### 4. Prefer Config Files for Plugin Settings
+
 Use plugin config files for persistent behavior.
 
 ---
@@ -391,17 +412,20 @@ Use plugin config files for persistent behavior.
 ## Troubleshooting
 
 ### Config Not Being Applied
+
 1. Check config file syntax with `jq . < config.json`
 2. Verify config file location (use absolute paths)
 3. Check OpenCode logs for config load errors
 4. Use `OPENCODE_CONFIG_CONTENT` to test minimal configs
 
 ### Model Not Persisting
+
 1. TUI remembers the `id` field, not the display name
 2. Check `~/.config/opencode/tui` for recently used models
 3. Verify your config has the correct `id` field
 
 ### Options Not Taking Effect
+
 1. Model-specific options override global options
 2. Plugin receives merged config from OpenCode
 3. Add debug logging to verify what plugin receives
@@ -409,6 +433,7 @@ Use plugin config files for persistent behavior.
 ---
 
 ## See Also
+
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - Plugin architecture and design decisions
 - [OpenCode Config Schema](https://opencode.ai/config.json) - Official schema
 - [Models.dev](https://models.dev) - Model capability database

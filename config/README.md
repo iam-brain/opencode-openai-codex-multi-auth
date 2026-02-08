@@ -6,19 +6,21 @@ This directory contains the official opencode configuration files for the OpenAI
 
 **Two configuration files are available based on your OpenCode version:**
 
-| File | OpenCode Version | Description |
-|------|------------------|-------------|
-| [`opencode-modern.json`](./opencode-modern.json) | **v1.0.210+ (Jan 2026+)** | Compact config using variants system - 6 models with built-in reasoning level variants |
-| [`opencode-legacy.json`](./opencode-legacy.json) | **v1.0.209 and below** | Extended config with separate model entries for each reasoning level - 20+ individual model definitions |
+| File                                             | OpenCode Version          | Description                                                                                             |
+| ------------------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [`opencode-modern.json`](./opencode-modern.json) | **v1.0.210+ (Jan 2026+)** | Compact config using variants system - 6 models with built-in reasoning level variants                  |
+| [`opencode-legacy.json`](./opencode-legacy.json) | **v1.0.209 and below**    | Extended config with separate model entries for each reasoning level - 20+ individual model definitions |
 
 ### Which one should I use?
 
 **If you have OpenCode v1.0.210 or newer** (check with `opencode --version`):
+
 ```bash
 cp config/opencode-modern.json ~/.config/opencode/opencode.jsonc
 ```
 
 **If you have OpenCode v1.0.209 or older**:
+
 ```bash
 cp config/opencode-legacy.json ~/.config/opencode/opencode.jsonc
 ```
@@ -29,12 +31,13 @@ OpenCode v1.0.210+ introduced a **variants system** that allows defining reasoni
 
 **What you get:**
 
-| Config File | Model Families | Reasoning Variants | Total Models |
-|------------|----------------|-------------------|--------------|
-| `opencode-modern.json` | 6 | Built-in variants (low/medium/high/xhigh) | 6 base models with 19 total variants |
-| `opencode-legacy.json` | 6 | Separate model entries | 20 individual model definitions |
+| Config File            | Model Families | Reasoning Variants                        | Total Models                         |
+| ---------------------- | -------------- | ----------------------------------------- | ------------------------------------ |
+| `opencode-modern.json` | 6              | Built-in variants (low/medium/high/xhigh) | 6 base models with 19 total variants |
+| `opencode-legacy.json` | 6              | Separate model entries                    | 20 individual model definitions      |
 
 Both configs provide:
+
 - ✅ All supported GPT 5.x variants: gpt-5.3-codex, gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini
 - ✅ Proper reasoning effort settings for each variant (including `xhigh` for Codex Max/5.2)
 - ✅ Context limits (272k context / 128k output for all Codex families)
@@ -52,11 +55,13 @@ Both configs provide:
 ## Usage
 
 1. **Check your OpenCode version**:
+
    ```bash
    opencode --version
    ```
 
 2. **Copy the appropriate config** based on your version:
+
    ```bash
    # For v1.0.210+ (recommended):
    cp config/opencode-modern.json ~/.config/opencode/opencode.jsonc
@@ -66,6 +71,7 @@ Both configs provide:
    ```
 
 3. **Run opencode**:
+
    ```bash
    # Modern config (v1.0.210+):
    opencode run "task" --model=openai/gpt-5.3-codex --variant=medium
@@ -92,7 +98,7 @@ Both configs provide access to the same model families:
 - **gpt-5.1-codex-mini** (medium/high) - Codex mini tier presets
 - **gpt-5.1** (none/low/medium/high) - General-purpose reasoning presets
 
-All appear in the opencode model selector as "GPT 5.3 Codex Low (OAuth)", "GPT 5.3 High (OAuth)", etc.
+All appear in the opencode model selector as "GPT 5.3 Codex Low (Codex)", "GPT 5.3 High (Codex)", etc.
 
 ## Configuration Options
 

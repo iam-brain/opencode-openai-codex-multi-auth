@@ -35,31 +35,12 @@ more deterministic account management.
 ### Docs
 - **Multi-account guide**: clarified repair/quarantine behavior and legacy handling.
 
-## [4.5.24] - 2026-01-31
-
-**UI Polish release**: Final alignment tweaks for `codex-status`.
-
-### Fixed
-- **Dashboard Padding**: fine-tuned padding for Plan column and Usage bars to perfectly match the grid alignment.
-
-## [4.5.23] - 2026-01-31
-
-**UI Polish release**: New "Obsidian Dashboard" theme for `codex-status`.
-
-### Changed
-- **Visual Overhaul**: `codex-status` now features the "Obsidian Dashboard" theme:
-  - **High-Density Layout**: Clean, wall-less design with perfect grid alignment.
-  - **Status Pills**: Color-coded badges (ACTIVE/ENABLED/DISABLED) for instant status recognition.
-  - **Dynamic Usage Bars**: Quota bars shift color (Blue -> Yellow -> Red) based on consumption.
-  - **Precision Timers**: Reset timers now include dates for long-term limits (e.g., `resets 09:32 on 3 Feb`).
-
 ## [4.5.21] - 2026-01-31
 
 **Parallel Rotation Resilience release**: atomic sync across multiple machine sessions.
 
 ### Fixed
 - **Unauthorized Recovery**: main request loop now recovers from `401 Unauthorized` by re-syncing with disk and retrying, matching the official Codex CLI's robustness.
-- **Ghost Rotations**: `codex-status` tool now persists rotated tokens to disk immediately, preventing drift that previously invalidated other active sessions.
 - **Token Overwrite Race**: implemented **Timestamp Arbitration** in storage merges; the most recently active session (`lastUsed`) now always wins, preventing stale sessions from corrupting the authoritative machine state.
 
 ### Changed
@@ -67,14 +48,12 @@ more deterministic account management.
 
 ## [4.5.20] - 2026-01-31
 
-**Reliability & Identity Hardening release**: codex-status stability, memory safety, and identity-based tracking.
+**Reliability & Identity Hardening release**: status tracking stability, memory safety, and identity-based tracking.
 
 ### Changed
-- **codex-status Read-Only**: tool no longer forces token refresh; uses existing valid tokens and falls back to cached snapshots on failure.
 - **Identity-Based Trackers**: `HealthScoreTracker` and `TokenBucketTracker` now key on `accountId|email|plan` instead of array index for stability across account changes.
 - **Periodic Cleanup**: both trackers now auto-prune stale entries (24h for health, 1h for tokens) to prevent memory growth.
 - **Console Logging**: migrated `console.error` calls to `logWarn` to respect debug settings and avoid TUI corruption.
-- **Command Templates**: updated slash commands to output results exactly as returned by tools.
 
 ### Added
 - **logCritical()**: new always-enabled logger for critical issues that bypass debug flags.
@@ -84,36 +63,19 @@ more deterministic account management.
 ### Fixed
 - **Memory Leak**: `RateLimitTracker` now cleans up stale entries periodically (every 60s).
 
-## [4.5.19] - 2026-01-31
-
-**Slash Commands release**: register codex tools as TUI slash commands.
-
-### Added
-- **Slash Commands**: `/codex-status`, `/codex-switch-accounts`, `/codex-toggle-account` now available via config hook.
-
-## [4.5.18] - 2026-01-31
-
-**Tool Consolidation release**: finalized renaming of status and account management tools to match the `codex-*` namespace.
-
-### Changed
-- **Tool Consolidation**: renamed `openai-accounts` and `status-codex` to a single authoritative `codex-status` tool.
-- **Account Management**: renamed `openai-accounts-switch` to `codex-switch-accounts` and `openai-accounts-toggle` to `codex-toggle-account`.
-- **Lazy Refresh**: tool calls now only refresh tokens if they are within the `tokenRefreshSkewMs` window (default 60s), reducing unnecessary network roundtrips.
-- **Code Hardening**: implemented SSE stream memory guards (1MB buffer limit) and removed redundant imports and logic in `index.ts`.
-
 ## [4.5.17] - 2026-01-31
 
 **Authoritative Status release**: active fetching from official OpenAI `/wham/usage` endpoints and perfect protocol alignment.
 
 ### Added
-- **Active Usage Fetching**: tools now actively fetch real-time rate limit data from `https://chatgpt.com/backend-api/wham/usage` (ChatGPT plans) and `https://api.openai.com/api/codex/usage` (API plans).
+- **Active Usage Fetching**: status tracking now actively fetches real-time rate limit data from `https://chatgpt.com/backend-api/wham/usage` (ChatGPT plans) and `https://api.openai.com/api/codex/usage` (API plans).
 - **Protocol Alignment**: refactored `CodexStatusManager` to match the official `codex-rs v0.92.0` data structures and TUI formatting.
 - **Detailed Reset Dates**: long-term resets (>24h) now display the full date and time (e.g., `resets 18:10 on 5 Feb`).
 
 ### Changed
 - **Inverted Usage Display**: status bars now show **"% left"** instead of "% used", correctly representing remaining quota.
 - **Standardized Labels**: updated window labels to "5 hour limit:" and "Weekly limit:".
-- **Proactive Tool Hydration**: tool calls now force a token refresh and identity repair to ensure the authoritative `/usage` endpoint receives a valid Bearer token.
+- **Proactive Hydration**: status fetches now force a token refresh and identity repair to ensure the authoritative `/usage` endpoint receives a valid Bearer token.
 - **Enhanced UI Alignment**: applied strict padding and "Always Render Both" logic to ensure vertical and horizontal table stability even with missing or "unknown" data.
 
 ### Fixed
@@ -137,8 +99,8 @@ more deterministic account management.
 **Global Cache path release**: ensure cross-process visibility.
 
 ### Fixed
-- **Global Snapshot Path**: corrected `getCachePath` to always use the system configuration directory (`~/.config/opencode/cache`), ensuring that rate limit data captured by the proxy is visible to CLI tools regardless of project scope.
-- **Table Alignment**: refactored `openai-accounts` and `status-codex` into a strict ASCII table format to prevent horizontal shifting.
+- **Global Snapshot Path**: corrected `getCachePath` to always use the system configuration directory (`~/.config/opencode/cache`), ensuring that rate limit data captured by the proxy is visible across project scopes.
+- **Table Alignment**: refactored account/status table output into a strict ASCII format to prevent horizontal shifting.
 
 ## [4.5.13] - 2026-01-30
 
@@ -157,7 +119,7 @@ more deterministic account management.
 ### Changed
 - **Async Status Hardening**: refactored `CodexStatusManager` to use non-blocking async I/O (`fs.promises`) and promise-based initialization gates to prevent concurrency races.
 - **Cross-Process Hydration**: ensured status snapshots are stored globally even when using per-project account storage, allowing all projects to share real-time rate limit visibility.
-- **Tool UI Refinement**: refactored `openai-accounts` and `status-codex` output into a strictly aligned ASCII table format for better readability.
+- **Status UI Refinement**: refactored account/status output into a strictly aligned ASCII table format for better readability.
 - **Lost Updates Prevention**: implemented timestamp-based (`updatedAt`) merge arbitration under lock (`proper-lockfile`) to ensure newest state wins across concurrent processes.
 - **Security Hardening**: primary accounts and snapshots cache files now use restrictive `0600` permissions.
 
@@ -175,7 +137,7 @@ more deterministic account management.
 - **Persistent Snapshots**: rate limit data is now persisted to `~/.config/opencode/cache/codex-snapshots.json` for cross-process visibility between the proxy and CLI tools.
 
 ### Tests
-- **Status Fixtures**: added `codex-status-snapshots.json` and `codex-headers.json` for deterministic testing of rate limit parsing and rendering.
+- **Status Fixtures**: added snapshot and header fixtures for deterministic testing of rate limit parsing and rendering.
 
 ## [4.5.10] - 2026-01-30
 

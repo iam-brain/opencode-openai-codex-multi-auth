@@ -1,122 +1,227 @@
-import { formatAccountLabel } from "../accounts.js";
-import type { RateLimitStateV3 } from "../types.js";
-import type { SelectItem } from "./tty/select.js";
+import { ANSI, shouldUseColor } from "./tty/ansi.js";
+import { confirm } from "./tty/confirm.js";
+import { select, type MenuItem } from "./tty/select.js";
 
-export type AuthMenuAction =
-	| { type: "add" }
-	| { type: "check-quotas" }
-	| { type: "manage" }
-	| { type: "configure-models" }
-	| { type: "select-account"; account: AuthMenuAccount }
-	| { type: "delete-all" };
+export type AccountStatus = "active" | "rate-limited" | "expired" | "unknown";
 
-export type AccountAction = "back" | "toggle" | "refresh" | "delete";
-
-export type AuthMenuAccount = {
-	index: number;
+export interface AccountInfo {
 	email?: string;
 	plan?: string;
 	accountId?: string;
-	enabled?: boolean;
+	index: number;
+	addedAt?: number;
 	lastUsed?: number;
-	rateLimitResetTimes?: RateLimitStateV3;
-	coolingDownUntil?: number;
-	cooldownReason?: "auth-failure";
-	isActive?: boolean;
-};
-
-export function formatLastUsedHint(lastUsed: number | undefined, now = Date.now()): string {
-	if (!lastUsed || !Number.isFinite(lastUsed) || lastUsed <= 0) return "";
-	const diff = Math.max(0, now - lastUsed);
-	const dayMs = 24 * 60 * 60 * 1000;
-	if (diff < dayMs) return "used today";
-	if (diff < 2 * dayMs) return "used yesterday";
-	const days = Math.floor(diff / dayMs);
-	return `used ${days}d ago`;
+	status?: AccountStatus;
+	isCurrentAccount?: boolean;
+	enabled?: boolean;
 }
 
-function isRateLimited(rateLimitResetTimes: RateLimitStateV3 | undefined, now: number): boolean {
-	if (!rateLimitResetTimes) return false;
-	return Object.values(rateLimitResetTimes).some((resetAt) =>
-		typeof resetAt === "number" && Number.isFinite(resetAt) && resetAt > now,
-	);
+export type AuthMenuAction =
+	| { type: "add" }
+	| { type: "select-account"; account: AccountInfo }
+	| { type: "delete-all" }
+	| { type: "check" }
+	| { type: "manage" }
+	| { type: "configure-models" }
+	| { type: "cancel" };
+
+export type AccountAction = "back" | "delete" | "refresh" | "toggle" | "cancel";
+
+export function formatRelativeTime(timestamp: number | undefined, now = Date.now()): string {
+	if (!timestamp) return "never";
+	const days = Math.floor((now - timestamp) / 86_400_000);
+	if (days <= 0) return "today";
+	if (days === 1) return "yesterday";
+	if (days < 7) return `${days}d ago`;
+	if (days < 30) return `${Math.floor(days / 7)}w ago`;
+	return new Date(timestamp).toLocaleDateString();
 }
 
-export function getAccountBadge(account: AuthMenuAccount, now = Date.now()): string {
-	if (account.enabled === false) return "[disabled]";
-	if (isRateLimited(account.rateLimitResetTimes, now)) return "[rate-limited]";
-	if (account.isActive) return "[active]";
-	return "";
+function formatDate(timestamp: number | undefined): string {
+	if (!timestamp) return "unknown";
+	return new Date(timestamp).toLocaleDateString();
+}
+
+function colorize(text: string, color: string, useColor: boolean): string {
+	return useColor ? `${color}${text}${ANSI.reset}` : text;
+}
+
+function getStatusBadge(status: AccountStatus | undefined, useColor: boolean): string {
+	switch (status) {
+		case "rate-limited":
+			return colorize("[rate-limited]", ANSI.yellow, useColor);
+		case "expired":
+			return colorize("[expired]", ANSI.red, useColor);
+		default:
+			return "";
+	}
+}
+
+export function formatStatusBadges(
+	account: Pick<AccountInfo, "enabled" | "status" | "isCurrentAccount">,
+	useColor = shouldUseColor(),
+): string {
+	const badges: string[] = [];
+	if (account.enabled === false) {
+		badges.push(colorize("[disabled]", ANSI.red, useColor));
+	} else {
+		badges.push(colorize("[enabled]", ANSI.green, useColor));
+	}
+	const statusBadge = getStatusBadge(account.status, useColor);
+	if (statusBadge) badges.push(statusBadge);
+	if (account.isCurrentAccount) {
+		badges.push(colorize("[last active]", ANSI.cyan, useColor));
+	}
+	return badges.join(" ");
+}
+
+function buildAccountLabel(account: AccountInfo, useColor: boolean): string {
+	const baseLabel = account.email || `Account ${account.index + 1}`;
+	const badges = formatStatusBadges(account, useColor);
+	return badges ? `${baseLabel} ${badges}` : baseLabel;
 }
 
 export function buildAuthMenuItems(
-	accounts: AuthMenuAccount[],
-	now = Date.now(),
-): Array<SelectItem<AuthMenuAction>> {
-	const items: Array<SelectItem<AuthMenuAction>> = [
+	accounts: AccountInfo[],
+	useColor = shouldUseColor(),
+): MenuItem<AuthMenuAction>[] {
+	const items: MenuItem<AuthMenuAction>[] = [
 		{ label: "Add new account", value: { type: "add" } },
-		{ label: "Check quotas", value: { type: "check-quotas" } },
+		{ label: "Check quotas", value: { type: "check" } },
 		{ label: "Manage accounts (enable/disable)", value: { type: "manage" } },
 		{ label: "Configure models in opencode.json", value: { type: "configure-models" } },
+
+		...accounts.map((account) => {
+			const label = buildAccountLabel(account, useColor);
+			return {
+				label,
+				hint: account.lastUsed ? `used ${formatRelativeTime(account.lastUsed)}` : "",
+				value: { type: "select-account" as const, account },
+			};
+		}),
 	];
-
-	for (const account of accounts) {
-		const baseLabel = formatAccountLabel(
-			{ email: account.email, plan: account.plan, accountId: account.accountId },
-			account.index,
-		);
-		const badge = getAccountBadge(account, now);
-		const label = badge ? `${baseLabel} ${badge}` : baseLabel;
-		const hint = formatLastUsedHint(account.lastUsed, now);
-		items.push({
-			label,
-			hint: hint || undefined,
-			value: { type: "select-account", account },
-		});
-	}
-
 	if (accounts.length > 0) {
-		items.push({ label: "Delete all accounts", value: { type: "delete-all" } });
+		items.push({ label: "Delete all accounts", value: { type: "delete-all" }, color: "red" });
 	}
 
 	return items;
 }
 
 export function buildAccountActionItems(
-	account: AuthMenuAccount,
-): Array<SelectItem<AccountAction>> {
-	const items: Array<SelectItem<AccountAction>> = [
+	account: AccountInfo,
+): MenuItem<AccountAction>[] {
+	return [
 		{ label: "Back", value: "back" },
 		{
 			label: account.enabled === false ? "Enable account" : "Disable account",
 			value: "toggle",
+			color: account.enabled === false ? "green" : "yellow",
 		},
+		{
+			label: "Refresh token",
+			value: "refresh",
+			color: "cyan",
+			disabled: account.enabled === false,
+		},
+		{ label: "Delete this account", value: "delete", color: "red" },
 	];
-
-	if (account.enabled !== false) {
-		items.push({ label: "Refresh token", value: "refresh" });
-	}
-
-	items.push({ label: "Delete this account", value: "delete" });
-	return items;
 }
 
 export function buildAccountSelectItems(
-	accounts: AuthMenuAccount[],
-	now = Date.now(),
-): Array<SelectItem<AuthMenuAccount>> {
-	return accounts.map((account) => {
-		const baseLabel = formatAccountLabel(
-			{ email: account.email, plan: account.plan, accountId: account.accountId },
-			account.index,
-		);
-		const badge = getAccountBadge(account, now);
-		const label = badge ? `${baseLabel} ${badge}` : baseLabel;
-		const hint = formatLastUsedHint(account.lastUsed, now);
-		return {
-			label,
-			hint: hint || undefined,
-			value: account,
-		};
+	accounts: AccountInfo[],
+	useColor = shouldUseColor(),
+): MenuItem<AccountInfo>[] {
+	return accounts.map((account) => ({
+		label: buildAccountLabel(account, useColor),
+		hint: account.lastUsed ? `used ${formatRelativeTime(account.lastUsed)}` : "",
+		value: account,
+	}));
+}
+
+export async function selectAccount(
+	accounts: AccountInfo[],
+	options: { input?: NodeJS.ReadStream; output?: NodeJS.WriteStream; useColor?: boolean } = {},
+): Promise<AccountInfo | null> {
+	const useColor = options.useColor ?? shouldUseColor();
+	const items = buildAccountSelectItems(accounts, useColor);
+	const result = await select(items, {
+		message: "Manage accounts",
+		subtitle: "Select account",
+		input: options.input,
+		output: options.output,
+		useColor,
 	});
+	return result ?? null;
+}
+
+export async function showAuthMenu(
+	accounts: AccountInfo[],
+	options: { input?: NodeJS.ReadStream; output?: NodeJS.WriteStream; useColor?: boolean } = {},
+): Promise<AuthMenuAction> {
+	const useColor = options.useColor ?? shouldUseColor();
+	const items = buildAuthMenuItems(accounts, useColor);
+
+	while (true) {
+		const result = await select(items, {
+			message: "Manage accounts",
+			subtitle: "Select account",
+			input: options.input,
+			output: options.output,
+			useColor,
+		});
+
+		if (!result) return { type: "cancel" };
+		if (result.type === "delete-all") {
+			const confirmed = await confirm(
+				"Delete ALL accounts? This cannot be undone.",
+				false,
+				options,
+			);
+			if (!confirmed) continue;
+		}
+
+		return result;
+	}
+}
+
+export async function showAccountDetails(
+	account: AccountInfo,
+	options: { input?: NodeJS.ReadStream; output?: NodeJS.WriteStream; useColor?: boolean } = {},
+): Promise<AccountAction> {
+	const useColor = options.useColor ?? shouldUseColor();
+	const output = options.output ?? process.stdout;
+	const label = account.email || `Account ${account.index + 1}`;
+	const badges = formatStatusBadges(account, useColor);
+
+	const bold = useColor ? ANSI.bold : "";
+	const dim = useColor ? ANSI.dim : "";
+	const reset = useColor ? ANSI.reset : "";
+
+	output.write("\n");
+	output.write(`${bold}Account: ${label}${badges ? ` ${badges}` : ""}${reset}\n`);
+	output.write(`${dim}Added: ${formatDate(account.addedAt)}${reset}\n`);
+	output.write(`${dim}Last used: ${formatRelativeTime(account.lastUsed)}${reset}\n`);
+	output.write("\n");
+
+	while (true) {
+		const result = await select(buildAccountActionItems(account), {
+			message: "Account options",
+			subtitle: "Select action",
+			input: options.input,
+			output: options.output,
+			useColor,
+		});
+
+		if (result === "delete") {
+			const confirmed = await confirm(`Delete ${label}?`, false, options);
+			if (!confirmed) continue;
+		}
+
+		if (result === "refresh") {
+			const confirmed = await confirm(`Re-authenticate ${label}?`, false, options);
+			if (!confirmed) continue;
+		}
+
+		return result ?? "cancel";
+	}
 }

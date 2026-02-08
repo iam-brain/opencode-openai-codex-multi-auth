@@ -18,8 +18,8 @@ Complete reference for configuring the OpenCode OpenAI Codex Auth Plugin.
         "store": false
       },
       "models": {
-        "gpt-5.3-codex-low": {
-          "name": "GPT 5.3 Codex Low (OAuth)",
+        "gpt-5.3-codex": {
+          "name": "GPT 5.3 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
@@ -47,12 +47,14 @@ Complete reference for configuring the OpenCode OpenAI Codex Auth Plugin.
 Controls computational effort for reasoning.
 
 **GPT-5.3-Codex Values:**
+
 - `low` - Fastest for code
 - `medium` - Balanced (default)
 - `high` - Maximum code quality
 - `xhigh` - Extra depth for long-horizon tasks
 
 **GPT-5.2 Values** (per OpenAI API docs and Codex CLI `ReasoningEffort` enum):
+
 - `none` - No dedicated reasoning phase (disables reasoning)
 - `low` - Light reasoning
 - `medium` - Balanced (default)
@@ -60,28 +62,33 @@ Controls computational effort for reasoning.
 - `xhigh` - Extra depth for long-horizon tasks
 
 **GPT-5.2-Codex Values:**
+
 - `low` - Fastest for code
 - `medium` - Balanced (default)
 - `high` - Maximum code quality
 - `xhigh` - Extra depth for long-horizon tasks
 
 **GPT-5.1 Values** (per OpenAI API docs and Codex CLI `ReasoningEffort` enum):
+
 - `none` - No dedicated reasoning phase (disables reasoning)
 - `low` - Light reasoning
 - `medium` - Balanced (default)
 - `high` - Deep reasoning
 
 **GPT-5.1-Codex / GPT-5.1-Codex-Max Values:**
+
 - `low` - Fastest for code
 - `medium` - Balanced (default)
 - `high` - Maximum code quality
 - `xhigh` - Extra depth (Codex Max only)
 
 **GPT-5.1-Codex-Mini Values:**
+
 - `medium` - Balanced (default)
 - `high` - Maximum code quality
 
 **Notes**:
+
 - `none` is supported for GPT-5.2 and GPT-5.1 (general purpose) per OpenAI API documentation
 - `none` is NOT supported for Codex variants (including GPT-5.2 Codex) - it auto-converts to `low` for Codex/Codex Max or `medium` for Codex Mini
 - `minimal` auto-converts to `low` for Codex models
@@ -89,6 +96,7 @@ Controls computational effort for reasoning.
 - Codex Mini only supports `medium` or `high`; lower settings clamp to `medium`
 
 **Example:**
+
 ```json
 {
   "options": {
@@ -102,6 +110,7 @@ Controls computational effort for reasoning.
 Controls reasoning summary verbosity.
 
 **Values:**
+
 - `auto` - Automatically adapts (default)
 - `concise` - Short summaries
 - `detailed` - Verbose summaries
@@ -109,6 +118,7 @@ Controls reasoning summary verbosity.
 - `on` - Force enable summary (Codex Max supports)
 
 **Example:**
+
 ```json
 {
   "options": {
@@ -122,14 +132,17 @@ Controls reasoning summary verbosity.
 Controls output length.
 
 **GPT-5 Values:**
+
 - `low` - Concise
 - `medium` - Balanced (default)
 - `high` - Verbose
 
 **GPT-5.2-Codex / GPT-5.1-Codex / Codex Max:**
+
 - `medium` or `high` (Codex Max defaults to `medium`)
 
 **Example:**
+
 ```json
 {
   "options": {
@@ -147,6 +160,7 @@ Array of additional response fields to include.
 **Why needed**: Enables multi-turn conversations with `store: false` (stateless mode)
 
 **Example:**
+
 ```json
 {
   "options": {
@@ -162,6 +176,7 @@ Controls server-side conversation persistence.
 **⚠️ Required**: `false` (for AI SDK 2.0.50+ compatibility)
 
 **Values:**
+
 - `false` - Stateless mode (required for Codex API)
 - `true` - Server-side storage (not supported by Codex API)
 
@@ -169,6 +184,7 @@ Controls server-side conversation persistence.
 AI SDK 2.0.50+ automatically uses `item_reference` items when `store: true`. The Codex API requires stateless operation (`store: false`), where references cannot be resolved.
 
 **Example:**
+
 ```json
 {
   "options": {
@@ -263,6 +279,7 @@ Different settings for different models:
 - **`id` field**: DEPRECATED - not used by OpenAI provider
 
 **Example Usage:**
+
 ```bash
 # Use the config key in CLI
 opencode run "task" --model=openai/my-custom-id
@@ -285,21 +302,21 @@ Create named variants for common tasks:
 ```json
 {
   "models": {
-    "codex-quick": {
+    "codex-5.3-codex-quick": {
       "name": "⚡ Quick Code",
       "options": {
         "reasoningEffort": "low",
         "store": false
       }
     },
-    "codex-balanced": {
+    "codex-5.3-codex-balanced": {
       "name": "⚖️ Balanced Code",
       "options": {
         "reasoningEffort": "medium",
         "store": false
       }
     },
-    "codex-quality": {
+    "codex-5.3-codex-max-quality": {
       "name": "🎯 Max Quality",
       "options": {
         "reasoningEffort": "high",
@@ -319,11 +336,11 @@ Different agents use different models:
 {
   "agent": {
     "commit": {
-      "model": "openai/gpt-5.3-codex-low",
+      "model": "openai/gpt-5.3-codex",
       "prompt": "Generate concise commit messages"
     },
     "review": {
-      "model": "openai/gpt-5.3-codex-high",
+      "model": "openai/gpt-5.3-codex",
       "prompt": "Thorough code review"
     }
   }
@@ -335,6 +352,7 @@ Different agents use different models:
 Global config has defaults, project overrides for specific work:
 
 **~/.config/opencode/opencode.jsonc** (global, preferred):
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -350,6 +368,7 @@ Global config has defaults, project overrides for specific work:
 ```
 
 **my-project/.opencode.json** (project):
+
 ```json
 {
   "provider": {
@@ -394,6 +413,7 @@ These settings are merged on top of the OpenCode config at request time.
 ```
 
 Personality descriptions come from:
+
 - `.opencode/Personalities/*.md` (project-local)
 - `~/.config/opencode/Personalities/*.md` (global)
 
@@ -421,60 +441,63 @@ Add `$schema` for editor autocompletion:
 }
 ```
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `accountSelectionStrategy` | `string` | `"sticky"` | Strategy for selecting accounts (`sticky`, `round-robin`, `hybrid`). |
-| `pidOffsetEnabled` | `boolean` | `true` | Enable PID-based offset for parallel agent rotation. |
-| `perProjectAccounts` | `boolean` | `false` | If `true`, the plugin will look for and use account storage in `.opencode/openai-codex-accounts.json` relative to the current project. |
-| `quietMode` | `boolean` | `false` | Disable TUI toasts for background operations (e.g., token refreshes). |
-| `rateLimitToastDebounceMs` | `number` | `60000` | Debounce account/rate-limit toasts. |
-| `tokenRefreshSkewMs` | `number` | `60000` | Refresh OAuth tokens this early (ms) before expiry. |
-| `proactiveTokenRefresh` | `boolean` | `false` | Enable background token refresh queue (when available). |
-| `authDebug` | `boolean` | `false` | Enable debug logging (env aliases supported). |
+| Field                      | Type      | Default    | Description                                                                                                                            |
+| :------------------------- | :-------- | :--------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| `accountSelectionStrategy` | `string`  | `"sticky"` | Strategy for selecting accounts (`sticky`, `round-robin`, `hybrid`).                                                                   |
+| `pidOffsetEnabled`         | `boolean` | `true`     | Enable PID-based offset for parallel agent rotation.                                                                                   |
+| `perProjectAccounts`       | `boolean` | `false`    | If `true`, the plugin will look for and use account storage in `.opencode/openai-codex-accounts.json` relative to the current project. |
+| `quietMode`                | `boolean` | `false`    | Disable TUI toasts for background operations (e.g., token refreshes).                                                                  |
+| `rateLimitToastDebounceMs` | `number`  | `60000`    | Debounce account/rate-limit toasts.                                                                                                    |
+| `tokenRefreshSkewMs`       | `number`  | `60000`    | Refresh OAuth tokens this early (ms) before expiry.                                                                                    |
+| `proactiveTokenRefresh`    | `boolean` | `false`    | Enable background token refresh queue (when available).                                                                                |
+| `authDebug`                | `boolean` | `false`    | Enable debug logging (env aliases supported).                                                                                          |
 
 #### Hard-Stop Settings
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `hardStopMaxWaitMs` | `number` | `10000` | Maximum wait before returning a hard-stop error when no accounts are available. |
-| `hardStopOnUnknownModel` | `boolean` | `true` | Return a hard-stop error for models not in the server catalog. |
-| `hardStopOnAllAuthFailed` | `boolean` | `true` | Return a hard-stop error when all accounts are in auth-failure cooldown. |
-| `hardStopMaxConsecutiveFailures` | `number` | `5` | Maximum consecutive failures before returning a hard-stop error. |
+| Field                            | Type      | Default | Description                                                                     |
+| :------------------------------- | :-------- | :------ | :------------------------------------------------------------------------------ |
+| `hardStopMaxWaitMs`              | `number`  | `10000` | Maximum wait before returning a hard-stop error when no accounts are available. |
+| `hardStopOnUnknownModel`         | `boolean` | `true`  | Return a hard-stop error for models not in the server catalog.                  |
+| `hardStopOnAllAuthFailed`        | `boolean` | `true`  | Return a hard-stop error when all accounts are in auth-failure cooldown.        |
+| `hardStopMaxConsecutiveFailures` | `number`  | `5`     | Maximum consecutive failures before returning a hard-stop error.                |
 
 Default hard-stop wait is 10 seconds; increase `hardStopMaxWaitMs` if you prefer longer waits.
 
 #### Scheduling & Retry Settings
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `schedulingMode` | `string` | `"cache_first"` | Scheduling strategy (`cache_first`, `balance`, `performance_first`). |
-| `maxCacheFirstWaitSeconds` | `number` | `60` | Max seconds to wait in cache-first mode before switching. |
-| `switchOnFirstRateLimit` | `boolean` | `true` | Switch accounts immediately on the first rate-limit response. |
-| `retryAllAccountsRateLimited` | `boolean` | `false` | Enable global retry loop when all accounts are rate-limited. |
-| `retryAllAccountsMaxWaitMs` | `number` | `30000` | Max wait time for all-accounts retry (0 disables the limit). |
-| `retryAllAccountsMaxRetries` | `number` | `1` | Max retry cycles when all accounts are rate-limited. |
+| Field                         | Type      | Default         | Description                                                          |
+| :---------------------------- | :-------- | :-------------- | :------------------------------------------------------------------- |
+| `schedulingMode`              | `string`  | `"cache_first"` | Scheduling strategy (`cache_first`, `balance`, `performance_first`). |
+| `maxCacheFirstWaitSeconds`    | `number`  | `60`            | Max seconds to wait in cache-first mode before switching.            |
+| `switchOnFirstRateLimit`      | `boolean` | `true`          | Switch accounts immediately on the first rate-limit response.        |
+| `retryAllAccountsRateLimited` | `boolean` | `false`         | Enable global retry loop when all accounts are rate-limited.         |
+| `retryAllAccountsMaxWaitMs`   | `number`  | `30000`         | Max wait time for all-accounts retry (0 disables the limit).         |
+| `retryAllAccountsMaxRetries`  | `number`  | `1`             | Max retry cycles when all accounts are rate-limited.                 |
 
 #### Rate-Limit Tuning
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `rateLimitDedupWindowMs` | `number` | `2000` | Deduplicate rate-limit events within this window. |
-| `rateLimitStateResetMs` | `number` | `120000` | Reset rate-limit state after this idle time. |
-| `defaultRetryAfterMs` | `number` | `60000` | Fallback retry-after when headers are missing. |
-| `maxBackoffMs` | `number` | `120000` | Cap exponential backoff for rate-limit retries. |
-| `requestJitterMaxMs` | `number` | `1000` | Random jitter added to retry delays. |
+| Field                    | Type     | Default  | Description                                       |
+| :----------------------- | :------- | :------- | :------------------------------------------------ |
+| `rateLimitDedupWindowMs` | `number` | `2000`   | Deduplicate rate-limit events within this window. |
+| `rateLimitStateResetMs`  | `number` | `120000` | Reset rate-limit state after this idle time.      |
+| `defaultRetryAfterMs`    | `number` | `60000`  | Fallback retry-after when headers are missing.    |
+| `maxBackoffMs`           | `number` | `120000` | Cap exponential backoff for rate-limit retries.   |
+| `requestJitterMaxMs`     | `number` | `1000`   | Random jitter added to retry delays.              |
 
 #### Per-Project Storage
 
 **What it does:**
+
 - `true`: Looks for `.opencode/openai-codex-accounts.json` in the current working directory (or parent directories). If found, it uses that file for account storage instead of the global file.
 - `false` (default): Always uses the global accounts file (`~/.config/opencode/openai-codex-accounts.json`).
 
 **Use case:**
+
 - Isolating accounts for specific projects (e.g., client projects with dedicated credentials).
 - Keeping credentials inside a project directory (ensure `.opencode/` is gitignored!).
 
 **Behavior:**
+
 - If `perProjectAccounts: true` AND a project-local file exists: Uses project storage.
 - If `perProjectAccounts: true` AND NO project-local file exists: Falls back to global storage.
 - If `perProjectAccounts: false`: Always uses global storage.
@@ -488,42 +511,42 @@ For a detailed guide, see [docs/multi-account.md](multi-account.md).
 
 #### Strategy Guide
 
-| Your Setup | Recommended Setting | Why |
-|------------|---------------------|-----|
-| 1 account | `accountSelectionStrategy: "sticky"` | No rotation needed; best caching |
-| 2-4 accounts | `sticky` + `pidOffsetEnabled: true` | Sticky preserves caching, PID offset spreads parallel agents |
-| 5+ accounts / best overall | `accountSelectionStrategy: "hybrid"` | Health score + token bucket + LRU bias |
-| 5+ accounts / max throughput | `accountSelectionStrategy: "round-robin"` | Maximum distribution (less caching) |
+| Your Setup                   | Recommended Setting                       | Why                                                          |
+| ---------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| 1 account                    | `accountSelectionStrategy: "sticky"`      | No rotation needed; best caching                             |
+| 2-4 accounts                 | `sticky` + `pidOffsetEnabled: true`       | Sticky preserves caching, PID offset spreads parallel agents |
+| 5+ accounts / best overall   | `accountSelectionStrategy: "hybrid"`      | Health score + token bucket + LRU bias                       |
+| 5+ accounts / max throughput | `accountSelectionStrategy: "round-robin"` | Maximum distribution (less caching)                          |
 
 #### Environment Variable Overrides
 
 All options can be overridden with env vars:
 
-| Field | Env Var | Notes |
-| :--- | :--- | :--- |
-| `accountSelectionStrategy` | `CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY` | `sticky`, `round-robin`, `hybrid` |
-| `pidOffsetEnabled` | `CODEX_AUTH_PID_OFFSET_ENABLED` | Boolean |
-| `perProjectAccounts` | `CODEX_AUTH_PER_PROJECT_ACCOUNTS` | Boolean |
-| `quietMode` | `CODEX_AUTH_QUIET` | Boolean |
-| `rateLimitToastDebounceMs` | `CODEX_AUTH_RATE_LIMIT_TOAST_DEBOUNCE_MS` | Milliseconds |
-| `tokenRefreshSkewMs` | `CODEX_AUTH_TOKEN_REFRESH_SKEW_MS` | Milliseconds |
-| `proactiveTokenRefresh` | `CODEX_AUTH_PROACTIVE_TOKEN_REFRESH` | Boolean |
-| `authDebug` | `CODEX_AUTH_DEBUG` | Aliases supported (see below) |
-| `schedulingMode` | `CODEX_AUTH_SCHEDULING_MODE` | `cache_first`, `balance`, `performance_first` |
-| `maxCacheFirstWaitSeconds` | `CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS` | Seconds |
-| `switchOnFirstRateLimit` | `CODEX_AUTH_SWITCH_ON_FIRST_RATE_LIMIT` | Boolean |
-| `rateLimitDedupWindowMs` | `CODEX_AUTH_RATE_LIMIT_DEDUP_WINDOW_MS` | Milliseconds |
-| `rateLimitStateResetMs` | `CODEX_AUTH_RATE_LIMIT_STATE_RESET_MS` | Milliseconds |
-| `defaultRetryAfterMs` | `CODEX_AUTH_DEFAULT_RETRY_AFTER_MS` | Milliseconds |
-| `maxBackoffMs` | `CODEX_AUTH_MAX_BACKOFF_MS` | Milliseconds |
-| `requestJitterMaxMs` | `CODEX_AUTH_REQUEST_JITTER_MAX_MS` | Milliseconds |
-| `retryAllAccountsRateLimited` | `CODEX_AUTH_RETRY_ALL_RATE_LIMITED` | Boolean |
-| `retryAllAccountsMaxWaitMs` | `CODEX_AUTH_RETRY_ALL_MAX_WAIT_MS` | Milliseconds |
-| `retryAllAccountsMaxRetries` | `CODEX_AUTH_RETRY_ALL_MAX_RETRIES` | Number |
-| `hardStopMaxWaitMs` | `CODEX_AUTH_HARD_STOP_MAX_WAIT_MS` | Milliseconds |
-| `hardStopOnUnknownModel` | `CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL` | Boolean |
-| `hardStopOnAllAuthFailed` | `CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED` | Boolean |
-| `hardStopMaxConsecutiveFailures` | `CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES` | Number |
+| Field                            | Env Var                                         | Notes                                         |
+| :------------------------------- | :---------------------------------------------- | :-------------------------------------------- |
+| `accountSelectionStrategy`       | `CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY`         | `sticky`, `round-robin`, `hybrid`             |
+| `pidOffsetEnabled`               | `CODEX_AUTH_PID_OFFSET_ENABLED`                 | Boolean                                       |
+| `perProjectAccounts`             | `CODEX_AUTH_PER_PROJECT_ACCOUNTS`               | Boolean                                       |
+| `quietMode`                      | `CODEX_AUTH_QUIET`                              | Boolean                                       |
+| `rateLimitToastDebounceMs`       | `CODEX_AUTH_RATE_LIMIT_TOAST_DEBOUNCE_MS`       | Milliseconds                                  |
+| `tokenRefreshSkewMs`             | `CODEX_AUTH_TOKEN_REFRESH_SKEW_MS`              | Milliseconds                                  |
+| `proactiveTokenRefresh`          | `CODEX_AUTH_PROACTIVE_TOKEN_REFRESH`            | Boolean                                       |
+| `authDebug`                      | `CODEX_AUTH_DEBUG`                              | Aliases supported (see below)                 |
+| `schedulingMode`                 | `CODEX_AUTH_SCHEDULING_MODE`                    | `cache_first`, `balance`, `performance_first` |
+| `maxCacheFirstWaitSeconds`       | `CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS`       | Seconds                                       |
+| `switchOnFirstRateLimit`         | `CODEX_AUTH_SWITCH_ON_FIRST_RATE_LIMIT`         | Boolean                                       |
+| `rateLimitDedupWindowMs`         | `CODEX_AUTH_RATE_LIMIT_DEDUP_WINDOW_MS`         | Milliseconds                                  |
+| `rateLimitStateResetMs`          | `CODEX_AUTH_RATE_LIMIT_STATE_RESET_MS`          | Milliseconds                                  |
+| `defaultRetryAfterMs`            | `CODEX_AUTH_DEFAULT_RETRY_AFTER_MS`             | Milliseconds                                  |
+| `maxBackoffMs`                   | `CODEX_AUTH_MAX_BACKOFF_MS`                     | Milliseconds                                  |
+| `requestJitterMaxMs`             | `CODEX_AUTH_REQUEST_JITTER_MAX_MS`              | Milliseconds                                  |
+| `retryAllAccountsRateLimited`    | `CODEX_AUTH_RETRY_ALL_RATE_LIMITED`             | Boolean                                       |
+| `retryAllAccountsMaxWaitMs`      | `CODEX_AUTH_RETRY_ALL_MAX_WAIT_MS`              | Milliseconds                                  |
+| `retryAllAccountsMaxRetries`     | `CODEX_AUTH_RETRY_ALL_MAX_RETRIES`              | Number                                        |
+| `hardStopMaxWaitMs`              | `CODEX_AUTH_HARD_STOP_MAX_WAIT_MS`              | Milliseconds                                  |
+| `hardStopOnUnknownModel`         | `CODEX_AUTH_HARD_STOP_ON_UNKNOWN_MODEL`         | Boolean                                       |
+| `hardStopOnAllAuthFailed`        | `CODEX_AUTH_HARD_STOP_ON_ALL_AUTH_FAILED`       | Boolean                                       |
+| `hardStopMaxConsecutiveFailures` | `CODEX_AUTH_HARD_STOP_MAX_CONSECUTIVE_FAILURES` | Number                                        |
 
 ```bash
 CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=round-robin
@@ -553,6 +576,7 @@ CODEX_AUTH_NO_BROWSER=1
 ```
 
 Deprecated environment aliases (still supported):
+
 - `OPENCODE_OPENAI_AUTH_DEBUG`, `DEBUG_CODEX_PLUGIN` → `CODEX_AUTH_DEBUG`
 - `OPENCODE_NO_BROWSER`, `OPENCODE_HEADLESS` → `CODEX_AUTH_NO_BROWSER`
 
@@ -590,12 +614,14 @@ Note: legacy `codex-models-cache.json` files are ignored after the per-account c
 ## Configuration Files
 
 **Provided Examples:**
+
 - [config/opencode-modern.json](../config/opencode-modern.json) - Variants-based config for OpenCode v1.0.210+
 - [config/opencode-legacy.json](../config/opencode-legacy.json) - Legacy full list for v1.0.209 and below
 
 > **⚠️ REQUIRED:** You MUST use the config that matches your OpenCode version (`opencode-modern.json` or `opencode-legacy.json`). Minimal configs are NOT supported for GPT 5 models and will fail unpredictably. OpenCode's auto-compaction and usage widgets also require the full config's per-model `limit` metadata.
 
 **Your Configs:**
+
 - `~/.config/opencode/opencode.jsonc` - Global config (preferred)
 - `~/.config/opencode/opencode.json` - Global config (fallback)
 - `<project>/.opencode.json` - Project-specific config
@@ -620,6 +646,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "test" --model=openai/your-model-name
 ```
 
 Look for:
+
 ```
 [openai-codex-plugin] Model config lookup: "your-model-name" → normalized to "gpt-5.3-codex" for API {
   hasModelSpecificConfig: true,
@@ -649,11 +676,12 @@ Old verbose names still work:
 **⚠️ IMPORTANT:** Old configs with GPT 5.0 models are deprecated. You MUST migrate to the new GPT 5.x configs (`opencode-modern.json` or `opencode-legacy.json`).
 
 **Old config (deprecated):**
+
 ```json
 {
   "models": {
     "gpt-5-codex-low": {
-      "name": "GPT 5 Codex Low (OAuth)",
+      "name": "GPT 5 Codex Low (Codex)",
       "options": { "reasoningEffort": "low" }
     }
   }
@@ -668,7 +696,7 @@ Use the official config file (`opencode-modern.json` for v1.0.210+, `opencode-le
 {
   "models": {
     "gpt-5.3-codex-low": {
-      "name": "GPT 5.3 Codex Low (OAuth)",
+      "name": "GPT 5.3 Codex Low (Codex)",
       "limit": {
         "context": 272000,
         "output": 128000
@@ -686,70 +714,10 @@ Use the official config file (`opencode-modern.json` for v1.0.210+, `opencode-le
 ```
 
 **Benefits:**
+
 - GPT 5.2/5.1 support (5.0 is deprecated)
 - Proper limit metadata for OpenCode features
 - Verified configuration that works reliably
-
----
-
-## Common Patterns
-
-### Pattern: Task-Based Presets
-
-```json
-{
-  "models": {
-    "quick-chat": {
-      "name": "Quick Chat",
-      "options": {
-        "reasoningEffort": "minimal",
-        "textVerbosity": "low",
-        "store": false
-      }
-    },
-    "code-gen": {
-      "name": "Code Generation",
-      "options": {
-        "reasoningEffort": "medium",
-        "store": false
-      }
-    },
-    "debug-help": {
-      "name": "Debug Analysis",
-      "options": {
-        "reasoningEffort": "high",
-        "reasoningSummary": "detailed",
-        "store": false
-      }
-    }
-  }
-}
-```
-
-### Pattern: Cost vs Quality
-
-```json
-{
-  "models": {
-    "economy": {
-      "name": "Economy Mode",
-      "options": {
-        "reasoningEffort": "low",
-        "textVerbosity": "low",
-        "store": false
-      }
-    },
-    "premium": {
-      "name": "Premium Mode",
-      "options": {
-        "reasoningEffort": "high",
-        "textVerbosity": "high",
-        "store": false
-      }
-    }
-  }
-}
-```
 
 ---
 
@@ -762,9 +730,11 @@ Use the official config file (`opencode-modern.json` for v1.0.210+, `opencode-le
 **Cause**: Config key doesn't match model name in command
 
 **Fix**: Use exact config key:
+
 ```json
 { "models": { "my-model": { ... } } }
 ```
+
 ```bash
 opencode run "test" --model=openai/my-model  # Must match exactly
 ```
@@ -784,14 +754,16 @@ Look for `hasModelSpecificConfig: true` in debug output.
 **Cause**: Config key in `opencode.json` doesn't match the model name used in CLI
 
 **Example Problem:**
+
 ```json
 { "models": { "gpt-5.3-codex": { "options": { ... } } } }
 ```
+
 ```bash
 --model=openai/gpt-5.3-codex-low  # Plugin looks for "gpt-5.3-codex-low" in config
 ```
 
-**Fix**: Use exact name you specify in CLI as config key (normalization for API happens *after* config lookup).
+**Fix**: Use exact name you specify in CLI as config key (normalization for API happens _after_ config lookup).
 
 > **⚠️ Best Practice:** Use the official `opencode-modern.json` or `opencode-legacy.json` configuration instead of creating custom configs. This ensures proper model normalization and compatibility with GPT 5 models.
 

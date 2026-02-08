@@ -26,12 +26,14 @@ This plugin prioritizes user privacy and data security. We believe in transparen
 All data is stored **locally on your machine**:
 
 ### OAuth Tokens
+
 - **Location:** `~/.config/opencode/openai-codex-accounts.json` (plus any project-local storage seeded by OpenCode)
 - **Contents:** Refresh tokens, access tokens, expiration timestamps, account identity metadata
 - **Managed by:** This plugin's account storage (with file locking + atomic writes)
 - **Security:** File permissions restrict access to your user account
 
 ### Cache Files
+
 - **Location:** `~/.config/opencode/cache/`
 - **Contents:**
   - `gpt-5.1-codex-instructions.md`, `gpt-5.3-codex-instructions.md`, `gpt-5.3-codex-instructions-v2.md`, etc. (Codex system instructions)
@@ -40,11 +42,13 @@ All data is stored **locally on your machine**:
 - **Purpose:** Reduce GitHub API calls, preserve offline fallbacks, and improve startup/runtime performance
 
 ### Personality Cache Files
+
 - **Location:** `~/.config/opencode/Personalities/`
 - **Contents:** `Friendly.md`, `Pragmatic.md` (server-derived personality fallbacks)
 - **Purpose:** Durable fallback when runtime defaults cannot be fetched; user-managed files are not overwritten
 
 ### Debug Logs
+
 - **Location:** `~/.config/opencode/logs/codex-plugin/`
 - **Contents:** Request/response logs (only when `ENABLE_PLUGIN_REQUEST_LOGGING=1` is set)
 - **Includes:**
@@ -59,14 +63,18 @@ All data is stored **locally on your machine**:
 ## Data Transmission
 
 ### Direct to OpenAI
+
 All API requests go **directly from your machine to OpenAI's servers**:
+
 - ✅ No intermediary proxies
 - ✅ No third-party data collection
 - ✅ HTTPS encrypted communication
 - ✅ OAuth-secured authentication
 
 ### What Gets Sent to OpenAI
+
 When you use the plugin, the following is transmitted to OpenAI:
+
 - Your prompts and conversation history
 - OAuth access token (for authentication)
 - ChatGPT account ID (from token JWT)
@@ -76,6 +84,7 @@ When you use the plugin, the following is transmitted to OpenAI:
 **Note:** This is identical to what the official OpenAI Codex CLI sends.
 
 ### What Does NOT Get Sent
+
 - ❌ Your filesystem contents (unless explicitly requested via tools)
 - ❌ Personal information beyond what's in your prompts
 - ❌ Usage statistics or analytics
@@ -86,7 +95,9 @@ When you use the plugin, the following is transmitted to OpenAI:
 ## Third-Party Services
 
 ### GitHub API
+
 The plugin fetches Codex instructions from GitHub:
+
 - **URL:** `https://api.github.com/repos/openai/codex/releases/latest`
 - **Purpose:** Resolve latest release tag, then fetch prompt/model metadata files from `raw.githubusercontent.com`
 - **Frequency:** Instructions use ETag + 15-minute staleness checks; runtime model metadata also has local cache fallback
@@ -94,7 +105,9 @@ The plugin fetches Codex instructions from GitHub:
 - **Rate limiting:** 60 requests/hour (unauthenticated)
 
 ### OpenAI Services
+
 All interactions with OpenAI go through:
+
 - **OAuth:** `https://chatgpt.com/oauth`
 - **API:** `https://chatgpt.com/backend-api/codex/responses` and `https://chatgpt.com/backend-api/codex/models`
 
@@ -107,6 +120,7 @@ See [OpenAI Privacy Policy](https://openai.com/policies/privacy-policy/) for how
 You have complete control over your data:
 
 ### Delete OAuth Tokens
+
 ```bash
 opencode auth logout
 # Or manually:
@@ -114,16 +128,19 @@ rm ~/.config/opencode/openai-codex-accounts.json
 ```
 
 ### Delete Cache Files
+
 ```bash
 rm -rf ~/.config/opencode/cache/
 ```
 
 ### Delete Logs
+
 ```bash
 rm -rf ~/.config/opencode/logs/codex-plugin/
 ```
 
 ### Revoke OAuth Access
+
 1. Visit [ChatGPT Settings → Authorized Apps](https://chatgpt.com/settings/apps)
 2. Find "OpenCode" or "Codex CLI"
 3. Click "Revoke"
@@ -135,19 +152,24 @@ This immediately invalidates all access tokens.
 ## Security Measures
 
 ### Token Protection
+
 - **Local storage only:** Tokens never leave your machine except when sent to OpenAI for authentication
 - **File permissions:** Auth files are readable only by your user account
 - **No logging:** OAuth tokens are never written to debug logs
 - **Automatic refresh:** Expired tokens are refreshed automatically
 
 ### PKCE Flow
+
 The plugin uses **PKCE (Proof Key for Code Exchange)** for OAuth:
+
 - Prevents authorization code interception attacks
 - Industry-standard security for OAuth 2.0
 - Same method used by OpenAI's official Codex CLI
 
 ### HTTPS Encryption
+
 All network communication uses HTTPS:
+
 - OAuth authorization: Encrypted
 - API requests: Encrypted
 - Token refresh: Encrypted
@@ -157,14 +179,18 @@ All network communication uses HTTPS:
 ## Compliance
 
 ### OpenAI's Privacy Policy
+
 When using this plugin, you are subject to:
+
 - [OpenAI Privacy Policy](https://openai.com/policies/privacy-policy/)
 - [OpenAI Terms of Use](https://openai.com/policies/terms-of-use/)
 
 **Your responsibility:** Ensure your usage complies with OpenAI's policies.
 
 ### GDPR Considerations
+
 This plugin:
+
 - ✅ Does not collect personal data
 - ✅ Does not process data on behalf of third parties
 - ✅ Stores data locally under your control
@@ -177,16 +203,20 @@ However, data sent to OpenAI is subject to OpenAI's privacy practices.
 ## Transparency
 
 ### Open Source
+
 The entire plugin source code is available at:
+
 - **GitHub:** [https://github.com/iam-brain/opencode-openai-codex-multi-auth](https://github.com/iam-brain/opencode-openai-codex-multi-auth)
 
 You can:
+
 - Review all code
 - Audit data handling
 - Verify no hidden telemetry
 - Inspect network requests
 
 ### No Hidden Behavior
+
 - No obfuscated code
 - No minified dependencies
 - All network requests are documented
@@ -197,6 +227,7 @@ You can:
 ## Questions?
 
 For privacy-related questions:
+
 - **Plugin-specific:** [GitHub Issues](https://github.com/iam-brain/opencode-openai-codex-multi-auth/issues)
 - **OpenAI data handling:** [OpenAI Support](https://help.openai.com/)
 - **Security concerns:** See [SECURITY.md](../SECURITY.md)

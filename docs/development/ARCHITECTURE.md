@@ -3,6 +3,7 @@
 This document explains the technical design decisions, architecture, and implementation details of the OpenAI Codex OAuth plugin for OpenCode.
 
 ## Table of Contents
+
 - [Architecture Overview](#architecture-overview)
 - [Stateless vs Stateful Mode](#stateless-vs-stateful-mode)
 - [Message ID Handling](#message-id-handling)
@@ -11,7 +12,6 @@ This document explains the technical design decisions, architecture, and impleme
 - [Comparison with Codex CLI](#comparison-with-codex-cli)
 - [Design Rationale](#design-rationale)
 - [Multi-Process State Management](#multi-process-state-management)
-- [Codex Status Tool Implementation](#codex-status-tool-implementation)
 
 ---
 
@@ -27,9 +27,9 @@ This document explains the technical design decisions, architecture, and impleme
        ▼
 ┌──────────────────────────────┐
 │  OpenCode Provider System    │
-│  - Loads plugin               │
-│  - Calls plugin.auth.loader() │
-│  - Passes provider config     │
+│  - Loads plugin              │
+│  - Calls plugin.auth.loader()│
+│  - Passes provider config    │
 └──────┬───────────────────────┘
        │
        │ Custom fetch()
@@ -64,9 +64,10 @@ This document explains the technical design decisions, architecture, and impleme
 The plugin uses **`store: false`** (stateless mode) because:
 
 1. **ChatGPT Backend Requirement** (confirmed via testing):
+
    ```json
    // Attempt with store:true → 400 Bad Request
-   {"detail":"Store must be set to false"}
+   { "detail": "Store must be set to false" }
    ```
 
 2. **Codex CLI Behavior** (`tmp/codex/codex-rs/core/src/client.rs:215-232`):
@@ -77,6 +78,7 @@ The plugin uses **`store: false`** (stateless mode) because:
    ```
 
 **Key Points**:
+
 1. ✅ **ChatGPT backend REQUIRES store:false** (not optional)
 2. ✅ **Codex CLI uses store:false for ChatGPT**
 3. ✅ **Azure requires store:true** (different endpoint, not supported by this plugin)
@@ -106,6 +108,7 @@ input: [
 ```
 
 **Context is maintained through**:
+
 - ✅ Full message history (LLM sees all previous messages)
 - ✅ Full tool call history (LLM sees what it did)
 - ✅ `reasoning.encrypted_content` (preserves reasoning between turns)
@@ -114,14 +117,14 @@ input: [
 
 ### Store Comparison
 
-| Aspect | store:false (This Plugin) | store:true (Azure Only) |
-|--------|---------------------------|-------------------------|
-| **ChatGPT Support** | ✅ Required | ❌ Rejected by API |
-| **Message History** | ✅ Sent in each request (no IDs) | Stored on server |
-| **Message IDs** | ❌ Must strip all | ✅ Required |
-| **AI SDK Compat** | ❌ Must filter `item_reference` | ✅ Works natively |
-| **Context** | Full history + encrypted reasoning | Server-stored conversation |
-| **Codex CLI Parity** | ✅ Perfect match | ❌ Different mode |
+| Aspect               | store:false (This Plugin)          | store:true (Azure Only)    |
+| -------------------- | ---------------------------------- | -------------------------- |
+| **ChatGPT Support**  | ✅ Required                        | ❌ Rejected by API         |
+| **Message History**  | ✅ Sent in each request (no IDs)   | Stored on server           |
+| **Message IDs**      | ❌ Must strip all                  | ✅ Required                |
+| **AI SDK Compat**    | ❌ Must filter `item_reference`    | ✅ Works natively          |
+| **Context**          | Full history + encrypted reasoning | Server-stored conversation |
+| **Codex CLI Parity** | ✅ Perfect match                   | ❌ Different mode          |
 
 **Decision**: Use **`store:false`** (only option for ChatGPT backend).
 
@@ -132,6 +135,7 @@ input: [
 ### The Problem
 
 **OpenCode/AI SDK sends two incompatible constructs**:
+
 ```typescript
 // Multi-turn request from OpenCode
 const body = {
@@ -145,15 +149,18 @@ const body = {
 ```
 
 **Two issues**:
+
 1. `item_reference` - AI SDK construct for server state lookup (not in Codex API spec)
 2. Message IDs - Cause "item not found" with `store: false`
 
 **ChatGPT Backend Requirement** (confirmed via testing):
+
 ```json
-{"detail":"Store must be set to false"}
+{ "detail": "Store must be set to false" }
 ```
 
 **Errors that occurred**:
+
 ```
 ❌ "Item with id 'msg_abc' not found. Items are not persisted when `store` is set to false."
 ❌ "Missing required parameter: 'input[3].id'" (when item_reference has no ID)
@@ -162,15 +169,16 @@ const body = {
 ### The Solution
 
 **Filter AI SDK Constructs + Strip IDs** (`lib/request/request-transformer.ts:114-135`):
+
 ```typescript
 export function filterInput(input: InputItem[]): InputItem[] {
   return input
     .filter((item) => {
       // Remove AI SDK constructs not supported by Codex API
       if (item.type === "item_reference") {
-        return false;  // AI SDK only - references server state
+        return false; // AI SDK only - references server state
       }
-      return true;  // Keep all other items
+      return true; // Keep all other items
     })
     .map((item) => {
       // Strip IDs from all items (stateless mode)
@@ -184,6 +192,7 @@ export function filterInput(input: InputItem[]): InputItem[] {
 ```
 
 **Why this approach?**
+
 1. ✅ **Filter `item_reference`** - Not in Codex API, AI SDK-only construct
 2. ✅ **Keep all messages** - LLM needs full conversation history for context
 3. ✅ **Strip ALL IDs** - Matches Codex CLI stateless behavior
@@ -195,13 +204,21 @@ The plugin logs ID filtering for debugging:
 
 ```typescript
 // Before filtering
-console.log(`[openai-codex-plugin] Filtering ${originalIds.length} message IDs from input:`, originalIds);
+console.log(
+  `[openai-codex-plugin] Filtering ${originalIds.length} message IDs from input:`,
+  originalIds,
+);
 
 // After filtering
-console.log(`[openai-codex-plugin] Successfully removed all ${originalIds.length} message IDs`);
+console.log(
+  `[openai-codex-plugin] Successfully removed all ${originalIds.length} message IDs`,
+);
 
 // Or warning if IDs remain
-console.warn(`[openai-codex-plugin] WARNING: ${remainingIds.length} IDs still present after filtering:`, remainingIds);
+console.warn(
+  `[openai-codex-plugin] WARNING: ${remainingIds.length} IDs still present after filtering:`,
+  remainingIds,
+);
 ```
 
 **Source**: `lib/request/request-transformer.ts:287-301`
@@ -221,6 +238,7 @@ body.include = modelConfig.include || ["reasoning.encrypted_content"];
 ```
 
 **How it works**:
+
 1. **Turn 1**: Model generates reasoning, encrypted content returned
 2. **Client**: Stores encrypted content locally
 3. **Turn 2**: Client sends encrypted content back in request
@@ -228,6 +246,7 @@ body.include = modelConfig.include || ["reasoning.encrypted_content"];
 5. **Model**: Has full context without server-side storage
 
 **Flow Diagram**:
+
 ```
 Turn 1:
 Client → [Request without IDs] → Server
@@ -241,6 +260,7 @@ Client → [Request with encrypted content, no IDs] → Server
 ```
 
 **Codex CLI equivalent** (`tmp/codex/codex-rs/core/src/client.rs:190-194`):
+
 ```rust
 let include: Vec<String> = if reasoning.is_some() {
     vec!["reasoning.encrypted_content".to_string()]
@@ -327,26 +347,28 @@ let include: Vec<String> = if reasoning.is_some() {
 
 ### What We Match
 
-| Feature | Codex CLI | This Plugin | Match? |
-|---------|-----------|-------------|--------|
-| **OAuth Flow** | ✅ PKCE + ChatGPT login | ✅ Same | ✅ |
-| **store Parameter** | `false` (ChatGPT) | `false` | ✅ |
-| **Message IDs** | Stripped in stateless | Stripped | ✅ |
-| **reasoning.encrypted_content** | ✅ Included | ✅ Included | ✅ |
-| **Model Normalization** | Canonical Codex slugs | Canonical Codex slugs | ✅ |
-| **Reasoning Effort** | medium (default) | medium (default) | ✅ |
-| **Text Verbosity** | Model/config dependent | Model/config dependent | ✅ |
+| Feature                         | Codex CLI                                                          | This Plugin                                   | Match? |
+| ------------------------------- | ------------------------------------------------------------------ | --------------------------------------------- | ------ |
+| **OAuth Flow**                  | ✅ PKCE + ChatGPT login                                            | ✅ Same                                       | ✅     |
+| **store Parameter**             | `false` (ChatGPT)                                                  | `false`                                       | ✅     |
+| **Message IDs**                 | Stripped in stateless                                              | Stripped                                      | ✅     |
+| **reasoning.encrypted_content** | ✅ Included                                                        | ✅ Included                                   | ✅     |
+| **Model Normalization**         | Canonical Codex slugs                                              | Canonical Codex slugs                         | ✅     |
+| **Reasoning Effort**            | medium (default)                                                   | medium (default)                              | ✅     |
+| **Text Verbosity**              | Model/config dependent                                             | Model/config dependent                        | ✅     |
+| **Personality**                 | Model/config dependent - Pragmatic or Friendly (Default Pragmatic) | Model/config dependent - Default is Pragmatic | ✅     |
 
 ### What We Add
 
-| Feature | Codex CLI | This Plugin | Why? |
-|---------|-----------|-------------|------|
-| **OpenCode Runtime Metadata Preservation** | Native runtime | ✅ Preserve env/AGENTS developer messages | Keep harness context intact without duplicating tool contracts |
-| **Authoritative Model Catalog** | Native model manager | ✅ `/codex/models` → per-account cache (server-derived), fail closed if unavailable | Strict allowlist + runtime defaults |
-| **Orphan Tool Output Handling** | ✅ Drop orphans | ✅ Convert to messages | Preserve context + avoid 400s |
-| **Usage-limit messaging** | CLI prints status | ✅ Friendly error summary | Surface 5h/weekly windows in OpenCode |
-| **Per-Model Options** | CLI flags | ✅ Config file | Better UX in OpenCode |
-| **Custom Model Names** | No | ✅ Display names | UI convenience |
+| Feature                                    | Codex CLI            | This Plugin                                                                         | Why?                                                           |
+| ------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **OpenCode Runtime Metadata Preservation** | Native runtime       | ✅ Preserve env/AGENTS developer messages                                           | Keep harness context intact without duplicating tool contracts |
+| **Authoritative Model Catalog**            | Native model manager | ✅ `/codex/models` → per-account cache (server-derived), fail closed if unavailable | Strict allowlist + runtime defaults                            |
+| **Orphan Tool Output Handling**            | ✅ Drop orphans      | ✅ Convert to messages                                                              | Preserve context + avoid 400s                                  |
+| **Usage-limit messaging**                  | CLI prints status    | ✅ Friendly error summary                                                           | Surface 5h/weekly windows in OpenCode                          |
+| **Per-Model Options**                      | CLI flags            | ✅ Config file                                                                      | Better UX in OpenCode                                          |
+| **Custom Model Names**                     | No                   | ✅ Display names                                                                    | UI convenience                                                 |
+| **Custom Personalities**                   | No                   | ✅ Want to turn GPT into Claude? Now you can!                                       | Enables a better custom fit and experience for each user       |
 
 ---
 
@@ -355,11 +377,13 @@ let include: Vec<String> = if reasoning.is_some() {
 ### Why Not store:true?
 
 **Pros of store:true**:
+
 - ✅ No ID filtering needed
 - ✅ Server manages conversation
 - ✅ Potentially more robust
 
 **Cons of store:true**:
+
 - ❌ Diverges from Codex CLI behavior
 - ❌ Requires conversation ID management
 - ❌ More complex error handling
@@ -372,6 +396,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Alternative**: Filter specific ID patterns (`rs_*`, `msg_*`, etc.)
 
 **Problem**:
+
 - ID patterns may change
 - New ID types could be added
 - Partial filtering is brittle
@@ -379,6 +404,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Solution**: Remove **ALL** IDs
 
 **Rationale**:
+
 - Matches Codex CLI behavior exactly
 - Future-proof against ID format changes
 - Simpler implementation (no pattern matching)
@@ -389,11 +415,13 @@ let include: Vec<String> = if reasoning.is_some() {
 **Problem**: The legacy bridge duplicated tool/runtime instructions and drifted out of sync.
 
 **Solution**: Remove bridge injection entirely and rely on:
+
 - Codex `instructions`
 - OpenCode runtime metadata (environment + AGENTS/custom instructions)
 - Live tool schemas
 
 **Benefits**:
+
 - ✅ No stale tool-contract prose
 - ✅ Fewer conflicting top-priority instruction layers
 - ✅ Better parity with real Codex runtime behavior
@@ -403,6 +431,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Alternative**: Single global config
 
 **Problem**:
+
 - `gpt-5.3-codex` optimal settings differ from `gpt-5.3`
 - Users want quick switching between quality levels
 - No way to save "presets"
@@ -410,6 +439,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Solution**: Per-model options in config
 
 **Benefits**:
+
 - ✅ Save multiple configurations
 - ✅ Quick switching (no CLI args)
 - ✅ Descriptive names ("Fast", "Balanced", "Max Quality")
@@ -424,16 +454,19 @@ let include: Vec<String> = if reasoning.is_some() {
 ### Common Errors
 
 #### 1. "Item with id 'X' not found"
+
 **Cause**: Message ID leaked through filtering
 **Fix**: Improved `filterInput()` removes ALL IDs
 **Prevention**: Debug logging catches remaining IDs
 
 #### 2. Token Expiration
+
 **Cause**: OAuth access token expired
 **Fix**: `shouldRefreshToken()` checks expiration
 **Prevention**: Auto-refresh before requests
 
 #### 3. "store: false" Validation Error (Azure)
+
 **Cause**: Azure doesn't support stateless mode
 **Workaround**: Codex CLI uses `store: true` for Azure only
 **This Plugin**: Only supports ChatGPT OAuth (no Azure)
@@ -441,14 +474,17 @@ let include: Vec<String> = if reasoning.is_some() {
 ### Hard-Stop Error Handling
 
 **Unsupported model**:
+
 - Trigger: model not in `/codex/models` (including custom IDs)
 - Response: synthetic error with `type: unsupported_model`, `param: model`, and attempted model ID
 
 **Catalog unavailable**:
+
 - Trigger: `/codex/models` unavailable and no cached catalog
 - Response: synthetic `unsupported_model` error with catalog context in the message
 
 **All accounts unavailable**:
+
 - Trigger: all accounts rate-limited beyond `hardStopMaxWaitMs` or all accounts in auth-failure cooldown
 - Response: synthetic errors `all_accounts_rate_limited` (HTTP 429) or `all_accounts_auth_failed` (HTTP 401)
 
@@ -459,37 +495,19 @@ let include: Vec<String> = if reasoning.is_some() {
 The plugin is designed to operate safely across multiple concurrent processes (e.g., the OpenCode proxy and CLI tools).
 
 ### Account Synchronization
+
 - **Dirty Tracking**: The plugin tracks the `originalRefreshToken` to detect if the disk state has changed since the account was loaded.
 - **Lazy Fallback**: If a token refresh fails, the plugin re-loads the account from disk to ensure it's not using a stale refresh token that was already rotated by another process.
 - **Lock-Merge-Write**: All account updates use `proper-lockfile` to ensure atomic reads and writes.
 
 ### Codex Status Snapshots
+
 - **Disk Persistence**: Snapshots are stored in `~/.config/opencode/cache/codex-snapshots.json`.
-- **Authoritative Fetching**: The plugin actively polls the official OpenAI `/wham/usage` (ChatGPT) and `/api/codex/usage` (API) endpoints during status tool calls to ensure 100% accurate telemetry.
-- **Concurrency Strategy**: 
+- **Authoritative Fetching**: The plugin polls the official OpenAI `/wham/usage` (ChatGPT) and `/api/codex/usage` (API) endpoints during status tracking to ensure accurate telemetry.
+- **Concurrency Strategy**:
   - **Async Locking**: Uses `proper-lockfile` to coordinate access between the proxy and CLI tools.
   - **Merge-on-Save**: When saving, the plugin re-loads snapshots from disk and merges them with in-memory state, using a timestamp-based (`updatedAt`) check to ensure the newest data always wins.
   - **Initialization Gate**: Uses a promise-based gate (`initPromise`) to ensure concurrent calls wait for the initial disk load, preventing data loss.
-
----
-
-## Codex Status Tool Implementation
-
-The `codex-status` tool provides real-time visibility into OpenAI's backend rate limits, perfectly mimicking the behavior of `codex-rs v0.92.0`.
-
-### Data Capture
-The plugin retrieves usage data from the authoritative `/wham/usage` endpoint:
-- **Primary Window**: Maps to the "5 hour limit:".
-- **Secondary Window**: Maps to the "Weekly limit:".
-- **Credits**: Captures balance and unlimited status for Team/Enterprise accounts.
-- **SSE Interception**: As a real-time fallback, the plugin also scans the live response stream for `token_count` events to update limits immediately during model usage.
-
-### Rendering
-- **Inverted Logic**: Displays "% left" instead of "% used" (e.g., `100 - usedPercent`), matching the official CLI.
-- **ASCII Bars**: Filled portion (`█`) represents remaining quota; empty portion (`░`) represents used quota.
-- **Dynamic Labels**: Explicitly labeled as "5 hour limit:" and "Weekly limit:" for clarity.
-- **Detailed Resets**: Resets more than 24 hours away include the full date (e.g., `resets 18:10 on 5 Feb`).
-- **Vertical Stability**: Both Primary and Weekly bars are always rendered (showing `unknown` if no data) to maintain a consistent table layout.
 
 ---
 
@@ -523,6 +541,7 @@ The plugin retrieves usage data from the authoritative `/wham/usage` endpoint:
 ---
 
 ## See Also
+
 - [CONFIG_FLOW.md](./CONFIG_FLOW.md) - Configuration system guide
 - [Codex CLI Source](https://github.com/openai/codex) - Official implementation
 - [OpenCode Source](https://github.com/sst/opencode) - OpenCode implementation

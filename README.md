@@ -99,18 +99,6 @@ Personality descriptions come from:
 The filename (case-insensitive) defines the key (e.g., `Idiot.md`), and the file contents are used verbatim.
 
 Built-ins: `none`, `default` (uses model runtime defaults), `friendly`, `pragmatic` (fallback if unset). Any other key requires a matching personality file.
----
-## ⌨️ Slash Commands (TUI)
-In the OpenCode TUI, you can use these commands to manage your accounts and monitor usage:
-
-| Command | Description |
-|---------|-------------|
-| `/codex-status` | Shows current rate limits (5h/Weekly), credits, and account status (percent left). |
-| `/codex-switch-accounts <index>` | Switch the active account by its 1-based index from the status list. |
-| `/codex-toggle-account <index>` | Enable or disable an account by its 1-based index (prevents auto-selection). |
-| `/codex-remove-account <index>` | Remove an account by its 1-based index. |
-
----
 ## ✅ Features
 - ChatGPT Plus/Pro OAuth authentication (official flow)
 - Model presets across GPT‑5.3 Codex / GPT‑5.2 / GPT‑5.2 Codex / GPT‑5.1 families
@@ -124,8 +112,8 @@ In the OpenCode TUI, you can use these commands to manage your accounts and moni
 - Strict account identity matching (`accountId` + `email` + `plan`)
 - Hybrid account selection strategy (health score + token bucket + LRU bias)
 - Optional round-robin account rotation (maximum throughput)
-- OpenCode TUI toasts + `codex-status` / `codex-switch-accounts` tools
-- **Authoritative Codex Status**: Real-time rate limit monitoring (5h/Weekly) with ASCII status bars
+- OpenCode TUI toasts for account switching and rate-limit events
+- **Authoritative Status Tracking**: Real-time rate limit monitoring (5h/Weekly) with cached snapshots
 ---
 ## 🛡️ Safety & Reliability
 - Hard-stop safety gate for all-accounts rate-limit/auth-failure loops
