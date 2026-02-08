@@ -774,12 +774,13 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					const menuResult = await runInteractiveAuthMenu({ allowExit: true });
 					if (menuResult === "exit") {
 						return {
-							url: "about:blank",
-							method: "code" as const,
-							instructions: "Login cancelled.",
+						url: "about:blank",
+						method: "code" as const,
+						instructions: "Login cancelled.",
 							callback: async () => ({ type: "failed" as const }),
 						};
 					}
+				}
 
 			const { pkce, state, url } = await createAuthorizationFlow();
 			let serverInfo = null;
