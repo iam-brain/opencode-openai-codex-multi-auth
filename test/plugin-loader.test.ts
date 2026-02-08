@@ -6,7 +6,6 @@ import type { Auth } from "@opencode-ai/sdk";
 import { AUTH_LABELS, DEFAULT_MODEL_FAMILY, JWT_CLAIM_PATH } from "../lib/constants.js";
 import * as logger from "../lib/logger.js";
 import { createJwt } from "./helpers/jwt.js";
-import { promptLoginMode, promptManageAccounts } from "../lib/cli.js";
 
 let mockedTokenResult: any;
 
@@ -25,11 +24,6 @@ vi.mock("@opencode-ai/plugin", () => {
 	const tool = Object.assign((spec: unknown) => spec, { schema });
 	return { tool };
 });
-
-vi.mock("../lib/cli.js", () => ({
-	promptLoginMode: vi.fn(),
-	promptManageAccounts: vi.fn(),
-}));
 
 vi.mock("../lib/auth/auth.js", async () => {
 	const actual = await vi.importActual<typeof import("../lib/auth/auth.js")>("../lib/auth/auth.js");
@@ -229,7 +223,7 @@ describe("OpenAIAuthPlugin loader", () => {
 	});
 
 
-	it("toggles the targeted account if storage shifts", async () => {
+	it("keeps existing accounts unchanged in non-TTY authorize flow", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-manage-"));
 		process.env.XDG_CONFIG_HOME = root;
 		process.env.OPENCODE_NO_BROWSER = "1";
@@ -243,40 +237,13 @@ describe("OpenAIAuthPlugin loader", () => {
 					"utf-8",
 				),
 			);
-			const accountA = fixture.accounts[0];
-			const accountB = fixture.accounts[1];
-			const accountC = fixture.accounts[2];
 			const baseStorage = {
 				version: 3,
-				accounts: [accountA, accountB],
+				accounts: [fixture.accounts[0], fixture.accounts[1]],
 				activeIndex: 0,
 				activeIndexByFamily: fixture.activeIndexByFamily,
 			};
 			writeFileSync(storagePath, JSON.stringify(baseStorage, null, 2), "utf-8");
-
-			vi.mocked(promptLoginMode)
-				.mockResolvedValueOnce("manage")
-				.mockResolvedValueOnce("add");
-			vi.mocked(promptManageAccounts).mockImplementationOnce(async () => {
-				const shiftedStorage = {
-					...baseStorage,
-					accounts: [accountC, accountA, accountB],
-				};
-				writeFileSync(
-					storagePath,
-					JSON.stringify(shiftedStorage, null, 2),
-					"utf-8",
-				);
-				return {
-					action: "toggle",
-					target: {
-						accountId: accountB.accountId,
-						email: accountB.email,
-						plan: accountB.plan,
-						refreshToken: accountB.refreshToken,
-					},
-				};
-			});
 
 			const client = {
 				tui: { showToast: vi.fn() },
@@ -289,14 +256,8 @@ describe("OpenAIAuthPlugin loader", () => {
 			await oauthMethod.authorize({});
 
 			const updated = JSON.parse(readFileSync(storagePath, "utf-8"));
-			const updatedAccountA = updated.accounts.find(
-				(account: any) => account.refreshToken === accountA.refreshToken,
-			);
-			const updatedAccountB = updated.accounts.find(
-				(account: any) => account.refreshToken === accountB.refreshToken,
-			);
-			expect(updatedAccountA.enabled).toBe(true);
-			expect(updatedAccountB.enabled).toBe(false);
+			expect(updated.accounts).toEqual(baseStorage.accounts);
+			expect(updated.activeIndex).toBe(baseStorage.activeIndex);
 		} finally {
 			delete process.env.OPENCODE_NO_BROWSER;
 			rmSync(root, { recursive: true, force: true });

@@ -42,8 +42,7 @@ import {
 	sanitizeEmail,
 } from "./lib/accounts.js";
 import {
-	promptLoginMode,
-	promptManageAccounts,
+	promptRepairAccounts,
 } from "./lib/cli.js";
 import { normalizePlanTypeOrDefault } from "./lib/plan-utils.js";
 import { configureStorageForPluginConfig } from "./lib/storage-scope.js";
@@ -642,16 +641,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		return toggleAccountEnabled(storage, index) ?? storage;
 	};
 
-	const buildExistingAccountLabels = (storage: AccountStorageV3) =>
-		storage.accounts.map((account, index) => ({
-			index,
-			email: account.email,
-			plan: account.plan,
-			accountId: account.accountId,
-			refreshToken: account.refreshToken,
-			enabled: account.enabled,
-		}));
-
 	const hasActiveCooldown = (
 		resetTimes: Record<string, number | undefined> | undefined,
 		now: number,
@@ -780,10 +769,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		authorize: async (inputs?: Record<string, string>) => {
 			let replaceExisting = false;
 
-			if (inputs) {
-				let existingStorage = await loadAccounts();
-				if (existingStorage?.accounts?.length) {
-					if (process.stdin.isTTY && process.stdout.isTTY) {
+				if (inputs) {
+					const existingStorage = await loadAccounts();
+					if (existingStorage?.accounts?.length && process.stdin.isTTY && process.stdout.isTTY) {
 						const menuResult = await runInteractiveAuthMenu({ allowExit: true });
 						if (menuResult === "exit") {
 							return {
@@ -793,40 +781,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								callback: async () => ({ type: "failed" as const }),
 							};
 						}
-					} else {
-						while (true) {
-							const existingLabels = buildExistingAccountLabels(existingStorage);
-							const mode = await promptLoginMode(existingLabels);
-
-							if (mode === "manage") {
-								const action = await promptManageAccounts(existingLabels);
-								if (!action) {
-									continue;
-								}
-
-								if (action.action === "toggle") {
-									existingStorage = await updateStorageWithLock((current) =>
-										toggleAccountFromStorage(current, action.target),
-									);
-								} else {
-									existingStorage = await updateStorageWithLock((current) =>
-										removeAccountFromStorage(current, action.target),
-									);
-								}
-
-								if (existingStorage.accounts.length === 0) {
-									replaceExisting = true;
-									break;
-								}
-								continue;
-							}
-
-							replaceExisting = mode === "fresh";
-							break;
-						}
 					}
 				}
-			}
 
 			const { pkce, state, url } = await createAuthorizationFlow();
 			let serverInfo = null;
