@@ -16,15 +16,18 @@ describe("codex quota report", () => {
 		const account = accountsFixture.accounts[0]!;
 		const now = snapshots[0]?.updatedAt ?? Date.now();
 
-		const output = renderQuotaReport([account], snapshots, now).join("\n");
-		expect(output).toContain("Checking quotas for all accounts...");
-		expect(output).toContain(account.email);
-		expect(output).toContain("Codex CLI Quota");
-		expect(output).toContain("GPT-5");
-		expect(output).toContain("Weekly");
+	const output = renderQuotaReport([account], snapshots, now).join("\n");
+	expect(output).toContain("Quota Report");
+	expect(output).toContain(account.email);
+	expect(output).toContain(`(${account.plan})`);
+	expect(output).toContain("Codex CLI Quota");
+	expect(output).toContain("GPT-5");
+	expect(output).toContain("Weekly");
+	expect(output).toContain("┌");
+	expect(output).toContain("│");
 
-		// Percents aligned to 3 characters.
-		expect(output).toMatch(/\s\d{1,3}%/);
+	// Percents aligned to 3 characters.
+	expect(output).toMatch(/\s\d{1,3}%/);
 		// Bars use block characters.
 		expect(output).toMatch(/[█░]{20}/);
 	});
