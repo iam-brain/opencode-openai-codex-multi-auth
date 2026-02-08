@@ -693,23 +693,50 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				accounts: menuAccounts,
 				input: process.stdin,
 				output: process.stdout,
-				handlers: {
-					onCheckQuotas: async () => {
-						await Promise.all(
-							accounts.map(async (acc, index) => {
-								if (acc.enabled === false) return;
-								const live = accountManager.getAccountByIndex(index);
-								if (!live) return;
-								const auth = accountManager.toAuthDetails(live);
-								if (auth.access && auth.expires > Date.now()) {
-									await codexStatus.fetchFromBackend(live, auth.access);
-								}
-							}),
-						);
-						const snapshots = await codexStatus.getAllSnapshots();
-						const report = renderQuotaReport(menuAccounts, snapshots, Date.now());
-						process.stdout.write(report.join("\n") + "\n");
-					},
+					handlers: {
+						onCheckQuotas: async () => {
+							await Promise.all(
+								accounts.map(async (acc, index) => {
+									if (acc.enabled === false) return;
+									const live = accountManager.getAccountByIndex(index);
+									if (!live) return;
+									try {
+										let accessToken: string | null = null;
+										const auth = accountManager.toAuthDetails(live);
+										if (auth.access && auth.expires > Date.now()) {
+											accessToken = auth.access;
+										} else {
+											const refreshed = await accountManager.refreshAccountWithFallback(live);
+											if (refreshed.type === "success") {
+												if (refreshed.headers) {
+													await codexStatus.updateFromHeaders(
+														live,
+														Object.fromEntries(refreshed.headers.entries()),
+													);
+												}
+												const refreshedAuth = {
+													type: "oauth" as const,
+													access: refreshed.access,
+													refresh: refreshed.refresh,
+													expires: refreshed.expires,
+												};
+												accountManager.updateFromAuth(live, refreshedAuth);
+												await accountManager.saveToDisk();
+												accessToken = refreshed.access;
+											}
+										}
+										if (accessToken) {
+											await codexStatus.fetchFromBackend(live, accessToken);
+										}
+									} catch {
+										// Keep rendering other accounts even if one fails quota refresh/fetch.
+									}
+								}),
+							);
+							const snapshots = await codexStatus.getAllSnapshots();
+							const report = renderQuotaReport(accounts, snapshots, Date.now());
+							process.stdout.write(report.join("\n") + "\n");
+						},
 					onConfigureModels: async () => {
 						process.stdout.write(
 							"Edit your opencode.jsonc (or opencode.json) to configure models.\n",
@@ -769,18 +796,18 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		authorize: async (_inputs?: Record<string, string>) => {
 			let replaceExisting = false;
 
-			const existingStorage = await loadAccounts();
-			if (existingStorage?.accounts?.length && process.stdin.isTTY && process.stdout.isTTY) {
-				const menuResult = await runInteractiveAuthMenu({ allowExit: true });
-				if (menuResult === "exit") {
-					return {
+				const existingStorage = await loadAccounts();
+				if (existingStorage?.accounts?.length && process.stdin.isTTY && process.stdout.isTTY) {
+					const menuResult = await runInteractiveAuthMenu({ allowExit: true });
+					if (menuResult === "exit") {
+						return {
 						url: "about:blank",
 						method: "code" as const,
 						instructions: "Login cancelled.",
-						callback: async () => ({ type: "failed" as const }),
-					};
+							callback: async () => ({ type: "failed" as const }),
+						};
+					}
 				}
-			}
 
 			const { pkce, state, url } = await createAuthorizationFlow();
 			let serverInfo = null;
