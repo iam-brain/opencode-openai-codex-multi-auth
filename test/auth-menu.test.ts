@@ -76,6 +76,7 @@ describe("auth menu helpers", () => {
 
 		const accountItem = items.find((item) => item.label.includes(account.email));
 		expect(accountItem).toBeTruthy();
+		expect(accountItem!.label).toContain(`(${account.plan})`);
 		expect(accountItem!.label).toContain("[enabled]");
 		expect(accountItem!.label).toContain("[last active]");
 		expect(accountItem!.hint).toContain("used");

@@ -46,6 +46,12 @@ function colorize(text: string, color: string, useColor: boolean): string {
 	return useColor ? `${color}${text}${ANSI.reset}` : text;
 }
 
+function formatAccountDisplayName(account: AccountInfo): string {
+	const base = account.email || `Account ${account.index + 1}`;
+	const plan = typeof account.plan === "string" ? account.plan.trim() : "";
+	return plan ? `${base} (${plan})` : base;
+}
+
 function getStatusBadge(status: AccountStatus | undefined, useColor: boolean): string {
 	switch (status) {
 		case "rate-limited":
@@ -76,7 +82,7 @@ export function formatStatusBadges(
 }
 
 function buildAccountLabel(account: AccountInfo, useColor: boolean): string {
-	const baseLabel = account.email || `Account ${account.index + 1}`;
+	const baseLabel = formatAccountDisplayName(account);
 	const badges = formatStatusBadges(account, useColor);
 	return badges ? `${baseLabel} ${badges}` : baseLabel;
 }
@@ -190,7 +196,7 @@ export async function showAccountDetails(
 ): Promise<AccountAction> {
 	const useColor = options.useColor ?? shouldUseColor();
 	const output = options.output ?? process.stdout;
-	const label = account.email || `Account ${account.index + 1}`;
+	const label = formatAccountDisplayName(account);
 	const badges = formatStatusBadges(account, useColor);
 
 	const bold = useColor ? ANSI.bold : "";
