@@ -1,667 +1,481 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "opencode-openai-codex-multi-auth"
-  ],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "options": {
         "reasoningEffort": "medium",
         "reasoningSummary": "auto",
         "textVerbosity": "medium",
-        "include": [
-          "reasoning.encrypted_content"
-        ],
+        "include": ["reasoning.encrypted_content"],
         "store": false
       },
       "models": {
         "gpt-5.2-none": {
-        "name": "GPT 5.2 None (Codex)",
+          "name": "GPT 5.2 None (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "none",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-low": {
-        "name": "GPT 5.2 Low (Codex)",
+          "name": "GPT 5.2 Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-medium": {
-        "name": "GPT 5.2 Medium (Codex)",
+          "name": "GPT 5.2 Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-high": {
-        "name": "GPT 5.2 High (Codex)",
+          "name": "GPT 5.2 High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-xhigh": {
-        "name": "GPT 5.2 Extra High (Codex)",
+          "name": "GPT 5.2 Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "xhigh",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.3-codex-low": {
-        "name": "GPT 5.3 Codex Low (Codex)",
+          "name": "GPT 5.3 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.3-codex-medium": {
-        "name": "GPT 5.3 Codex Medium (Codex)",
+          "name": "GPT 5.3 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.3-codex-high": {
-        "name": "GPT 5.3 Codex High (Codex)",
+          "name": "GPT 5.3 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.3-codex-xhigh": {
-        "name": "GPT 5.3 Codex Extra High (Codex)",
+          "name": "GPT 5.3 Codex Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "xhigh",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-codex-low": {
-        "name": "GPT 5.2 Codex Low (Codex)",
+          "name": "GPT 5.2 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-codex-medium": {
-        "name": "GPT 5.2 Codex Medium (Codex)",
+          "name": "GPT 5.2 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-codex-high": {
-        "name": "GPT 5.2 Codex High (Codex)",
+          "name": "GPT 5.2 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.2-codex-xhigh": {
-        "name": "GPT 5.2 Codex Extra High (Codex)",
+          "name": "GPT 5.2 Codex Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "xhigh",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-max-low": {
-        "name": "GPT 5.1 Codex Max Low (Codex)",
+          "name": "GPT 5.1 Codex Max Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-max-medium": {
-        "name": "GPT 5.1 Codex Max Medium (Codex)",
+          "name": "GPT 5.1 Codex Max Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-max-high": {
-        "name": "GPT 5.1 Codex Max High (Codex)",
+          "name": "GPT 5.1 Codex Max High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-max-xhigh": {
-        "name": "GPT 5.1 Codex Max Extra High (Codex)",
+          "name": "GPT 5.1 Codex Max Extra High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "xhigh",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-low": {
-        "name": "GPT 5.1 Codex Low (Codex)",
+          "name": "GPT 5.1 Codex Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-medium": {
-        "name": "GPT 5.1 Codex Medium (Codex)",
+          "name": "GPT 5.1 Codex Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-high": {
-        "name": "GPT 5.1 Codex High (Codex)",
+          "name": "GPT 5.1 Codex High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-mini-medium": {
-        "name": "GPT 5.1 Codex Mini Medium (Codex)",
+          "name": "GPT 5.1 Codex Mini Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-codex-mini-high": {
-        "name": "GPT 5.1 Codex Mini High (Codex)",
+          "name": "GPT 5.1 Codex Mini High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-none": {
-        "name": "GPT 5.1 None (Codex)",
+          "name": "GPT 5.1 None (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "none",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-low": {
-        "name": "GPT 5.1 Low (Codex)",
+          "name": "GPT 5.1 Low (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": "auto",
             "textVerbosity": "low",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-medium": {
-        "name": "GPT 5.1 Medium (Codex)",
+          "name": "GPT 5.1 Medium (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
             "textVerbosity": "medium",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         },
         "gpt-5.1-high": {
-        "name": "GPT 5.1 High (Codex)",
+          "name": "GPT 5.1 High (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
           "modalities": {
-            "input": [
-              "text",
-              "image"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image"],
+            "output": ["text"]
           },
           "options": {
             "reasoningEffort": "high",
             "reasoningSummary": "detailed",
             "textVerbosity": "high",
-            "include": [
-              "reasoning.encrypted_content"
-            ],
+            "include": ["reasoning.encrypted_content"],
             "store": false
           }
         }

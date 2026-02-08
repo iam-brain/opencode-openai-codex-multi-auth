@@ -9,6 +9,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ### Scenario 1: Default OpenCode Models (No Custom Config)
 
 **Config:**
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"]
@@ -16,6 +17,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ```
 
 **Available Models:** (from OpenCode's models.dev database)
+
 - `gpt-5`
 - `gpt-5.3-codex`
 - `gpt-5-mini`
@@ -23,14 +25,15 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 
 **Test Cases:**
 
-| User Selects | Plugin Receives | Normalizes To | Config Lookup | API Receives | Result |
-|--------------|-----------------|---------------|---------------|--------------|--------|
-| `openai/gpt-5` | `"gpt-5"` | `"gpt-5.1"` | `models["gpt-5"]` → undefined | `"gpt-5.1"` | ✅ Uses global options |
+| User Selects           | Plugin Receives   | Normalizes To     | Config Lookup                         | API Receives      | Result                 |
+| ---------------------- | ----------------- | ----------------- | ------------------------------------- | ----------------- | ---------------------- |
+| `openai/gpt-5`         | `"gpt-5"`         | `"gpt-5.1"`       | `models["gpt-5"]` → undefined         | `"gpt-5.1"`       | ✅ Uses global options |
 | `openai/gpt-5.3-codex` | `"gpt-5.3-codex"` | `"gpt-5.3-codex"` | `models["gpt-5.3-codex"]` → undefined | `"gpt-5.3-codex"` | ✅ Uses global options |
-| `openai/gpt-5-mini` | `"gpt-5-mini"` | `"gpt-5-mini"` | `models["gpt-5-mini"]` → undefined | `"gpt-5-mini"` | ✅ Uses global options |
-| `openai/gpt-5-nano` | `"gpt-5-nano"` | `"gpt-5-nano"` | `models["gpt-5-nano"]` → undefined | `"gpt-5-nano"` | ✅ Uses global options |
+| `openai/gpt-5-mini`    | `"gpt-5-mini"`    | `"gpt-5-mini"`    | `models["gpt-5-mini"]` → undefined    | `"gpt-5-mini"`    | ✅ Uses global options |
+| `openai/gpt-5-nano`    | `"gpt-5-nano"`    | `"gpt-5-nano"`    | `models["gpt-5-nano"]` → undefined    | `"gpt-5-nano"`    | ✅ Uses global options |
 
 **Expected Behavior:**
+
 - ✅ All models work with global options
 - ✅ Normalized correctly for API
 - ✅ No errors
@@ -40,6 +43,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ### Scenario 2: Custom Config with Preset Names (New Style)
 
 **Config:**
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -65,13 +69,14 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 
 **Test Cases:**
 
-| User Selects | Plugin Receives | Config Lookup | Resolved Options | API Receives | Result |
-|--------------|-----------------|---------------|------------------|--------------|--------|
-| `openai/gpt-5.3-codex-low` | `"gpt-5.3-codex-low"` | Found ✅ | `{ reasoningEffort: "low" }` | `"gpt-5.3-codex"` | ✅ Per-model |
-| `openai/gpt-5.3-codex-high` | `"gpt-5.3-codex-high"` | Found ✅ | `{ reasoningEffort: "high" }` | `"gpt-5.3-codex"` | ✅ Per-model |
-| `openai/gpt-5.3-codex` | `"gpt-5.3-codex"` | Not found | `{ reasoningEffort: "medium" }` | `"gpt-5.3-codex"` | ✅ Global |
+| User Selects                | Plugin Receives        | Config Lookup | Resolved Options                | API Receives      | Result       |
+| --------------------------- | ---------------------- | ------------- | ------------------------------- | ----------------- | ------------ |
+| `openai/gpt-5.3-codex-low`  | `"gpt-5.3-codex-low"`  | Found ✅      | `{ reasoningEffort: "low" }`    | `"gpt-5.3-codex"` | ✅ Per-model |
+| `openai/gpt-5.3-codex-high` | `"gpt-5.3-codex-high"` | Found ✅      | `{ reasoningEffort: "high" }`   | `"gpt-5.3-codex"` | ✅ Per-model |
+| `openai/gpt-5.3-codex`      | `"gpt-5.3-codex"`      | Not found     | `{ reasoningEffort: "medium" }` | `"gpt-5.3-codex"` | ✅ Global    |
 
 **Expected Behavior:**
+
 - ✅ Custom variants use per-model options
 - ✅ Default `gpt-5.3-codex` uses global options
 - ✅ Known variants normalize to base slug for API; default `gpt-5.3-codex` stays `gpt-5.3-codex`
@@ -81,6 +86,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ### Scenario 3: Old Config (Backwards Compatibility)
 
 **Config:**
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -90,7 +96,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
         "reasoningEffort": "medium"
       },
       "models": {
-        "GPT 5 Codex Low (ChatGPT Subscription)": {
+        "GPT 5 Codex Low (Codex)": {
           "id": "gpt-5.3-codex",
           "options": { "reasoningEffort": "low" }
         }
@@ -102,11 +108,12 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 
 **Test Cases:**
 
-| User Selects | Plugin Receives | Config Lookup | Resolved Options | API Receives | Result |
-|--------------|-----------------|---------------|------------------|--------------|--------|
-| `openai/GPT 5 Codex Low (ChatGPT Subscription)` | `"GPT 5 Codex Low (ChatGPT Subscription)"` | Found ✅ | `{ reasoningEffort: "low" }` | `"gpt 5 codex low (chatgpt subscription)"` | ✅ Per-model |
+| User Selects                     | Plugin Receives             | Config Lookup | Resolved Options             | API Receives                | Result       |
+| -------------------------------- | --------------------------- | ------------- | ---------------------------- | --------------------------- | ------------ |
+| `openai/GPT 5 Codex Low (Codex)` | `"GPT 5 Codex Low (Codex)"` | Found ✅      | `{ reasoningEffort: "low" }` | `"gpt 5 codex low (Codex)"` | ✅ Per-model |
 
 **Expected Behavior:**
+
 - ✅ Old config keys still work
 - ✅ Per-model options applied correctly
 - ✅ Normalizes correctly for API
@@ -116,6 +123,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ### Scenario 4: Mixed Config (Default + Custom)
 
 **Config:**
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -133,19 +141,21 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ```
 
 **Available Models:**
+
 - `gpt-5.3-codex-low` (custom)
 - `gpt-5.3-codex` (default from models.dev)
 - `gpt-5` (default from models.dev)
 
 **Test Cases:**
 
-| User Selects | Config Lookup | Uses Options | Result |
-|--------------|---------------|--------------|--------|
-| `openai/gpt-5.3-codex-low` | Found ✅ | Per-model | ✅ Custom config |
-| `openai/gpt-5.3-codex` | Not found | Global | ✅ Default model |
-| `openai/gpt-5` | Not found | Global | ✅ Default model |
+| User Selects               | Config Lookup | Uses Options | Result           |
+| -------------------------- | ------------- | ------------ | ---------------- |
+| `openai/gpt-5.3-codex-low` | Found ✅      | Per-model    | ✅ Custom config |
+| `openai/gpt-5.3-codex`     | Not found     | Global       | ✅ Default model |
+| `openai/gpt-5`             | Not found     | Global       | ✅ Default model |
 
 **Expected Behavior:**
+
 - ✅ Custom variants use per-model options
 - ✅ Default models use global options
 - ✅ Both types coexist peacefully
@@ -157,6 +167,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 #### 5a: Model Name with Uppercase
 
 **Config:**
+
 ```json
 {
   "models": {
@@ -168,6 +179,7 @@ Comprehensive testing matrix for all config scenarios and backwards compatibilit
 ```
 
 **Test:**
+
 ```
 User selects: openai/GPT-5-CODEX-HIGH
 Plugin receives: "GPT-5-CODEX-HIGH"
@@ -183,6 +195,7 @@ API receives: "gpt-5.3-codex" ✅
 #### 5b: Model Name with Special Characters
 
 **Config:**
+
 ```json
 {
   "models": {
@@ -194,6 +207,7 @@ API receives: "gpt-5.3-codex" ✅
 ```
 
 **Test:**
+
 ```
 User selects: openai/my-gpt5-codex-variant
 Plugin receives: "my-gpt5-codex-variant"
@@ -209,6 +223,7 @@ API receives: "my-gpt5-codex-variant" ✅
 #### 5c: No Config, No Model Specified
 
 **Config:**
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"]
@@ -216,6 +231,7 @@ API receives: "my-gpt5-codex-variant" ✅
 ```
 
 **Test:**
+
 ```
 User selects: (none - uses OpenCode default)
 Plugin receives: undefined or default from OpenCode
@@ -231,6 +247,7 @@ API receives: "gpt-5.1" ✅
 #### 5d: Only `gpt-5` in Name (No `codex`)
 
 **Config:**
+
 ```json
 {
   "models": {
@@ -242,6 +259,7 @@ API receives: "gpt-5.1" ✅
 ```
 
 **Test:**
+
 ```
 User selects: openai/my-gpt-5-variant
 Plugin receives: "my-gpt-5-variant"
@@ -259,6 +277,7 @@ API receives: "my-gpt-5-variant" ✅
 **Config:** Any
 
 **Test Sequence:**
+
 ```
 Turn 1: > write hello to test.txt
 Turn 2: > read the file
@@ -268,14 +287,15 @@ Turn 4: > now delete it
 
 **What Plugin Should Do:**
 
-| Turn | Input Has IDs? | Filter Result | Encrypted Content | Result |
-|------|---------------|---------------|-------------------|--------|
-| 1 | No | No filtering needed | Received in response | ✅ Works |
-| 2 | Yes (from Turn 1) | ALL removed ✅ | Sent back in request | ✅ Works |
-| 3 | Yes (from Turn 1-2) | ALL removed ✅ | Sent back in request | ✅ Works |
-| 4 | Yes (from Turn 1-3) | ALL removed ✅ | Sent back in request | ✅ Works |
+| Turn | Input Has IDs?      | Filter Result       | Encrypted Content    | Result   |
+| ---- | ------------------- | ------------------- | -------------------- | -------- |
+| 1    | No                  | No filtering needed | Received in response | ✅ Works |
+| 2    | Yes (from Turn 1)   | ALL removed ✅      | Sent back in request | ✅ Works |
+| 3    | Yes (from Turn 1-2) | ALL removed ✅      | Sent back in request | ✅ Works |
+| 4    | Yes (from Turn 1-3) | ALL removed ✅      | Sent back in request | ✅ Works |
 
 **Expected Behavior:**
+
 - ✅ No "item not found" errors on any turn
 - ✅ Context preserved via encrypted reasoning
 - ✅ Debug log shows: "Successfully removed all X message IDs"
@@ -286,23 +306,24 @@ Turn 4: > now delete it
 
 ### Test Matrix
 
-| Plugin Version | Config Format | Expected Result |
-|----------------|--------------|-----------------|
-| **Old (<2.1.2)** | Long names + id | ❌ Per-model options broken, ID errors |
-| **Old (<2.1.2)** | Short names | ❌ Per-model options broken, ID errors |
-| **New (2.1.2+)** | Long names + id | ✅ **ALL FIXED** |
-| **New (2.1.2+)** | Short names | ✅ **ALL FIXED** |
-| **New (2.1.2+)** | Short names (no id) | ✅ **OPTIMAL** |
+| Plugin Version   | Config Format       | Expected Result                        |
+| ---------------- | ------------------- | -------------------------------------- |
+| **Old (<2.1.2)** | Long names + id     | ❌ Per-model options broken, ID errors |
+| **Old (<2.1.2)** | Short names         | ❌ Per-model options broken, ID errors |
+| **New (2.1.2+)** | Long names + id     | ✅ **ALL FIXED**                       |
+| **New (2.1.2+)** | Short names         | ✅ **ALL FIXED**                       |
+| **New (2.1.2+)** | Short names (no id) | ✅ **OPTIMAL**                         |
 
 ### Backwards Compatibility Tests
 
 #### Test 1: Old Plugin User Upgrades
 
 **Before (Plugin v2.1.1):**
+
 ```json
 {
   "models": {
-    "GPT 5 Codex Low (ChatGPT Subscription)": {
+    "GPT 5 Codex Low (Codex)": {
       "id": "gpt-5.3-codex",
       "options": { "reasoningEffort": "low" }
     }
@@ -311,6 +332,7 @@ Turn 4: > now delete it
 ```
 
 **After (Plugin v2.1.2):**
+
 - Keep same config
 - Plugin now finds per-model options ✅
 - No "item not found" errors ✅
@@ -322,6 +344,7 @@ Turn 4: > now delete it
 #### Test 2: New User with Recommended Config
 
 **Config:**
+
 ```json
 {
   "models": {
@@ -334,6 +357,7 @@ Turn 4: > now delete it
 ```
 
 **Expected:**
+
 - CLI: `--model=openai/gpt-5.3-codex-low` ✅
 - TUI: Shows "GPT 5 Codex Low (Codex)" ✅
 - Plugin: Finds and applies per-model options ✅
@@ -346,6 +370,7 @@ Turn 4: > now delete it
 #### Test 3: Minimal Config (No Custom Models)
 
 **Config:**
+
 ```json
 {
   "plugin": ["opencode-openai-codex-multi-auth"],
@@ -354,6 +379,7 @@ Turn 4: > now delete it
 ```
 
 **Expected:**
+
 - Uses default OpenCode model: `gpt-5.3-codex`
 - Plugin applies: Global options + Codex defaults
 - No errors ✅
@@ -460,6 +486,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "write hello world to test.txt"
 ```
 
 **Verify:**
+
 - ✅ Plugin installs automatically
 - ✅ Auth works
 - ✅ Debug log shows: `hasModelSpecificConfig: false`
@@ -498,6 +525,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "test high" --model=openai/gpt-5.3-codex-high
 ```
 
 **Verify:**
+
 - ✅ Debug log shows: `hasModelSpecificConfig: true` for both
 - ✅ Different `reasoningEffort` values in logs
 - ✅ TUI shows friendly names
@@ -519,6 +547,7 @@ DEBUG_CODEX_PLUGIN=1 opencode --model=openai/gpt-5.3-codex-medium
 ```
 
 **Verify:**
+
 - ✅ No "item not found" errors on ANY turn
 - ✅ Debug shows IDs removed on turns 2+
 - ✅ Context is maintained across turns
@@ -540,6 +569,7 @@ DEBUG_CODEX_PLUGIN=1 opencode
 ```
 
 **Verify:**
+
 - ✅ Different reasoning efforts logged for each model
 - ✅ Per-model options applied correctly
 - ✅ No errors when switching
@@ -565,6 +595,7 @@ opencode
 ```
 
 **Verify:**
+
 - ✅ Last used model is `gpt-5.3-codex-high`
 - ✅ Model is auto-selected on restart
 - ✅ TUI shows correct model highlighted
@@ -578,24 +609,25 @@ opencode
 `normalizeModel()` lowercases unknown slugs for diagnostics only; requests still reject unknown models.
 
 ```typescript
-normalizeModel("gpt-5.3-codex")          // → "gpt-5.3-codex" ✅
-normalizeModel("gpt-5.2-codex-high")     // → "gpt-5.2-codex" ✅
-normalizeModel("gpt-5.2-xhigh")          // → "gpt-5.2" ✅
-normalizeModel("gpt-5.1-codex-max-xhigh") // → "gpt-5.1-codex-max" ✅
-normalizeModel("gpt-5.1-codex-mini-high") // → "gpt-5.1-codex-mini" ✅
-normalizeModel("codex-mini-latest")      // → "gpt-5.1-codex-mini" ✅
-normalizeModel("gpt-5.1-codex")          // → "gpt-5.1-codex" ✅
-normalizeModel("gpt-5.1")                // → "gpt-5.1" ✅
-normalizeModel("my-codex-model")         // → "my-codex-model" ✅
-normalizeModel("gpt-5")                  // → "gpt-5.1" ✅
-normalizeModel("gpt-5-mini")             // → "gpt-5-mini" ✅
-normalizeModel("gpt-5-nano")             // → "gpt-5-nano" ✅
-normalizeModel("GPT 5 High")             // → "gpt 5 high" ✅
-normalizeModel(undefined)                 // → "gpt-5.1" ✅
-normalizeModel("random-model")           // → "random-model" ✅
+normalizeModel("gpt-5.3-codex"); // → "gpt-5.3-codex" ✅
+normalizeModel("gpt-5.2-codex-high"); // → "gpt-5.2-codex" ✅
+normalizeModel("gpt-5.2-xhigh"); // → "gpt-5.2" ✅
+normalizeModel("gpt-5.1-codex-max-xhigh"); // → "gpt-5.1-codex-max" ✅
+normalizeModel("gpt-5.1-codex-mini-high"); // → "gpt-5.1-codex-mini" ✅
+normalizeModel("codex-mini-latest"); // → "gpt-5.1-codex-mini" ✅
+normalizeModel("gpt-5.1-codex"); // → "gpt-5.1-codex" ✅
+normalizeModel("gpt-5.1"); // → "gpt-5.1" ✅
+normalizeModel("my-codex-model"); // → "my-codex-model" ✅
+normalizeModel("gpt-5"); // → "gpt-5.1" ✅
+normalizeModel("gpt-5-mini"); // → "gpt-5-mini" ✅
+normalizeModel("gpt-5-nano"); // → "gpt-5-nano" ✅
+normalizeModel("GPT 5 High"); // → "gpt 5 high" ✅
+normalizeModel(undefined); // → "gpt-5.1" ✅
+normalizeModel("random-model"); // → "random-model" ✅
 ```
 
 **Implementation:**
+
 ```typescript
 export function normalizeModel(model: string | undefined): string {
   if (!model) return "gpt-5.1";
@@ -609,6 +641,7 @@ export function normalizeModel(model: string | undefined): string {
 ```
 
 **Why this works:**
+
 - ✅ Explicit model map + strict dynamic regex for known slugs
 - ✅ Case-insensitive normalization for unknown/legacy slugs
 - ✅ No substring-based coercion (reduces false positives)
@@ -665,65 +698,69 @@ opencode run "test" --model=openai/gpt-5.3-codex
 ### Unit Tests (Future)
 
 ```typescript
-describe('normalizeModel', () => {
-  test('handles all default models', () => {
-    expect(normalizeModel('gpt-5')).toBe('gpt-5.1')
-    expect(normalizeModel('gpt-5.3-codex')).toBe('gpt-5.3-codex')
-    expect(normalizeModel('gpt-5.3-codex-mini')).toBe('gpt-5.1-codex-mini')
-    expect(normalizeModel('gpt-5-mini')).toBe('gpt-5-mini')
-    expect(normalizeModel('gpt-5-nano')).toBe('gpt-5-nano')
-  })
+describe("normalizeModel", () => {
+  test("handles all default models", () => {
+    expect(normalizeModel("gpt-5")).toBe("gpt-5.1");
+    expect(normalizeModel("gpt-5.3-codex")).toBe("gpt-5.3-codex");
+    expect(normalizeModel("gpt-5.3-codex-mini")).toBe("gpt-5.1-codex-mini");
+    expect(normalizeModel("gpt-5-mini")).toBe("gpt-5-mini");
+    expect(normalizeModel("gpt-5-nano")).toBe("gpt-5-nano");
+  });
 
-  test('handles custom preset names', () => {
-    expect(normalizeModel('gpt-5.3-codex-low')).toBe('gpt-5.3-codex')
-    expect(normalizeModel('openai/gpt-5.3-codex-mini-high')).toBe('gpt-5.1-codex-mini')
-    expect(normalizeModel('gpt-5-high')).toBe('gpt-5.1')
-  })
+  test("handles custom preset names", () => {
+    expect(normalizeModel("gpt-5.3-codex-low")).toBe("gpt-5.3-codex");
+    expect(normalizeModel("openai/gpt-5.3-codex-mini-high")).toBe(
+      "gpt-5.1-codex-mini",
+    );
+    expect(normalizeModel("gpt-5-high")).toBe("gpt-5.1");
+  });
 
-  test('handles legacy names', () => {
-    expect(normalizeModel('GPT 5 Codex Low (ChatGPT Subscription)')).toBe('gpt 5 codex low (chatgpt subscription)')
-  })
+  test("handles legacy names", () => {
+    expect(normalizeModel("GPT 5 Codex Low (Codex)")).toBe(
+      "gpt 5 codex low (Codex)",
+    );
+  });
 
-  test('handles edge cases', () => {
-    expect(normalizeModel(undefined)).toBe('gpt-5.1')
-    expect(normalizeModel('codex-mini-latest')).toBe('codex-mini-latest')
-    expect(normalizeModel('random')).toBe('random')
-  })
-})
+  test("handles edge cases", () => {
+    expect(normalizeModel(undefined)).toBe("gpt-5.1");
+    expect(normalizeModel("codex-mini-latest")).toBe("codex-mini-latest");
+    expect(normalizeModel("random")).toBe("random");
+  });
+});
 
-describe('getModelConfig', () => {
-  test('returns per-model options when found', () => {
-    const config = getModelConfig('gpt-5.3-codex-low', {
-      global: { reasoningEffort: 'medium' },
+describe("getModelConfig", () => {
+  test("returns per-model options when found", () => {
+    const config = getModelConfig("gpt-5.3-codex-low", {
+      global: { reasoningEffort: "medium" },
       models: {
-        'gpt-5.3-codex-low': {
-          options: { reasoningEffort: 'low' }
-        }
-      }
-    })
-    expect(config.reasoningEffort).toBe('low')
-  })
+        "gpt-5.3-codex-low": {
+          options: { reasoningEffort: "low" },
+        },
+      },
+    });
+    expect(config.reasoningEffort).toBe("low");
+  });
 
-  test('returns global options when model not in config', () => {
-    const config = getModelConfig('gpt-5.3-codex', {
-      global: { reasoningEffort: 'medium' },
-      models: {}
-    })
-    expect(config.reasoningEffort).toBe('medium')
-  })
-})
+  test("returns global options when model not in config", () => {
+    const config = getModelConfig("gpt-5.3-codex", {
+      global: { reasoningEffort: "medium" },
+      models: {},
+    });
+    expect(config.reasoningEffort).toBe("medium");
+  });
+});
 
-describe('filterInput', () => {
-  test('removes all message IDs', () => {
+describe("filterInput", () => {
+  test("removes all message IDs", () => {
     const input = [
-      { id: 'msg_123', role: 'user', content: [] },
-      { id: 'rs_456', role: 'assistant', content: [] },
-      { role: 'user', content: [] }  // No ID
-    ]
-    const result = filterInput(input)
-    expect(result.every(item => !item.id)).toBe(true)
-  })
-})
+      { id: "msg_123", role: "user", content: [] },
+      { id: "rs_456", role: "assistant", content: [] },
+      { role: "user", content: [] }, // No ID
+    ];
+    const result = filterInput(input);
+    expect(result.every((item) => !item.id)).toBe(true);
+  });
+});
 ```
 
 ---

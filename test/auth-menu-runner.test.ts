@@ -43,8 +43,8 @@ describe("auth menu runner", () => {
 				onRefreshAccount: vi.fn(),
 				onDeleteAccount: vi.fn(),
 			},
-			input,
-			output,
+			input: input as unknown as NodeJS.ReadStream,
+			output: output as unknown as NodeJS.WriteStream,
 		});
 
 		await tick();
@@ -75,8 +75,8 @@ describe("auth menu runner", () => {
 				onRefreshAccount: vi.fn(),
 				onDeleteAccount: vi.fn(),
 			},
-			input,
-			output,
+			input: input as unknown as NodeJS.ReadStream,
+			output: output as unknown as NodeJS.WriteStream,
 		});
 
 		await tick();
@@ -110,16 +110,13 @@ describe("auth menu runner", () => {
 				onRefreshAccount: vi.fn(),
 				onDeleteAccount: vi.fn(),
 			},
-			input,
-			output,
+			input: input as unknown as NodeJS.ReadStream,
+			output: output as unknown as NodeJS.WriteStream,
 		});
 
 		await tick();
 		input.write("\u001b[B");
 		input.write("\u001b[B");
-		input.write("\r");
-
-		await tick();
 		input.write("\r");
 
 		await tick();

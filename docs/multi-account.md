@@ -59,19 +59,9 @@ When OpenCode is running with the TUI available, the plugin shows toasts for:
 
 You can disable most toasts with `quietMode: true`.
 
-## Account Management Tools
+## Account Management
 
-The plugin exposes a few OpenCode tools to inspect or switch accounts:
-
-- `codex-status` - list accounts and status
-- `codex-switch-accounts` - switch active account by index (1-based)
-- `codex-toggle-account` - enable/disable account by index (1-based)
-- `codex-remove-account` - remove account by index (1-based)
-
-The remove tool requires `confirm: true` when called directly; the TUI slash command template includes confirmation automatically.
-
-These are primarily useful in the OpenCode TUI.
-To enable or disable accounts, re-run `opencode auth login` and choose **manage**.
+To inspect, enable/disable, or remove accounts, re-run `opencode auth login` and choose **manage**.
 
 ## Storage
 
@@ -118,19 +108,19 @@ Legacy records that lack full identity are preserved but skipped for selection u
 
 ### Fields
 
-| Field | Description |
-|-------|-------------|
-| `email` | Best-effort email extracted from the OAuth JWT (may be missing) |
-| `accountId` | ChatGPT account ID extracted from the OAuth JWT (may be missing) |
-| `plan` | ChatGPT plan name extracted from the OAuth JWT (may be missing) |
-| `refreshToken` | OAuth refresh token (auto-managed) |
-| `enabled` | Whether the account can be selected (defaults to true) |
-| `addedAt` | Timestamp when the account was first stored |
-| `lastUsed` | Timestamp when the account was last selected |
-| `activeIndex` | Active account index (used by the account switch tool) |
-| `activeIndexByFamily` | Per-model-family active index |
-| `rateLimitResetTimes` | Optional per-family/model rate limit reset times |
-| `coolingDownUntil` | Optional cooldown timestamp for failing accounts |
+| Field                 | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| `email`               | Best-effort email extracted from the OAuth JWT (may be missing)  |
+| `accountId`           | ChatGPT account ID extracted from the OAuth JWT (may be missing) |
+| `plan`                | ChatGPT plan name extracted from the OAuth JWT (may be missing)  |
+| `refreshToken`        | OAuth refresh token (auto-managed)                               |
+| `enabled`             | Whether the account can be selected (defaults to true)           |
+| `addedAt`             | Timestamp when the account was first stored                      |
+| `lastUsed`            | Timestamp when the account was last selected                     |
+| `activeIndex`         | Active account index (used by the account switch tool)           |
+| `activeIndexByFamily` | Per-model-family active index                                    |
+| `rateLimitResetTimes` | Optional per-family/model rate limit reset times                 |
+| `coolingDownUntil`    | Optional cooldown timestamp for failing accounts                 |
 
 Security note: this file contains OAuth refresh tokens. Treat it like a password file.
 
@@ -163,11 +153,11 @@ Configure in `~/.config/opencode/openai-codex-auth-config.json`:
 }
 ```
 
-| Strategy | Behavior | Best For |
-|----------|----------|----------|
-| `sticky` | Same account until rate-limited | Prompt cache preservation |
-| `round-robin` | Rotate to next account on every request | Maximum throughput |
-| `hybrid` | Deterministic selection using health score + token bucket + LRU bias | Best overall distribution |
+| Strategy      | Behavior                                                             | Best For                  |
+| ------------- | -------------------------------------------------------------------- | ------------------------- |
+| `sticky`      | Same account until rate-limited                                      | Prompt cache preservation |
+| `round-robin` | Rotate to next account on every request                              | Maximum throughput        |
+| `hybrid`      | Deterministic selection using health score + token bucket + LRU bias | Best overall distribution |
 
 ### Hybrid Strategy Details
 

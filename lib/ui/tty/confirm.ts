@@ -1,27 +1,31 @@
-import { runSelect } from "./select.js";
+import { select } from "./select.js";
 
-export type ConfirmArgs = {
-	title: string;
-	message: string;
+export type ConfirmOptions = {
 	input?: NodeJS.ReadStream;
 	output?: NodeJS.WriteStream;
 	useColor?: boolean;
 };
 
-export async function runConfirm(args: ConfirmArgs): Promise<boolean | null> {
-	const result = await runSelect({
-		title: args.title,
-		subtitle: args.message,
-		items: [
-			{ label: "Yes", value: true },
-			{ label: "No", value: false },
-		],
-		input: args.input,
-		output: args.output,
-		initialIndex: 0,
-		useColor: args.useColor,
-	});
+export async function confirm(
+	message: string,
+	defaultYes = false,
+	options: ConfirmOptions = {},
+): Promise<boolean> {
+	const items = defaultYes
+		? [
+				{ label: "Yes", value: true },
+				{ label: "No", value: false },
+			]
+		: [
+				{ label: "No", value: false },
+				{ label: "Yes", value: true },
+			];
 
-	if (!result) return null;
-	return Boolean(result.value);
+	const result = await select(items, {
+		message,
+		input: options.input,
+		output: options.output,
+		useColor: options.useColor,
+	});
+	return result ?? false;
 }

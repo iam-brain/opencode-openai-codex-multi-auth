@@ -45,11 +45,12 @@ OpenCode automatically installs plugins - no `npm install` needed!
 
 **Choose your configuration style:**
 
-#### ⚠️ REQUIRED: Full Configuration (Only Supported Setup)
+#### ⚠️ RECOMMENDED: Full Configuration (Now Handled Automatically)
 
-**IMPORTANT**: You MUST use the full configuration. This is the ONLY officially supported setup for GPT 5.x models.
+**IMPORTANT**: You should use the full configuration. This is the ONLY officially supported setup for GPT 5.x models.
 
-**Why the full config is required:**
+**Why the full config is recommended:**
+
 - GPT 5 models can be temperamental and need proper configuration
 - Minimal configs are NOT supported and will fail unpredictably
 - OpenCode features require proper model metadata
@@ -57,12 +58,12 @@ OpenCode automatically installs plugins - no `npm install` needed!
 
 Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
 
-**Tip**: The snippet below is a truncated excerpt. For the complete legacy list, copy `config/opencode-legacy.json`. For the modern variants config (OpenCode v1.0.210+), use `config/opencode-modern.json`.
+**Tip**: The snippet below is a truncated excerpt. For the complete legacy list, copy the modern variants config (OpenCode v1.0.210+), `config/opencode-modern.json`.
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-openai-codex-multi-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth@latest"],
   "provider": {
     "openai": {
       "options": {
@@ -72,75 +73,226 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
         "include": ["reasoning.encrypted_content"],
         "store": false
       },
-      "models": {
-        "gpt-5.3-codex": {
-          "name": "GPT 5.3 Codex (Codex)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
-            "reasoningEffort": "medium",
-            "reasoningSummary": "auto",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
+      "gpt-5.3-codex": {
+        "name": "GPT 5.3 Codex (Codex)",
+        "limit": {
+          "context": 272000,
+          "output": 128000
         },
-        "gpt-5.3-codex-low": {
-          "name": "GPT 5.3 Codex Low (Codex)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
+        "modalities": {
+          "input": ["text", "image"],
+          "output": ["text"]
+        },
+        "variants": {
+          "low": {
             "reasoningEffort": "low",
             "reasoningSummary": "auto",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.3-codex-high": {
-          "name": "GPT 5.3 Codex High (Codex)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
+            "textVerbosity": "medium"
           },
-          "options": {
-            "reasoningEffort": "high",
-            "reasoningSummary": "detailed",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
-          }
-        },
-        "gpt-5.2-codex": {
-          "name": "GPT 5.2 Codex (Codex)",
-          "limit": {
-            "context": 272000,
-            "output": 128000
-          },
-          "options": {
+          "medium": {
             "reasoningEffort": "medium",
             "reasoningSummary": "auto",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
+            "textVerbosity": "medium"
+          },
+          "high": {
+            "reasoningEffort": "high",
+            "reasoningSummary": "detailed",
+            "textVerbosity": "medium"
+          },
+          "xhigh": {
+            "reasoningEffort": "xhigh",
+            "reasoningSummary": "detailed",
+            "textVerbosity": "medium"
           }
+        }
+      },
+      "gpt-5.2-codex": {
+        "name": "GPT 5.2 Codex (Codex)",
+        "limit": {
+          "context": 272000,
+          "output": 128000
         },
+        "modalities": {
+          "input": ["text", "image"],
+          "output": ["text"]
+        },
+        "variants": {
+          "low": {
+            "reasoningEffort": "low",
+            "reasoningSummary": "auto",
+            "textVerbosity": "medium"
+          },
+          "medium": {
+            "reasoningEffort": "medium",
+            "reasoningSummary": "auto",
+            "textVerbosity": "medium"
+          },
+          "high": {
+            "reasoningEffort": "high",
+            "reasoningSummary": "detailed",
+            "textVerbosity": "medium"
+          },
+          "xhigh": {
+            "reasoningEffort": "xhigh",
+            "reasoningSummary": "detailed",
+            "textVerbosity": "medium"
+          }
+        }
+      },
+      "models": {
         "gpt-5.2": {
           "name": "GPT 5.2 (Codex)",
           "limit": {
             "context": 272000,
             "output": 128000
           },
-          "options": {
-            "reasoningEffort": "medium",
-            "reasoningSummary": "auto",
-            "textVerbosity": "medium",
-            "include": ["reasoning.encrypted_content"],
-            "store": false
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "variants": {
+            "none": {
+              "reasoningEffort": "none",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "low": {
+              "reasoningEffort": "low",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "medium": {
+              "reasoningEffort": "medium",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            }
+          }
+        },
+        "gpt-5.1-codex-max": {
+          "name": "GPT 5.1 Codex Max (Codex)",
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "variants": {
+            "low": {
+              "reasoningEffort": "low",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            },
+            "medium": {
+              "reasoningEffort": "medium",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            },
+            "xhigh": {
+              "reasoningEffort": "xhigh",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            }
+          }
+        },
+        "gpt-5.1-codex": {
+          "name": "GPT 5.1 Codex (Codex)",
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "variants": {
+            "low": {
+              "reasoningEffort": "low",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "medium": {
+              "reasoningEffort": "medium",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            }
+          }
+        },
+        "gpt-5.1-codex-mini": {
+          "name": "GPT 5.1 Codex Mini (Codex)",
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "variants": {
+            "medium": {
+              "reasoningEffort": "medium",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "medium"
+            }
+          }
+        },
+        "gpt-5.1": {
+          "name": "GPT 5.1 (Codex)",
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "variants": {
+            "none": {
+              "reasoningEffort": "none",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "low": {
+              "reasoningEffort": "low",
+              "reasoningSummary": "auto",
+              "textVerbosity": "low"
+            },
+            "medium": {
+              "reasoningEffort": "medium",
+              "reasoningSummary": "auto",
+              "textVerbosity": "medium"
+            },
+            "high": {
+              "reasoningEffort": "high",
+              "reasoningSummary": "detailed",
+              "textVerbosity": "high"
+            }
           }
         }
       }
@@ -149,17 +301,18 @@ Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
 }
 ```
 
-  **What you get:**
-  - ✅ GPT 5.3 Codex (low/medium/high/xhigh reasoning)
-  - ✅ GPT 5.2 (none/low/medium/high/xhigh reasoning)
-  - ✅ GPT 5.2 Codex (low/medium/high/xhigh reasoning)
-  - ✅ GPT 5.1 Codex Max (low/medium/high/xhigh reasoning presets)
-  - ✅ GPT 5.1 Codex (low/medium/high reasoning)
-  - ✅ GPT 5.1 Codex Mini (medium/high reasoning)
-  - ✅ GPT 5.1 (none/low/medium/high reasoning)
-  - ✅ 272k context + 128k output window for all GPT 5.x presets.
-  - ✅ All visible in OpenCode model selector
-  - ✅ Optimal settings for each reasoning level
+**What you get:**
+
+- ✅ GPT 5.3 Codex (low/medium/high/xhigh reasoning)
+- ✅ GPT 5.2 (none/low/medium/high/xhigh reasoning)
+- ✅ GPT 5.2 Codex (low/medium/high/xhigh reasoning)
+- ✅ GPT 5.1 Codex Max (low/medium/high/xhigh reasoning presets)
+- ✅ GPT 5.1 Codex (low/medium/high reasoning)
+- ✅ GPT 5.1 Codex Mini (medium/high reasoning)
+- ✅ GPT 5.1 (none/low/medium/high reasoning)
+- ✅ 272k context + 128k output window for all GPT 5.x presets.
+- ✅ All visible in OpenCode model selector
+- ✅ Optimal settings for each reasoning level
 
 **Optional: Personality configuration**
 
@@ -183,6 +336,7 @@ Personality settings live in the plugin config file: `~/.config/opencode/openai-
 ```
 
 Personality descriptions are loaded from:
+
 - Project-local `.opencode/Personalities/*.md`
 - Global `~/.config/opencode/Personalities/*.md`
 
@@ -214,6 +368,7 @@ Prompt caching is enabled out of the box: when OpenCode sends its session identi
 ```
 
 **Why this doesn't work:**
+
 - GPT 5 models need proper configuration to work reliably
 - Missing model metadata breaks OpenCode features
 - Cannot guarantee stable operation
@@ -228,6 +383,7 @@ opencode auth login
 2. Choose **"ChatGPT Pro/Plus (Codex Multi Auth)"**
 
    If you see other OpenAI auth options, they are OpenCode's built-in methods. This plugin's flow is the one labeled **"(Codex Multi Auth)"**.
+
 3. Browser opens automatically for OAuth flow
 4. Log in with your ChatGPT account
 5. Done! Accounts saved to `~/.config/opencode/openai-codex-accounts.json`
@@ -286,6 +442,7 @@ npx -y opencode-openai-codex-multi-auth@latest --uninstall --all
 ```
 
 **When to update:**
+
 - New features released
 - Bug fixes available
 - Security updates
@@ -309,6 +466,7 @@ For plugin development or testing unreleased changes:
 **Note**: Must point to `dist/` folder (built output), not root.
 
 **Build the plugin:**
+
 ```bash
 cd opencode-openai-codex-multi-auth
 npm install

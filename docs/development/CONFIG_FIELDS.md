@@ -30,6 +30,7 @@ Understanding the difference between config key, `id`, and `name` fields in Open
 **Example:** `"gpt-5.1-codex-low"`
 
 **Used For:**
+
 - ✅ CLI `--model` flag: `--model=openai/gpt-5.3-codex-low`
 - ✅ OpenCode internal lookups: `provider.info.models["gpt-5.3-codex-low"]`
 - ✅ TUI persistence: Saved to `~/.config/opencode/tui` as `model_id = "gpt-5.3-codex-low"`
@@ -47,16 +48,19 @@ Understanding the difference between config key, `id`, and `name` fields in Open
 **Example:** `"gpt-5.1-codex"`
 
 **What it's used for:**
+
 - ⚠️ **Other providers**: Some providers use this for `sdk.languageModel(id)`
 - ⚠️ **Sorting**: Used for model priority sorting in OpenCode
 - ⚠️ **Documentation**: Indicates the "canonical" model ID
 
 **What it's NOT used for with OpenAI:**
+
 - ❌ **NOT sent to AI SDK** (config key is sent instead)
 - ❌ **NOT used by plugin** (plugin receives config key)
 - ❌ **NOT required** (OpenCode defaults it to config key)
 
 **Code Reference:** (`tmp/opencode/packages/opencode/src/provider/provider.ts:252`)
+
 ```typescript
 const parsedModel: ModelsDev.Model = {
   id: model.id ?? modelID,  // ← Defaults to config key if omitted
@@ -65,14 +69,15 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **OpenAI Custom Loader:** (`tmp/opencode/packages/opencode/src/provider/provider.ts:58-65`)
+
 ```typescript
 openai: async () => {
   return {
     async getModel(sdk: any, modelID: string) {
-      return sdk.responses(modelID)  // ← Receives CONFIG KEY, not id field!
-    }
-  }
-}
+      return sdk.responses(modelID); // ← Receives CONFIG KEY, not id field!
+    },
+  };
+};
 ```
 
 **Our plugin receives:** `body.model = "gpt-5.3-codex-low"` (config key, NOT id field)
@@ -86,10 +91,12 @@ openai: async () => {
 **Example:** `"GPT 5 Codex Low (Codex)"`
 
 **Used For:**
+
 - ✅ **TUI Model Picker**: Display name shown in the model selection UI
 - ℹ️ **Documentation**: Human-friendly description
 
 **Code Reference:** (`tmp/opencode/packages/opencode/src/provider/provider.ts:253`)
+
 ```typescript
 const parsedModel: ModelsDev.Model = {
   name: model.name ?? existing?.name ?? modelID,  // Defaults to config key
@@ -109,21 +116,21 @@ const parsedModel: ModelsDev.Model = {
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  CLI Usage:                                                     │
-│  $ opencode run --model=openai/gpt-5.3-codex-low                 │
+│  $ opencode run --model=openai/gpt-5.3-codex-low                │
 │                                 └──────┬──────┘                 │
 │                                   CONFIG KEY                    │
 │                                                                 │
 │  TUI Display:                                                   │
-│  ┌──────────────────────────────────┐                          │
-│  │ Select Model:                    │                          │
-│  │                                  │                          │
-│  │ ○ GPT 5 Codex Low (Codex) ←──────┼── name field            │
-│  │ ○ GPT 5 Codex Medium (Codex)     │                          │
-│  │ ○ GPT 5 Codex High (Codex)       │                          │
-│  └──────────────────────────────────┘                          │
+│  ┌──────────────────────────────────┐                           │
+│  │ Select Model:                    │                           │
+│  │                                  │                           │
+│  │ ○ GPT 5 Codex Low (Codex) ←──────┼── name field              │
+│  │ ○ GPT 5 Codex Medium (Codex)     │                           │
+│  │ ○ GPT 5 Codex High (Codex)       │                           │
+│  └──────────────────────────────────┘                           │
 │                                                                 │
-│  Config Lookup (Plugin):                                       │
-│  userConfig.models["gpt-5.3-codex-low"].options                  │
+│  Config Lookup (Plugin):                                        │
+│  userConfig.models["gpt-5.3-codex-low"].options                 │
 │                     └──────┬──────┘                             │
 │                       CONFIG KEY                                │
 │                                                                 │
@@ -134,44 +141,44 @@ const parsedModel: ModelsDev.Model = {
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  1. User Selection                                              │
-│     opencode run --model=openai/gpt-5.3-codex-low                │
+│     opencode run --model=openai/gpt-5.3-codex-low               │
 │     OpenCode parses: providerID="openai"                        │
-│                      modelID="gpt-5.3-codex-low" ← CONFIG KEY    │
+│                      modelID="gpt-5.3-codex-low" ← CONFIG KEY   │
 │                                                                 │
 │  2. OpenCode Provider Lookup                                    │
-│     provider.info.models["gpt-5.3-codex-low"]                     │
+│     provider.info.models["gpt-5.3-codex-low"]                   │
 │                          └──────┬──────┘                        │
 │                            CONFIG KEY                           │
 │                                                                 │
 │  3. Custom Loader Call (OpenAI)                                 │
-│     getModel(sdk, "gpt-5.3-codex-low")                            │
+│     getModel(sdk, "gpt-5.3-codex-low")                          │
 │                   └──────┬──────┘                               │
 │                     CONFIG KEY                                  │
 │                                                                 │
 │  4. AI SDK Request Creation                                     │
-│     { model: "gpt-5.3-codex-low", ... }                           │
+│     { model: "gpt-5.3-codex-low", ... }                         │
 │              └──────┬──────┘                                    │
 │                CONFIG KEY                                       │
 │                                                                 │
 │  5. Custom fetch() (Our Plugin)                                 │
-│     body.model = "gpt-5.3-codex-low"                              │
+│     body.model = "gpt-5.3-codex-low"                            │
 │                  └──────┬──────┘                                │
 │                    CONFIG KEY                                   │
 │                                                                 │
 │  6. Plugin Config Lookup                                        │
-│     userConfig.models["gpt-5.3-codex-low"].options                │
+│     userConfig.models["gpt-5.3-codex-low"].options              │
 │                       └──────┬──────┘                           │
 │                         CONFIG KEY                              │
-│     Result: { reasoningEffort: "low", ... } ✅ FOUND           │
+│     Result: { reasoningEffort: "low", ... } ✅ FOUND            │
 │                                                                 │
 │  7. Plugin Normalization                                        │
-│     normalizeModel("gpt-5.3-codex-low")                           │
-│     Returns: "gpt-5.3-codex" ← SENT TO CODEX API               │
+│     normalizeModel("gpt-5.3-codex-low")                         │
+│     Returns: "gpt-5.3-codex" ← SENT TO CODEX API                │
 │                                                                 │
 │  8. TUI Persistence                                             │
 │     ~/.config/opencode/tui:                                     │
 │       provider_id = "openai"                                    │
-│       model_id = "gpt-5.3-codex-low" ← CONFIG KEY persisted      │
+│       model_id = "gpt-5.3-codex-low" ← CONFIG KEY persisted     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -189,6 +196,7 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **Purpose:**
+
 - 🎯 **PRIMARY identifier** - used everywhere in OpenCode
 - 🎯 **Plugin receives this** - what our plugin sees in `body.model`
 - 🎯 **Config lookup key** - how plugin finds per-model options
@@ -207,6 +215,7 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **Purpose:**
+
 - 📝 **Documents** what base model this variant uses
 - 📝 **Helps sorting** in model lists
 - 📝 **Clarity** - shows relationship between variants
@@ -226,6 +235,7 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **Purpose:**
+
 - 🎨 **TUI display** - what users see in model picker
 - 🎨 **User-friendly** - can be descriptive
 - 🎨 **Differentiation** - helps distinguish from API key models
@@ -249,6 +259,7 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **When user selects `openai/gpt-5.3-codex-low`:**
+
 - CLI: Uses `"gpt-5.3-codex-low"` (config key)
 - TUI: Shows `"GPT 5 Codex Low (Codex)"` (name field)
 - Plugin receives: `body.model = "gpt-5.3-codex-low"` (config key)
@@ -275,6 +286,7 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **Why this works:**
+
 - Config keys are different: `"gpt-5.3-codex-low"` vs `"gpt-5.3-codex-high"` ✅
 - Same `id` is fine - it's just metadata
 - Different `name` values help distinguish in TUI
@@ -292,7 +304,8 @@ const parsedModel: ModelsDev.Model = {
     "name": "GPT 5 Codex Low (Codex)",
     "options": { "reasoningEffort": "low" }
   },
-  "gpt-5.3-codex": {  // ❌ DUPLICATE KEY ERROR!
+  "gpt-5.3-codex": {
+    // ❌ DUPLICATE KEY ERROR!
     "id": "gpt-5.3-codex",
     "name": "GPT 5 Codex High (Codex)",
     "options": { "reasoningEffort": "high" }
@@ -314,22 +327,26 @@ const parsedModel: ModelsDev.Model = {
 
 ```json
 {
-  "gpt-5.3-codex-low": {          // ← Unique config key #1
-    "id": "gpt-5.3-codex",         // ← Same base model
+  "gpt-5.3-codex-low": {
+    // ← Unique config key #1
+    "id": "gpt-5.3-codex", // ← Same base model
     "options": { "reasoningEffort": "low" }
   },
-  "gpt-5.3-codex-medium": {       // ← Unique config key #2
-    "id": "gpt-5.3-codex",         // ← Same base model
+  "gpt-5.3-codex-medium": {
+    // ← Unique config key #2
+    "id": "gpt-5.3-codex", // ← Same base model
     "options": { "reasoningEffort": "medium" }
   },
-  "gpt-5.3-codex-high": {         // ← Unique config key #3
-    "id": "gpt-5.3-codex",         // ← Same base model
+  "gpt-5.3-codex-high": {
+    // ← Unique config key #3
+    "id": "gpt-5.3-codex", // ← Same base model
     "options": { "reasoningEffort": "high" }
   }
 }
 ```
 
 **Result:**
+
 - 3 selectable variants in TUI ✅
 - Same API model (`gpt-5.3-codex`) ✅
 - Different reasoning settings ✅
@@ -342,24 +359,29 @@ const parsedModel: ModelsDev.Model = {
 ### Config Changes are Safe ✅
 
 **Old Plugin + Old Config:**
+
 ```json
-"GPT 5 Codex Low (ChatGPT Subscription)": {
+"GPT 5 Codex Low (Codex)": {
   "id": "gpt-5.3-codex",
   "options": { "reasoningEffort": "low" }
 }
 ```
+
 **Result:** ❌ Per-model options broken (existing bug in old plugin)
 
 **New Plugin + Old Config:**
+
 ```json
-"GPT 5 Codex Low (ChatGPT Subscription)": {
+"GPT 5 Codex Low (Codex)": {
   "id": "gpt-5.3-codex",
   "options": { "reasoningEffort": "low" }
 }
 ```
+
 **Result:** ✅ Per-model options work! (bug fixed)
 
 **New Plugin + New Config:**
+
 ```json
 "gpt-5.3-codex-low": {
   "id": "gpt-5.3-codex",
@@ -367,9 +389,11 @@ const parsedModel: ModelsDev.Model = {
   "options": { "reasoningEffort": "low" }
 }
 ```
+
 **Result:** ✅ Per-model options work! (bug fixed + cleaner naming)
 
 **Conclusion:**
+
 - ✅ Existing configs continue to work
 - ✅ New configs work better
 - ✅ Users can migrate at their own pace
@@ -395,6 +419,7 @@ const parsedModel: ModelsDev.Model = {
 ```
 
 **What it does:**
+
 - `false` (required): Prevents AI SDK from using `item_reference` for conversation history
 - `true` (default): Uses server-side storage with references (incompatible with Codex API)
 
@@ -404,50 +429,52 @@ const parsedModel: ModelsDev.Model = {
 
 Plugin config is stored in `~/.config/opencode/openai-codex-auth-config.json`.
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `accountSelectionStrategy` | `string` | `"sticky"` | Account selection (`sticky`, `round-robin`, `hybrid`). |
-| `pidOffsetEnabled` | `boolean` | `true` | PID-based starting offset for parallel agents. |
-| `perProjectAccounts` | `boolean` | `false` | Use `.opencode/openai-codex-accounts.json` when present. |
-| `quietMode` | `boolean` | `false` | Reduce background toasts. |
-| `rateLimitToastDebounceMs` | `number` | `60000` | Debounce toast notifications. |
-| `tokenRefreshSkewMs` | `number` | `60000` | Refresh tokens this early before expiry. |
-| `proactiveTokenRefresh` | `boolean` | `false` | Enable proactive refresh queue when available. |
-| `authDebug` | `boolean` | `false` | Debug logging (see env aliases). |
-| `retryAllAccountsRateLimited` | `boolean` | `false` | Enable global wait-and-retry when all accounts rate-limited. |
-| `retryAllAccountsMaxWaitMs` | `number` | `30000` | Max wait time for global retry (0 disables limit). |
-| `retryAllAccountsMaxRetries` | `number` | `1` | Max retry cycles for global wait loop. |
-| `hardStopMaxWaitMs` | `number` | `10000` | Hard-stop wait threshold for all-accounts rate limits. |
-| `hardStopOnUnknownModel` | `boolean` | `true` | Hard-stop when model not in server catalog. |
-| `hardStopOnAllAuthFailed` | `boolean` | `true` | Hard-stop when all accounts in auth-failure cooldown. |
-| `hardStopMaxConsecutiveFailures` | `number` | `5` | Hard-stop after consecutive failures. |
-| `schedulingMode` | `string` | `"cache_first"` | Scheduling strategy (`cache_first`, `balance`, `performance_first`). |
-| `maxCacheFirstWaitSeconds` | `number` | `60` | Cache-first wait before switching. |
-| `switchOnFirstRateLimit` | `boolean` | `true` | Switch accounts immediately on rate limit. |
-| `rateLimitDedupWindowMs` | `number` | `2000` | Deduplicate rate-limit events. |
-| `rateLimitStateResetMs` | `number` | `120000` | Reset rate-limit state after idle window. |
-| `defaultRetryAfterMs` | `number` | `60000` | Fallback retry-after when headers missing. |
-| `maxBackoffMs` | `number` | `120000` | Cap exponential backoff. |
-| `requestJitterMaxMs` | `number` | `1000` | Random jitter added to retry delays. |
+| Field                            | Type      | Default         | Description                                                          |
+| :------------------------------- | :-------- | :-------------- | :------------------------------------------------------------------- |
+| `accountSelectionStrategy`       | `string`  | `"sticky"`      | Account selection (`sticky`, `round-robin`, `hybrid`).               |
+| `pidOffsetEnabled`               | `boolean` | `true`          | PID-based starting offset for parallel agents.                       |
+| `perProjectAccounts`             | `boolean` | `false`         | Use `.opencode/openai-codex-accounts.json` when present.             |
+| `quietMode`                      | `boolean` | `false`         | Reduce background toasts.                                            |
+| `rateLimitToastDebounceMs`       | `number`  | `60000`         | Debounce toast notifications.                                        |
+| `tokenRefreshSkewMs`             | `number`  | `60000`         | Refresh tokens this early before expiry.                             |
+| `proactiveTokenRefresh`          | `boolean` | `false`         | Enable proactive refresh queue when available.                       |
+| `authDebug`                      | `boolean` | `false`         | Debug logging (see env aliases).                                     |
+| `retryAllAccountsRateLimited`    | `boolean` | `false`         | Enable global wait-and-retry when all accounts rate-limited.         |
+| `retryAllAccountsMaxWaitMs`      | `number`  | `30000`         | Max wait time for global retry (0 disables limit).                   |
+| `retryAllAccountsMaxRetries`     | `number`  | `1`             | Max retry cycles for global wait loop.                               |
+| `hardStopMaxWaitMs`              | `number`  | `10000`         | Hard-stop wait threshold for all-accounts rate limits.               |
+| `hardStopOnUnknownModel`         | `boolean` | `true`          | Hard-stop when model not in server catalog.                          |
+| `hardStopOnAllAuthFailed`        | `boolean` | `true`          | Hard-stop when all accounts in auth-failure cooldown.                |
+| `hardStopMaxConsecutiveFailures` | `number`  | `5`             | Hard-stop after consecutive failures.                                |
+| `schedulingMode`                 | `string`  | `"cache_first"` | Scheduling strategy (`cache_first`, `balance`, `performance_first`). |
+| `maxCacheFirstWaitSeconds`       | `number`  | `60`            | Cache-first wait before switching.                                   |
+| `switchOnFirstRateLimit`         | `boolean` | `true`          | Switch accounts immediately on rate limit.                           |
+| `rateLimitDedupWindowMs`         | `number`  | `2000`          | Deduplicate rate-limit events.                                       |
+| `rateLimitStateResetMs`          | `number`  | `120000`        | Reset rate-limit state after idle window.                            |
+| `defaultRetryAfterMs`            | `number`  | `60000`         | Fallback retry-after when headers missing.                           |
+| `maxBackoffMs`                   | `number`  | `120000`        | Cap exponential backoff.                                             |
+| `requestJitterMaxMs`             | `number`  | `1000`          | Random jitter added to retry delays.                                 |
 
 **Why required:**
 AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce payload size when `store: true`. However:
+
 - Codex API requires `store: false` (stateless mode)
 - `item_reference` items cannot be resolved without server-side storage
 - Without this setting, multi-turn conversations fail with: `"Item with id 'fc_xxx' not found"`
 
 **Where to set:**
+
 ```json
 {
   "provider": {
     "openai": {
       "options": {
-        "store": false  // ← Global: applies to all models
+        "store": false // ← Global: applies to all models
       },
       "models": {
         "gpt-5.3-codex-low": {
           "options": {
-            "store": false  // ← Per-model: redundant but explicit
+            "store": false // ← Per-model: redundant but explicit
           }
         }
       }
@@ -476,12 +503,14 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 ```
 
 **Benefits:**
+
 - ✅ Clean config key: `gpt-5.3-codex-low` (matches Codex CLI presets)
 - ✅ Friendly display: `"GPT 5 Codex Low (Codex)"` (UX)
 - ✅ No redundant fields
 - ✅ OpenCode auto-sets `id` to config key
 
 **Why no `id` field?**
+
 - For OpenAI provider, the `id` field is NOT used (custom loader receives config key)
 - OpenCode defaults `id` to config key if omitted
 - Including it is redundant and creates confusion
@@ -499,6 +528,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 ```
 
 **What happens:**
+
 - `id` defaults to: `"gpt-5.3-codex-low"` (config key)
 - `name` defaults to: `"gpt-5.3-codex-low"` (config key)
 - TUI shows: `"gpt-5.3-codex-low"` (less friendly)
@@ -520,6 +550,7 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 ```
 
 **What happens:**
+
 - `id` field is stored but NOT used by OpenAI custom loader
 - Adds documentation value but is technically redundant
 - Works fine, just verbose
@@ -528,18 +559,18 @@ AI SDK 2.0.50 introduced automatic use of `item_reference` items to reduce paylo
 
 ## Summary Table
 
-| Use Case | Which Field? | Example Value |
-|----------|-------------|---------------|
-| **CLI `--model` flag** | Config Key | `openai/gpt-5.3-codex-low` |
-| **Custom commands** | Config Key | `model: openai/gpt-5.3-codex-low` |
-| **Agent config** | Config Key | `"model": "openai/gpt-5.3-codex-low"` |
-| **TUI display** | `name` field | `"GPT 5 Codex Low (Codex)"` |
-| **Plugin config lookup** | Config Key | `models["gpt-5.3-codex-low"]` |
-| **AI SDK receives** | Config Key | `body.model = "gpt-5.3-codex-low"` |
-| **Plugin normalizes** | Transformed | `"gpt-5.3-codex"` (sent to API) |
-| **TUI persistence** | Config Key | `model_id = "gpt-5.3-codex-low"` |
-| **Documentation** | `id` field | `"gpt-5.3-codex"` (base model) |
-| **Model sorting** | `id` field | Used for priority ranking |
+| Use Case                 | Which Field? | Example Value                         |
+| ------------------------ | ------------ | ------------------------------------- |
+| **CLI `--model` flag**   | Config Key   | `openai/gpt-5.3-codex-low`            |
+| **Custom commands**      | Config Key   | `model: openai/gpt-5.3-codex-low`     |
+| **Agent config**         | Config Key   | `"model": "openai/gpt-5.3-codex-low"` |
+| **TUI display**          | `name` field | `"GPT 5 Codex Low (Codex)"`           |
+| **Plugin config lookup** | Config Key   | `models["gpt-5.3-codex-low"]`         |
+| **AI SDK receives**      | Config Key   | `body.model = "gpt-5.3-codex-low"`    |
+| **Plugin normalizes**    | Transformed  | `"gpt-5.3-codex"` (sent to API)       |
+| **TUI persistence**      | Config Key   | `model_id = "gpt-5.3-codex-low"`      |
+| **Documentation**        | `id` field   | `"gpt-5.3-codex"` (base model)        |
+| **Model sorting**        | `id` field   | Used for priority ranking             |
 
 ---
 
@@ -567,12 +598,14 @@ name field is UI sugar 🎨
 ## Why The Bug Happened
 
 **Old Plugin Logic (Broken):**
+
 ```typescript
-const normalizedModel = normalizeModel(body.model);  // "gpt-5.2-codex-high" → "gpt-5.2-codex"
-const modelConfig = getModelConfig(normalizedModel, userConfig);  // Lookup "gpt-5.2-codex"
+const normalizedModel = normalizeModel(body.model); // "gpt-5.2-codex-high" → "gpt-5.2-codex"
+const modelConfig = getModelConfig(normalizedModel, userConfig); // Lookup "gpt-5.2-codex"
 ```
 
 **Problem:**
+
 - Plugin received: `"gpt-5.2-codex-high"` (config key)
 - Plugin normalized first: `"gpt-5.2-codex"`
 - Plugin looked up config: `models["gpt-5.2-codex"]` ❌ NOT FOUND
@@ -580,13 +613,15 @@ const modelConfig = getModelConfig(normalizedModel, userConfig);  // Lookup "gpt
 - **Result:** Per-model options ignored!
 
 **New Plugin Logic (Fixed):**
+
 ```typescript
-const originalModel = body.model;  // "gpt-5.2-codex-high" (config key)
-const normalizedModel = normalizeModel(body.model);  // "gpt-5.2-codex" (for API)
-const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5.2-codex-high" ✅
+const originalModel = body.model; // "gpt-5.2-codex-high" (config key)
+const normalizedModel = normalizeModel(body.model); // "gpt-5.2-codex" (for API)
+const modelConfig = getModelConfig(originalModel, userConfig); // Lookup "gpt-5.2-codex-high" ✅
 ```
 
 **Fix:**
+
 - Use original value (config key) for config lookup ✅
 - Normalize separately for API call ✅
 - **Result:** Per-model options applied correctly!
@@ -598,6 +633,7 @@ const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5
 ### Test Case 1: Which model does plugin send to API?
 
 **Config:**
+
 ```json
 {
   "my-custom-name": {
@@ -613,6 +649,7 @@ const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5
 **Question:** What model does plugin send to Codex API?
 
 **Answer:**
+
 1. Plugin receives: `body.model = "my-custom-name"`
 2. Plugin normalizes: `"my-custom-name"` → `"my-custom-name"` (preserved)
 3. Plugin sends to API: `"my-custom-name"` ✅
@@ -624,6 +661,7 @@ const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5
 ### Test Case 2: How does TUI know what to display?
 
 **Config:**
+
 ```json
 {
   "ugly-key-123": {
@@ -644,6 +682,7 @@ const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5
 ### Test Case 3: How does plugin find config?
 
 **Config:**
+
 ```json
 {
   "gpt-5.3-codex-low": {
@@ -658,6 +697,7 @@ const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5
 **Question:** How does plugin find the options?
 
 **Answer:**
+
 1. Plugin receives: `body.model = "gpt-5.3-codex-low"`
 2. Plugin looks up: `userConfig.models["gpt-5.3-codex-low"]` ✅
 3. Plugin finds: `{ reasoningEffort: "low" }` ✅
@@ -672,7 +712,8 @@ const modelConfig = getModelConfig(originalModel, userConfig);  // Lookup "gpt-5
 
 ```json
 {
-  "gpt-5.3-codex": {  // ❌ Can't have multiple variants
+  "gpt-5.3-codex": {
+    // ❌ Can't have multiple variants
     "id": "gpt-5.3-codex"
   }
 }

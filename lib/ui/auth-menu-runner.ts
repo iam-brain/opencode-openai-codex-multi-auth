@@ -1,36 +1,31 @@
-import type { AuthMenuAccount } from "./auth-menu.js";
-import { chooseAccountAction, chooseAccountFromList, chooseAuthMenuAction } from "./auth-menu-flow.js";
-import { runConfirm } from "./tty/confirm.js";
+import type { AccountInfo } from "./auth-menu.js";
+import { showAccountDetails, showAuthMenu, selectAccount } from "./auth-menu.js";
 
 export type AuthMenuHandlers = {
 	onCheckQuotas: () => Promise<void>;
 	onConfigureModels: () => Promise<void>;
 	onDeleteAll: () => Promise<void>;
-	onToggleAccount: (account: AuthMenuAccount) => Promise<void>;
-	onRefreshAccount: (account: AuthMenuAccount) => Promise<void>;
-	onDeleteAccount: (account: AuthMenuAccount) => Promise<void>;
+	onToggleAccount: (account: AccountInfo) => Promise<void>;
+	onRefreshAccount: (account: AccountInfo) => Promise<void>;
+	onDeleteAccount: (account: AccountInfo) => Promise<void>;
 };
 
 export type AuthMenuResult = "add" | "continue" | "exit";
 
 export async function runAuthMenuOnce(args: {
-	accounts: AuthMenuAccount[];
+	accounts: AccountInfo[];
 	handlers: AuthMenuHandlers;
 	input?: NodeJS.ReadStream;
 	output?: NodeJS.WriteStream;
-	now?: number;
 }): Promise<AuthMenuResult> {
-	const action = await chooseAuthMenuAction({
-		accounts: args.accounts,
+	const action = await showAuthMenu(args.accounts, {
 		input: args.input,
 		output: args.output,
-		now: args.now,
 	});
 
-	if (!action) return "exit";
-
+	if (action.type === "cancel") return "exit";
 	if (action.type === "add") return "add";
-	if (action.type === "check-quotas") {
+	if (action.type === "check") {
 		await args.handlers.onCheckQuotas();
 		return "continue";
 	}
@@ -39,36 +34,24 @@ export async function runAuthMenuOnce(args: {
 		return "continue";
 	}
 	if (action.type === "delete-all") {
-		const confirm = await runConfirm({
-			title: "Delete accounts",
-			message: "Delete all accounts?",
-			input: args.input,
-			output: args.output,
-			useColor: false,
-		});
-		if (confirm) {
-			await args.handlers.onDeleteAll();
-		}
+		await args.handlers.onDeleteAll();
 		return "continue";
 	}
 
 	const account =
 		action.type === "select-account"
 			? action.account
-			: await chooseAccountFromList({
-					accounts: args.accounts,
+			: await selectAccount(args.accounts, {
 					input: args.input,
 					output: args.output,
-					now: args.now,
 				});
 	if (!account) return "continue";
 
-	const accountAction = await chooseAccountAction({
-		account,
+	const accountAction = await showAccountDetails(account, {
 		input: args.input,
 		output: args.output,
 	});
-	if (!accountAction || accountAction === "back") return "continue";
+
 	if (accountAction === "toggle") {
 		await args.handlers.onToggleAccount(account);
 		return "continue";
@@ -80,16 +63,7 @@ export async function runAuthMenuOnce(args: {
 		return "continue";
 	}
 	if (accountAction === "delete") {
-		const confirm = await runConfirm({
-			title: "Delete account",
-			message: `Delete ${account.email ?? "this account"}?`,
-			input: args.input,
-			output: args.output,
-			useColor: false,
-		});
-		if (confirm) {
-			await args.handlers.onDeleteAccount(account);
-		}
+		await args.handlers.onDeleteAccount(account);
 		return "continue";
 	}
 

@@ -7,12 +7,14 @@ Common issues and debugging techniques for the OpenCode OpenAI Codex Auth Plugin
 ### "401 Unauthorized" Error
 
 **Symptoms:**
+
 ```
 Error: 401 Unauthorized
 Failed to access Codex API
 ```
 
 **Causes:**
+
 1. Token expired
 2. Not authenticated yet
 3. Invalid credentials
@@ -20,17 +22,20 @@ Failed to access Codex API
 **Solutions:**
 
 **1. Re-authenticate:**
+
 ```bash
 opencode auth login
 ```
 
 **2. Check auth file exists:**
+
 ```bash
 cat ~/.config/opencode/openai-codex-accounts.json
 # Should show stored accounts with OAuth credentials
 ```
 
 **3. Check token expiration:**
+
 ```bash
 # Token has "expires" timestamp
 cat ~/.config/opencode/openai-codex-accounts.json | jq '.accounts[]?.expires'
@@ -42,37 +47,44 @@ date +%s000  # Current timestamp in milliseconds
 ### Browser Doesn't Open for OAuth
 
 **Symptoms:**
+
 - `opencode auth login` succeeds but no browser window
 - OAuth callback times out
 
 **Solutions:**
 
 **1. Manual browser open:**
+
 ```bash
 # The auth URL is shown in console - copy and paste to browser manually
 ```
 
 **1a. Manual URL Paste login:**
+
 - Re-run `opencode auth login`
 - Select **"ChatGPT Plus/Pro (Manual URL Paste)"**
 - Paste the full redirect URL after login
 
 **2. Check port 1455 availability:**
+
 ```bash
 # See if something is using the OAuth callback port
 lsof -i :1455
 ```
 
 **3. Official Codex CLI conflict:**
+
 - Stop Codex CLI if running
 - Both use port 1455 for OAuth
 
 ### "Invalid Session" or "Authorization session expired"
 
 **Symptoms:**
+
 - Browser shows: `Your authorization session was not initialized or has expired`
 
 **Solutions:**
+
 - Re-run `opencode auth login` to generate a fresh URL
 - Open the **"Go to"** URL directly in your browser (don’t use a stale link)
 - If you’re on SSH/WSL/remote, choose **"ChatGPT Plus/Pro (Manual URL Paste)"**
@@ -82,6 +94,7 @@ lsof -i :1455
 **Cause**: ChatGPT subscription issue
 
 **Check:**
+
 1. Active ChatGPT Plus or Pro subscription
 2. Subscription not expired
 3. Billing is current
@@ -95,23 +108,29 @@ lsof -i :1455
 ### Legacy .opencode cache/logs
 
 **Symptoms:**
+
 - Plugin logs or cache files still show under `~/.opencode`
 
 **Cause:**
+
 - Older versions stored cache/logs in `~/.opencode`
 
 **Fix:**
+
 - The plugin now migrates cache/logs to `~/.config/opencode` on first use. You can also remove the legacy files manually once confirmed.
 
 ### Multiple plans overwritten
 
 **Symptoms:**
+
 - Accounts with the same accountId but different emails or plans collapse into one entry
 
 **Cause:**
+
 - Older versions matched on accountId (or accountId + plan) without email
 
 **Fix:**
+
 ```bash
 rm ~/.config/opencode/openai-codex-accounts.json
 opencode auth login
@@ -120,57 +139,70 @@ opencode auth login
 ### Accounts quarantined during repair
 
 **Symptoms:**
+
 - Login prompt mentions repair and quarantine
 - Toast or CLI output references a `.quarantine-<timestamp>.json` file stored next to
   `~/.config/opencode/openai-codex-accounts.json`
 
 **Cause:**
+
 - The accounts file is corrupt, or legacy entries could not be repaired
 
 **Fix:**
+
 1. Review the quarantine file to inspect the removed records
 2. Re-run `opencode auth login` to rebuild storage
 3. If you need to restore a record, copy it from the quarantine file and re-authenticate
 
 **Notes:**
+
 - Quarantine files contain refresh tokens (treat them like passwords).
 - Older quarantine files may be pruned automatically to avoid unbounded buildup.
 
 ### "All account(s) are rate-limited"
 
 **Symptoms:**
+
 - Requests fail with HTTP 429
 - Error mentions all accounts being rate-limited
 
 **What this means:**
+
 - The plugin tried every configured account and they are all currently in cooldown / rate-limit windows.
 
 **Solutions:**
 
 **1. Wait for the shortest reset window:**
+
 - The plugin tracks rate-limit reset times per account in `~/.config/opencode/openai-codex-accounts.json`
 
 **2. Add another account:**
+
 ```bash
 opencode auth login
 ```
 
 **3. Check your selection strategy:**
+
 - Default is `sticky` (best caching)
 - If you want maximum throughput with many accounts, set `accountSelectionStrategy: "round-robin"` in `~/.config/opencode/openai-codex-auth-config.json`
 
 **4. For parallel agents, keep PID offset enabled:**
+
 - `pidOffsetEnabled: true` helps parallel OpenCode sessions start on different accounts
 
 ### Hard-stop: all accounts unavailable
 
 **Symptoms:**
+
 - Requests fail with HTTP 429 and error type `all_accounts_rate_limited`
 
 **What this means:**
+
 - All accounts are rate-limited beyond the hard-stop wait threshold.
 
 **Solutions:**
+
 - Increase `hardStopMaxWaitMs` in `~/.config/opencode/openai-codex-auth-config.json`
 - Set `hardStopMaxWaitMs: 0` to disable the hard-stop and allow longer waits
 - Add another account (`opencode auth login`)
@@ -178,12 +210,15 @@ opencode auth login
 ### Hard-stop: all accounts auth-failed
 
 **Symptoms:**
+
 - Requests fail with HTTP 401 and error type `all_accounts_auth_failed`
 
 **What this means:**
+
 - All accounts are in auth-failure cooldown.
 
 **Solutions:**
+
 - Re-authenticate: `opencode auth login`
 
 ### Reset Accounts
@@ -197,11 +232,7 @@ opencode auth login
 
 ### Inspect / Switch Accounts
 
-In the OpenCode TUI, you can run:
-
-- `codex-status`
-- `codex-switch-accounts` (pass a 1-based index)
-
+Use `opencode auth login` and choose **manage** to inspect accounts or change their enabled status.
 See [Multi-Account](multi-account.md) for details.
 
 ## Model Issues
@@ -213,6 +244,7 @@ See [Multi-Account](multi-account.md) for details.
 **Cause 1: Config key mismatch**
 
 **Check your config:**
+
 ```json
 {
   "models": {
@@ -222,11 +254,13 @@ See [Multi-Account](multi-account.md) for details.
 ```
 
 **CLI Usage (Modern):**
+
 ```bash
 opencode run "test" --model=openai/gpt-5.3-codex --variant=low
 ```
 
 **CLI Usage (Legacy Suffix):**
+
 ```bash
 opencode run "test" --model=openai/gpt-5.3-codex-low  # Must match config key
 ```
@@ -234,11 +268,13 @@ opencode run "test" --model=openai/gpt-5.3-codex-low  # Must match config key
 **Cause 2: Missing provider prefix**
 
 **❌ Wrong:**
+
 ```yaml
 model: gpt-5.3-codex-low
 ```
 
 **✅ Correct:**
+
 ```yaml
 model: openai/gpt-5.3-codex
 variant: low
@@ -247,25 +283,31 @@ variant: low
 ### Hard-stop: unsupported model
 
 **Symptoms:**
+
 - Requests fail with HTTP 400 and error type `unsupported_model`
 
 **What this means:**
+
 - The requested model is not in the server catalog. Custom model IDs are rejected.
 
 **Solutions:**
+
 - Use a model ID that appears in `/codex/models`
 - Update your config to match the catalog model IDs (see `config/opencode-modern.json`)
 
 ### Hard-stop: model catalog unavailable
 
 **Symptoms:**
+
 - Requests fail with HTTP 400 and error type `unsupported_model`
 - Error message mentions the model catalog being unavailable
 
 **What this means:**
+
 - The plugin cannot access `/codex/models` and has no cached catalog.
 
 **Solutions:**
+
 - Run once with network access to seed the catalog cache
 - Retry after the catalog cache is available
 - Check for `codex-models-cache-<hash>.json` under `~/.config/opencode/cache/` (per-account hashed)
@@ -275,11 +317,13 @@ variant: low
 **Symptom**: All models behave the same despite different `reasoningEffort`
 
 **Debug:**
+
 ```bash
 DEBUG_CODEX_PLUGIN=1 opencode run "test" --model=openai/your-model
 ```
 
 **Look for:**
+
 ```
 hasModelSpecificConfig: true  ← Should be true
 resolvedConfig: { reasoningEffort: 'low', ... }  ← Should show your options
@@ -288,6 +332,7 @@ resolvedConfig: { reasoningEffort: 'low', ... }  ← Should show your options
 **If `false`**: Config lookup failed
 
 **Common causes:**
+
 1. Model name in CLI doesn't match config key
 2. Typo in config file
 3. Wrong config file location
@@ -299,6 +344,7 @@ resolvedConfig: { reasoningEffort: 'low', ... }  ← Should show your options
 ### "Item not found" Errors
 
 **Error:**
+
 ```
 AI_APICallError: Item with id 'msg_abc123' not found.
 Items are not persisted when `store` is set to false.
@@ -307,6 +353,7 @@ Items are not persisted when `store` is set to false.
 **Cause**: Older plugin version
 
 **Solution:**
+
 ```bash
 # Update plugin
 npx -y opencode-openai-codex-multi-auth@latest
@@ -316,6 +363,7 @@ opencode
 ```
 
 **Verify fix:**
+
 ```bash
 DEBUG_CODEX_PLUGIN=1 opencode
 > write test.txt
@@ -330,6 +378,7 @@ Should see: `Successfully removed all X message IDs`
 **Symptom**: Model doesn't remember previous turns
 
 **Check logs:**
+
 ```bash
 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode
 > first message
@@ -337,6 +386,7 @@ ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode
 ```
 
 **Verify:**
+
 ```bash
 # Turn 2 should have full history
 cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '.body.input | length'
@@ -344,6 +394,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '.b
 ```
 
 **What to check:**
+
 1. Full message history present (not just current turn)
 2. No `item_reference` items (filtered out)
 3. All IDs stripped (`jq '.body.input[].id'` should all be `null`)
@@ -355,6 +406,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '.b
 ### "400 Bad Request"
 
 **Check error details:**
+
 ```bash
 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test"
 
@@ -363,6 +415,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-error-response.json
 ```
 
 **Common causes:**
+
 1. Invalid options for model (e.g., `minimal` for gpt-5.3-codex)
 2. Malformed request body
 3. Unsupported parameter
@@ -370,6 +423,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-error-response.json
 ### "Rate Limit Exceeded"
 
 **Error:**
+
 ```
 Rate limit reached for gpt-5.3-codex
 ```
@@ -378,11 +432,13 @@ Rate limit reached for gpt-5.3-codex
 
 **1. Wait for reset:**
 Check headers in response logs:
+
 ```bash
 cat ~/.config/opencode/logs/codex-plugin/request-*-response.json | jq '.headers["x-codex-primary-reset-after-seconds"]'
 ```
 
 **2. Use a specific model variant:**
+
 ```bash
 # Explicitly use variant via flag
 opencode run "task" --model=openai/gpt-5.3-codex --variant=high
@@ -391,6 +447,7 @@ opencode run "task" --model=openai/gpt-5.3-codex --variant=high
 ### "Context Window Exceeded"
 
 **Error:**
+
 ```
 Your input exceeds the context window
 ```
@@ -400,6 +457,7 @@ Your input exceeds the context window
 **Solutions:**
 
 **1. Start new conversation:**
+
 ```bash
 # Exit and restart OpenCode (clears history)
 ```
@@ -407,6 +465,7 @@ Your input exceeds the context window
 **2. Use compact mode** (if OpenCode supports it)
 
 **3. Switch to model with larger context:**
+
 - gpt-5.3-codex / gpt-5.2-codex / gpt-5.1-codex presets have larger context windows than lightweight presets
 
 ---
@@ -416,6 +475,7 @@ Your input exceeds the context window
 ### Rate Limit Exhausted
 
 **Error:**
+
 ```
 Failed to fetch instructions from GitHub: Failed to fetch latest release: 403
 Using cached instructions
@@ -424,10 +484,12 @@ Using cached instructions
 **Cause**: GitHub API rate limit (60 req/hour for unauthenticated)
 
 **Current behavior**:
+
 - Instructions are ETag-cached with periodic refresh checks
 - Runtime model metadata is online-first (`/codex/models`) with local cache + GitHub/static fallbacks
 
 **Verify fix:**
+
 ```bash
 # Check instruction cache metadata files
 ls -lt ~/.config/opencode/cache/*-instructions-meta.json
@@ -440,6 +502,7 @@ ls -lt ~/.config/opencode/cache/codex-models-cache-*.json
 ```
 
 **Manual workaround** (if on old version):
+
 - Wait 1 hour for rate limit to reset
 - Or use cached instructions (automatic fallback)
 
@@ -455,10 +518,12 @@ DEBUG_CODEX_PLUGIN=1 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "test"
 ```
 
 **What you get:**
+
 - Console: Debug messages showing config resolution
 - Files: Complete request/response logs
 
 **Log locations:**
+
 - `~/.config/opencode/logs/codex-plugin/request-*-before-transform.json`
 - `~/.config/opencode/logs/codex-plugin/request-*-after-transform.json`
 - `~/.config/opencode/logs/codex-plugin/request-*-response.json`
@@ -480,6 +545,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-after-transform.json | jq '{
 ```
 
 **Verify:**
+
 - `model`: Normalized correctly?
 - `reasoning.effort`: Matches your config?
 - `text.verbosity`: Matches your config?
@@ -497,11 +563,13 @@ See [development/TESTING.md](development/TESTING.md) for expected values matrix.
 ### Slow Responses
 
 **Possible causes:**
+
 1. `reasoningEffort: "high"` - Uses more computation
 2. `textVerbosity: "high"` - Generates longer outputs
 3. Network latency
 
 **Solutions:**
+
 - Use lower reasoning effort for faster responses
 - Check network connection
 - Try different time of day (server load varies)
@@ -509,12 +577,14 @@ See [development/TESTING.md](development/TESTING.md) for expected values matrix.
 ### High Token Usage
 
 **Monitor usage:**
+
 ```bash
 # Tokens shown in logs
 cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"total_tokens":[0-9]*'
 ```
 
 **Reduce tokens:**
+
 1. Lower `textVerbosity`
 2. Lower `reasoningEffort`
 3. Keep custom system prompts concise
@@ -526,6 +596,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"
 ### Before Opening an Issue
 
 1. **Enable logging:**
+
    ```bash
    DEBUG_CODEX_PLUGIN=1 ENABLE_PLUGIN_REQUEST_LOGGING=1 opencode run "your command"
    ```
@@ -533,8 +604,9 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"
 2. **Collect info:**
    - OpenCode version: `opencode --version`
    - Plugin version: Check `package.json` or npm
+
 - Error logs from `~/.config/opencode/logs/codex-plugin/`
-   - Config file (redact sensitive info)
+  - Config file (redact sensitive info)
 
 3. **Check existing issues:**
    - [GitHub Issues](https://github.com/iam-brain/opencode-openai-codex-multi-auth/issues)
@@ -542,6 +614,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"
 ### Reporting Bugs
 
 Include:
+
 - ✅ Error message
 - ✅ Steps to reproduce
 - ✅ Config file (redacted)
