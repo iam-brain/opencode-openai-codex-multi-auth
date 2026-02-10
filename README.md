@@ -1,7 +1,7 @@
 ![Image 1: opencode-openai-codex-auth](assets/readme-hero.svg)
 
 
-This project EOL. Please upgrade to the brand new, fully rewritten (based on OpenCode's native OAuth implementation) at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-codex-auth).
+This project is now EOL. Please upgrade to the brand new, fully rewritten (based on OpenCode's native OAuth implementation) at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-codex-auth).
 
   
 Fork maintained by [iam-brain](https://github.com/iam-brain).
