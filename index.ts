@@ -787,9 +787,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		}
 	};
 
-	const storedAccountsForMethods = await loadAccounts();
-	const hasStoredAccounts = (storedAccountsForMethods?.accounts.length ?? 0) > 0;
-
 	const oauthMethod = {
 		label: AUTH_LABELS.OAUTH,
 		type: "oauth" as const,
@@ -865,9 +862,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 	const apiKeyMethod = { label: AUTH_LABELS.API_KEY, type: "api" as const };
 
-	const authMethods = hasStoredAccounts
-		? [oauthMethod]
-		: [oauthMethod, manualOauthMethod, apiKeyMethod];
+	const authMethods = [oauthMethod, manualOauthMethod, apiKeyMethod];
 
 	return {
 		auth: {

@@ -87,16 +87,21 @@ describe("auth login workflow", () => {
 		expect(AUTH_LABELS.OAUTH_MANUAL).toBe("Codex Oauth (headless)");
 	});
 
-	it("exposes only oauth login when accounts exist", async () => {
+	it("retains oauth/manual/api login when accounts exist", async () => {
 		mockLoadAccounts.mockResolvedValueOnce(fixture);
 
 		const OpenAIAuthPlugin = await loadPlugin();
 		const plugin = await OpenAIAuthPlugin(createPluginInput());
 		const labels = plugin.auth?.methods.map((method) => method.label) ?? [];
 
-		expect(labels).toContain(AUTH_LABELS.OAUTH);
-		expect(labels).not.toContain(AUTH_LABELS.API_KEY);
-		expect(labels).toHaveLength(1);
+		expect(labels).toEqual(
+			expect.arrayContaining([
+				AUTH_LABELS.OAUTH,
+				AUTH_LABELS.OAUTH_MANUAL,
+				AUTH_LABELS.API_KEY,
+			]),
+		);
+		expect(labels).toHaveLength(3);
 	});
 
 	it("exposes oauth/manual/api login when no accounts exist", async () => {
